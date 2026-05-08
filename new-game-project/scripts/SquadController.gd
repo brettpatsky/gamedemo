@@ -125,3 +125,11 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 
 func _on_soldier_died(soldier: Node2D) -> void:
 	remove_soldier(soldier)
+
+func get_centroid() -> Vector2:
+	if soldiers.is_empty():
+		return Vector2.ZERO
+	var sum := Vector2.ZERO
+	for s in soldiers:
+		sum += s.global_position
+	return sum / float(soldiers.size())

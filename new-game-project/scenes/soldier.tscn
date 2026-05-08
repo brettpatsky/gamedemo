@@ -1,0 +1,65 @@
+[gd_scene format=3 uid="uid://dtcbbmugibghc"]
+
+[ext_resource type="Script" uid="uid://cimce714x1mn" path="res://scripts/Soldier.gd" id="1_hpa1h"]
+[ext_resource type="PackedScene" uid="uid://dtclgpudk4ih3" path="res://scenes/bullet.tscn" id="2_ajv6t"]
+[ext_resource type="Texture2D" uid="uid://cygnytwdovlh3" path="res://resources/tdstilepack/PNG/Man Old/manOld_stand.png" id="3_ajv6t"]
+[ext_resource type="Texture2D" uid="uid://3yuh1kxwplv" path="res://resources/tdstilepack/PNG/Man Blue/manBlue_reload.png" id="4_50ktg"]
+[ext_resource type="Texture2D" uid="uid://c1fuiddwi4lfa" path="res://resources/tdstilepack/PNG/Man Blue/manBlue_machine.png" id="5_8qfth"]
+[ext_resource type="Texture2D" uid="uid://d31gp1rxc3e4p" path="res://resources/tdstilepack/PNG/Man Blue/manBlue_hold.png" id="6_8jak6"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_8qfth"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3_ajv6t")
+}],
+"loop": true,
+"name": &"die",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("4_50ktg")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("5_8qfth")
+}],
+"loop": true,
+"name": &"shoot",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("6_8jak6")
+}],
+"loop": true,
+"name": &"walk",
+"speed": 5.0
+}]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_8jak6"]
+height = 28.0
+
+[node name="Soldier" type="CharacterBody2D" unique_id=451228912]
+script = ExtResource("1_hpa1h")
+bullet_scene = ExtResource("2_ajv6t")
+
+[node name="NavigationAgent2D" type="NavigationAgent2D" parent="." unique_id=46928100]
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=2107077424]
+sprite_frames = SubResource("SpriteFrames_8qfth")
+animation = &"walk"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=2056936160]
+shape = SubResource("CapsuleShape2D_8jak6")
+
+[node name="HealthBar" type="ProgressBar" parent="." unique_id=950811362]
+offset_right = 4.0
+offset_bottom = 27.0
+
+[node name="FootstepAudio" type="AudioStreamPlayer2D" parent="." unique_id=1385984909]

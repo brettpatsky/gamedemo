@@ -1,0 +1,67 @@
+[gd_scene format=3 uid="uid://155xx7s6y6ta"]
+
+[ext_resource type="Script" uid="uid://cujsbc075rh5g" path="res://scripts/Main.gd" id="1_jyhfs"]
+[ext_resource type="Script" uid="uid://7vsifkfg5eeu" path="res://scripts/MapGenerator.gd" id="2_tbgi4"]
+[ext_resource type="PackedScene" uid="uid://dtcbbmugibghc" path="res://scenes/soldier.tscn" id="2_tefeu"]
+[ext_resource type="Texture2D" uid="uid://8icn2y5r56ka" path="res://resources/tdstilepack/PNG/Tiles/tile_01.png" id="3_tbgi4"]
+[ext_resource type="Script" uid="uid://26cpjs3hddgx" path="res://scripts/SquadController.gd" id="3_tefeu"]
+[ext_resource type="Script" uid="uid://ljwbenej0an7" path="res://scripts/HUD.gd" id="6_tefeu"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_tefeu"]
+texture = ExtResource("3_tbgi4")
+0:0/0 = 0
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+2:1/0 = 0
+3:1/0 = 0
+0:2/0 = 0
+1:2/0 = 0
+2:2/0 = 0
+3:2/0 = 0
+0:3/0 = 0
+1:3/0 = 0
+2:3/0 = 0
+3:3/0 = 0
+
+[sub_resource type="TileSet" id="TileSet_o6xl0"]
+sources/0 = SubResource("TileSetAtlasSource_tefeu")
+
+[node name="Main" type="Node2D" unique_id=317070456]
+script = ExtResource("1_jyhfs")
+soldier_scene = ExtResource("2_tefeu")
+
+[node name="MapGenerator" type="Node2D" parent="." unique_id=1721416304 groups=["map_generator"]]
+script = ExtResource("2_tbgi4")
+
+[node name="TileMapLayer" type="TileMapLayer" parent="MapGenerator" unique_id=1736835566]
+tile_set = SubResource("TileSet_o6xl0")
+
+[node name="NavigationRegion2D" type="NavigationRegion2D" parent="MapGenerator" unique_id=1926429841]
+
+[node name="SquadController" type="Node2D" parent="." unique_id=603707804 groups=["squad_controller"]]
+script = ExtResource("3_tefeu")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=718995731 groups=["main_camera"]]
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=663955661]
+script = ExtResource("6_tefeu")
+
+[node name="ScoreLabel" type="Label" parent="HUD" unique_id=198355140]
+offset_right = 40.0
+offset_bottom = 23.0
+
+[node name="MissionLabel" type="Label" parent="HUD" unique_id=156576448]
+visible = false
+offset_right = 40.0
+offset_bottom = 23.0
+
+[node name="SoldierCountLabel" type="Label" parent="HUD" unique_id=1847974057]
+offset_right = 40.0
+offset_bottom = 23.0
+
+[node name="RetryButton" type="Button" parent="HUD" unique_id=1314996177]
+offset_right = 8.0
+offset_bottom = 8.0
