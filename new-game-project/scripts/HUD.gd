@@ -7,6 +7,8 @@ extends CanvasLayer
 
 var _weapon_label: Label
 var _formation_label: Label
+var _ammo_label: Label
+var _group_label: Label
 var _objective_label: Label
 var _escort_label: Label
 var _next_level_button: Button
@@ -27,12 +29,22 @@ func _ready() -> void:
 	_formation_label.text     = "FORMATION: 3×2  (F to cycle)"
 	add_child(_formation_label)
 
-	_objective_label       = Label.new()
-	_objective_label.position = Vector2(10, 130)
+	_ammo_label          = Label.new()
+	_ammo_label.position = Vector2(10, 130)
+	_ammo_label.text     = "AMMO: Rifle 90  Grenades 5"
+	add_child(_ammo_label)
+
+	_group_label          = Label.new()
+	_group_label.position = Vector2(10, 160)
+	_group_label.text     = "GROUP: 1/1  (G to split | 1-3 select)"
+	add_child(_group_label)
+
+	_objective_label          = Label.new()
+	_objective_label.position = Vector2(10, 190)
 	add_child(_objective_label)
 
 	_escort_label          = Label.new()
-	_escort_label.position = Vector2(10, 160)
+	_escort_label.position = Vector2(10, 220)
 	_escort_label.hide()
 	add_child(_escort_label)
 
@@ -62,6 +74,15 @@ func update_weapon(weapon_name: String) -> void:
 
 func update_formation(formation_name: String) -> void:
 	_formation_label.text = "FORMATION: %s  (F to cycle)" % formation_name
+
+func update_ammo(rifle: int, grenades: int) -> void:
+	_ammo_label.text = "AMMO: Rifle %d  Grenades %d" % [rifle, grenades]
+
+func update_group_info(active: int, total: int) -> void:
+	if total == 1:
+		_group_label.text = "GROUP: 1/1  (G to split)"
+	else:
+		_group_label.text = "GROUP: %d/%d  (G to cycle | 1-%d to select)" % [active, total, total]
 
 func show_objective(level: int) -> void:
 	var texts = {

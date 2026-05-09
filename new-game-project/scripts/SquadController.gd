@@ -1,7 +1,7 @@
 extends Node2D
 
 const MAX_SOLDIERS  := 8
-const AUTO_INTERVAL := 0.5
+const AUTO_INTERVAL := 0.12   # seconds between rifle bursts while right mouse is held
 
 const FORMATION_NAMES := ["2×3", "3×2", "1×6", "6×1", "Pentagram"]
 
@@ -31,8 +31,18 @@ var soldiers: Array[Node2D] = []
 
 @onready var camera: Camera2D = get_tree().get_first_node_in_group("main_camera") as Camera2D
 
-var _right_held: bool  = false   # is right mouse button currently held?
-var _auto_timer: float = 0.0     # countdown to next AUTO shot
+var _right_held: bool  = false
+var _auto_timer: float = 0.0
+
+# ---------------------------------------------------------------------------
+# Squad group system
+# G cycles group count: 1 → 2 → 3 → 1
+# Keys 1/2/3 select which group receives orders.
+# Groups not currently selected are stationary and do not fire back.
+# ---------------------------------------------------------------------------
+const MAX_GROUPS  := 3
+var _num_groups:   int = 1   # how many groups the squad is split into
+var _active_group: int = 0   # 0-indexed; this group receives all orders
 
 func _ready() -> void:
 	GameManager.soldier_died.connect(_on_soldier_died)
@@ -55,18 +65,31 @@ func _unhandled_input(event: InputEvent) -> void:
 				if event.pressed:
 					_issue_fire_order(_screen_to_world(event.position))
 					_right_held = true
-					_auto_timer = AUTO_INTERVAL   # first repeat fires after one interval
+					_auto_timer = AUTO_INTERVAL
 				else:
 					_right_held = false
 				get_viewport().set_input_as_handled()
 
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_Q:
-			_cycle_weapons()
-			get_viewport().set_input_as_handled()
-		elif event.keycode == KEY_F:
-			_cycle_formation()
-			get_viewport().set_input_as_handled()
+		match event.keycode:
+			KEY_Q:
+				_cycle_weapons()
+				get_viewport().set_input_as_handled()
+			KEY_F:
+				_cycle_formation()
+				get_viewport().set_input_as_handled()
+			KEY_G:
+				_cycle_group_count()
+				get_viewport().set_input_as_handled()
+			KEY_1:
+				_select_group(0)
+				get_viewport().set_input_as_handled()
+			KEY_2:
+				_select_group(1)
+				get_viewport().set_input_as_handled()
+			KEY_3:
+				_select_group(2)
+				get_viewport().set_input_as_handled()
 
 # ---------------------------------------------------------------------------
 # Process — drives continuous AUTO fire while right mouse is held
@@ -89,49 +112,102 @@ func add_soldier(soldier: Node2D) -> void:
 	if soldiers.size() >= MAX_SOLDIERS:
 		push_warning("[SquadController] Squad full — cannot add more soldiers.")
 		return
+	soldier.group_id = 0   # all soldiers start in group 0
 	soldiers.append(soldier)
 	GameManager.soldiers_alive += 1
 
 func remove_soldier(soldier: Node2D) -> void:
 	soldiers.erase(soldier)
+	# If the active group is now empty, switch to the first non-empty group.
+	if _active_group_soldiers().is_empty() and not soldiers.is_empty():
+		_active_group = soldiers[0].group_id
+	_update_group_hud()
+
+# =============================================================================
+# PRIVATE — GROUP MANAGEMENT
+# =============================================================================
+
+func _cycle_group_count() -> void:
+	_num_groups   = (_num_groups % MAX_GROUPS) + 1
+	_active_group = 0
+	# Redistribute soldiers round-robin across all groups.
+	for i in soldiers.size():
+		soldiers[i].group_id = i % _num_groups
+	_update_group_hud()
+
+func _select_group(group: int) -> void:
+	if group >= _num_groups:
+		return
+	_active_group = group
+	_update_group_hud()
+
+# Returns only the soldiers that belong to the currently active group.
+func _active_group_soldiers() -> Array:
+	var result: Array = []
+	for s in soldiers:
+		if s.group_id == _active_group:
+			result.append(s)
+	return result
 
 # =============================================================================
 # PRIVATE — ORDER LOGIC
 # =============================================================================
 
 func _issue_move_order(target: Vector2) -> void:
-	var count := soldiers.size()
+	var group := _active_group_soldiers()
+	var count := group.size()
 	for i in count:
-		soldiers[i].move_to(target + _formation_offset(i, count))
+		group[i].move_to(target + _formation_offset(i, count))
 
 func _issue_fire_order(target: Vector2) -> void:
-	for soldier in soldiers:
+	for soldier in _active_group_soldiers():
 		soldier.fire_at(target)
+	_update_ammo_hud()
+	_update_weapon_hud()   # weapon may auto-switch when ammo runs out
 
 # =============================================================================
 # PRIVATE — WEAPON CYCLING
 # =============================================================================
 
 func _cycle_weapons() -> void:
-	for s in soldiers:
+	for s in _active_group_soldiers():
 		if s.has_method("cycle_weapon"):
 			s.cycle_weapon()
 	_update_weapon_hud()
+	_update_ammo_hud()
 
 func _update_weapon_hud() -> void:
-	if soldiers.is_empty():
+	var group := _active_group_soldiers()
+	if group.is_empty():
 		return
 	var hud: Node = get_tree().get_first_node_in_group("hud")
 	if hud == null or not hud.has_method("update_weapon"):
 		return
-	var idx: int = soldiers[0].get_weapon()
+	var idx: int = group[0].get_weapon()
 	var names := ["Pistol", "Auto", "Grenade"]
 	hud.update_weapon(names[idx])
 
+func _update_ammo_hud() -> void:
+	var group := _active_group_soldiers()
+	if group.is_empty():
+		return
+	var hud: Node = get_tree().get_first_node_in_group("hud")
+	if hud == null or not hud.has_method("update_ammo"):
+		return
+	var s: Node2D = group[0]
+	if s.has_method("get_rifle_ammo") and s.has_method("get_grenade_ammo"):
+		hud.update_ammo(s.get_rifle_ammo(), s.get_grenade_ammo())
+
+func _update_group_hud() -> void:
+	var hud: Node = get_tree().get_first_node_in_group("hud")
+	if hud and hud.has_method("update_group_info"):
+		hud.update_group_info(_active_group + 1, _num_groups)
+
 func _is_continuous_weapon() -> bool:
-	return not soldiers.is_empty() \
-		and soldiers[0].has_method("is_continuous_fire") \
-		and soldiers[0].is_continuous_fire()
+	var group := _active_group_soldiers()
+	return not group.is_empty() \
+		and group[0].has_method("is_continuous_fire") \
+		and group[0].is_continuous_fire()
 
 # =============================================================================
 # PRIVATE — FORMATION MATH
@@ -174,10 +250,15 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 func _on_soldier_died(soldier: Node2D) -> void:
 	remove_soldier(soldier)
 
+# Returns the average position of the active group (falls back to all soldiers).
+# CameraController uses this to softly follow the group.
 func get_centroid() -> Vector2:
-	if soldiers.is_empty():
+	var src := _active_group_soldiers()
+	if src.is_empty():
+		src = soldiers
+	if src.is_empty():
 		return Vector2.ZERO
 	var sum := Vector2.ZERO
-	for s in soldiers:
+	for s in src:
 		sum += s.global_position
-	return sum / float(soldiers.size())
+	return sum / float(src.size())

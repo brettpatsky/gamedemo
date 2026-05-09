@@ -16,8 +16,10 @@
 # =============================================================================
 extends Node2D
 
-@export var map_width:  int   = 80
-@export var map_height: int   = 60
+const ObstacleClass = preload("res://scripts/Obstacle.gd")
+
+@export var map_width:  int   = 220
+@export var map_height: int   = 200
 @export var tile_size:  int   = 64
 
 @export var water_threshold: float = 0.40
@@ -57,6 +59,7 @@ func generate(seed_value: int = 0) -> void:
 	_objective_nodes.clear()
 	_configure_noise(seed_value)
 	_fill_tiles()
+	_spawn_obstacles()
 	_bake_navigation()
 	_spawn_enemies()
 	match GameManager.current_level:
@@ -83,11 +86,26 @@ func is_water_at(world_pos: Vector2) -> bool:
 
 func get_spawn_positions(count: int) -> Array[Vector2]:
 	var result: Array[Vector2] = []
-	var candidates = _passable_cells.filter(func(c): return c.y > map_height * 0.75)
+	# Spawn squad in the centre band of the map
+	var candidates = _passable_cells.filter(func(c: Vector2i) -> bool:
+		var cx := float(c.x) / map_width
+		var cy := float(c.y) / map_height
+		return cx > 0.38 and cx < 0.62 and cy > 0.45 and cy < 0.55
+	)
+	if candidates.is_empty():
+		candidates = _passable_cells.filter(func(c: Vector2i) -> bool:
+			var cy := float(c.y) / map_height
+			return cy > 0.40 and cy < 0.60
+		)
 	candidates.shuffle()
 	for i in min(count, candidates.size()):
 		result.append(tile_map.to_global(tile_map.map_to_local(candidates[i])))
 	return result
+
+func get_map_rect() -> Rect2:
+	var tl := tile_map.to_global(tile_map.map_to_local(Vector2i(0, 0)))
+	var br := tile_map.to_global(tile_map.map_to_local(Vector2i(map_width, map_height)))
+	return Rect2(tl, br - tl)
 
 # =============================================================================
 # PRIVATE
@@ -122,6 +140,28 @@ func _fill_tiles() -> void:
 				atlas_coord = ATLAS_ROCK
 
 			tile_map.set_cell(Vector2i(x, y), TILESET_SOURCE_ID, atlas_coord)
+
+func _spawn_obstacles() -> void:
+	# Keep the player centre-spawn zone and map border clear of obstacles.
+	var eligible = _passable_cells.filter(func(c: Vector2i) -> bool:
+		if c.x < 3 or c.x > map_width  - 4: return false
+		if c.y < 3 or c.y > map_height - 4: return false
+		var cx := float(c.x) / map_width
+		var cy := float(c.y) / map_height
+		return not (cx > 0.33 and cx < 0.67 and cy > 0.40 and cy < 0.60)
+	)
+	eligible.shuffle()
+
+	var total := mini(int(eligible.size() * 0.08), 220)
+	@warning_ignore("integer_division")
+	var tree_count := total / 2
+	for i in total:
+		var cell: Vector2i = eligible[i]
+		var obs: StaticBody2D = ObstacleClass.new()
+		obs.is_tree = i < tree_count
+		obs.position = tile_map.map_to_local(cell)
+		add_child(obs)
+		_passable_cells.erase(cell)
 
 func _bake_navigation() -> void:
 	# -------------------------------------------------------------------------

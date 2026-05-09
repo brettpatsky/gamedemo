@@ -6,7 +6,7 @@
 # =============================================================================
 extends Camera2D
 
-@export var zoom_min:     float = 0.4
+@export var zoom_min:     float = 0.5
 @export var zoom_max:     float = 2.5
 @export var zoom_step:    float = 0.15
 @export var zoom_speed:   float = 8.0
@@ -14,14 +14,11 @@ extends Camera2D
 @export var pan_speed:    float = 350.0
 @export var follow_speed: float = 3.0
 
-# These match MapGenerator defaults: 80 tiles × 64px, 60 tiles × 64px
-@export var map_pixel_width:  float = 5120.0
-@export var map_pixel_height: float = 3840.0
-
 var _target_zoom:  float   = 1.0
 var _pan_dragging: bool    = false
 var _drag_start:   Vector2 = Vector2.ZERO
 var _drag_cam_pos: Vector2 = Vector2.ZERO
+var _map_rect:     Rect2   = Rect2(Vector2.ZERO, Vector2(7680.0, 6400.0))
 
 @onready var squad: Node2D = get_tree().get_first_node_in_group("squad_controller") as Node2D
 
@@ -29,14 +26,13 @@ func _ready() -> void:
 	add_to_group("main_camera")
 	_target_zoom = zoom.x
 
-	# Use the map generator's own coordinate maths so any TileMapLayer offset
-	# is accounted for exactly.  Falls back to the hardcoded pixel estimate when
-	# MapGenerator isn't in the tree yet (e.g. editing a sub-scene).
 	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	if map_gen and map_gen.has_method("get_map_rect"):
+		_map_rect = map_gen.get_map_rect()
 	if map_gen and map_gen.has_method("get_map_centre"):
 		position = map_gen.get_map_centre()
 	else:
-		position = Vector2(map_pixel_width * 0.5, map_pixel_height * 0.5)
+		position = _map_rect.get_center()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -82,5 +78,5 @@ func _soft_follow_squad(delta: float) -> void:
 
 func _clamp_to_map() -> void:
 	var half_vp: Vector2 = get_viewport_rect().size * 0.5 / zoom.x
-	position.x = clamp(position.x, half_vp.x,  map_pixel_width  - half_vp.x)
-	position.y = clamp(position.y, half_vp.y,  map_pixel_height - half_vp.y)
+	position.x = clamp(position.x, _map_rect.position.x + half_vp.x, _map_rect.end.x - half_vp.x)
+	position.y = clamp(position.y, _map_rect.position.y + half_vp.y, _map_rect.end.y - half_vp.y)
