@@ -23,7 +23,7 @@ var _pan_dragging: bool    = false
 var _drag_start:   Vector2 = Vector2.ZERO
 var _drag_cam_pos: Vector2 = Vector2.ZERO
 
-@onready var squad: Node2D = get_tree().get_first_node_in_group("squad_controller")
+@onready var squad: Node2D = get_tree().get_first_node_in_group("squad_controller") as Node2D
 
 func _ready() -> void:
 	add_to_group("main_camera")
@@ -64,7 +64,7 @@ func _handle_keyboard_pan(delta: float) -> void:
 		position += dir.normalized() * pan_speed * delta / zoom.x
 
 func _smooth_zoom(delta: float) -> void:
-	var new_z := lerp(zoom.x, _target_zoom, zoom_speed * delta)
+	var new_z := lerpf(zoom.x, _target_zoom, zoom_speed * delta)
 	zoom = Vector2(new_z, new_z)
 
 func _soft_follow_squad(delta: float) -> void:

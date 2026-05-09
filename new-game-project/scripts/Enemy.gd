@@ -36,6 +36,9 @@ func _ready() -> void:
 	health_bar.max_value = max_health
 	health_bar.value     = _health
 
+	if bullet_scene == null:
+		bullet_scene = load("res://scenes/bullet.tscn")
+
 	detection.body_entered.connect(_on_body_entered_detection)
 	detection.body_exited.connect(_on_body_exited_detection)
 
@@ -62,7 +65,7 @@ func _tick_patrol(delta: float) -> void:
 	_move_toward_nav_target()
 	_play_anim("patrol")
 
-func _tick_alert(delta: float) -> void:
+func _tick_alert(_delta: float) -> void:
 	if not is_instance_valid(_target):
 		_state = State.PATROL
 		return
@@ -74,7 +77,7 @@ func _tick_alert(delta: float) -> void:
 	_move_toward_nav_target()
 	_play_anim("patrol")
 
-func _tick_attack(delta: float) -> void:
+func _tick_attack(_delta: float) -> void:
 	if not is_instance_valid(_target):
 		_state = State.PATROL
 		return

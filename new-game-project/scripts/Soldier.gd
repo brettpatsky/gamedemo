@@ -91,7 +91,7 @@ func take_damage(amount: int) -> void:
 # PRIVATE — STATE BEHAVIOURS
 # =============================================================================
 
-func _do_move(delta: float) -> void:
+func _do_move(_delta: float) -> void:
 	if nav_agent.is_navigation_finished():
 		_state = State.IDLE
 		_play_anim("idle")

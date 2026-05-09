@@ -26,6 +26,14 @@ extends Node2D
 @export var noise_frequency: float = 0.05
 @export var enemy_density:   int   = 30
 
+# Atlas grid coordinates (column, row) for each terrain type.
+# Hover any tile in the TileSet panel at the bottom of the editor to see its (col, row).
+const ATLAS_WATER := Vector2i(18, 0)
+const ATLAS_GRASS := Vector2i(16,  0)   # <- update these to your actual tile positions
+const ATLAS_DIRT  := Vector2i(13,  0)
+const ATLAS_ROCK  := Vector2i(20,  8)
+const TILESET_SOURCE_ID := 4           # must match the Source ID in your TileSet panel
+
 @onready var tile_map:   TileMapLayer       = $TileMapLayer
 @onready var nav_region: NavigationRegion2D = $NavigationRegion2D
 
@@ -50,6 +58,7 @@ func generate(seed_value: int = 0) -> void:
 func get_map_centre() -> Vector2:
 	# map_to_local converts tile coords to local coords of the TileMapLayer.
 	# to_global converts those to world space correctly regardless of offsets.
+	@warning_ignore("integer_division")
 	var centre_tile := Vector2i(map_width / 2, map_height / 2)
 	return tile_map.to_global(tile_map.map_to_local(centre_tile))
 
@@ -82,19 +91,19 @@ func _fill_tiles() -> void:
 			var raw:   float = _noise.get_noise_2d(float(x), float(y))
 			var value: float = (raw + 1.0) * 0.5
 
-			var tile_id: int
+			var atlas_coord: Vector2i
 			if value < water_threshold:
-				tile_id = TILE_WATER
+				atlas_coord = ATLAS_WATER
 			elif value < dirt_threshold:
-				tile_id = TILE_DIRT
+				atlas_coord = ATLAS_DIRT
 				_passable_cells.append(Vector2i(x, y))
 			elif value < rock_threshold:
-				tile_id = TILE_GRASS
+				atlas_coord = ATLAS_GRASS
 				_passable_cells.append(Vector2i(x, y))
 			else:
-				tile_id = TILE_ROCK
+				atlas_coord = ATLAS_ROCK
 
-			tile_map.set_cell(Vector2i(x, y), 0, Vector2i(tile_id, 0))
+			tile_map.set_cell(Vector2i(x, y), TILESET_SOURCE_ID, atlas_coord)
 
 func _bake_navigation() -> void:
 	# -------------------------------------------------------------------------
@@ -128,8 +137,11 @@ func _bake_navigation() -> void:
 		Vector2(tl.x, br.y)
 	])
 
-	nav_poly.add_outline(outline)
-	nav_poly.make_polygons_from_outlines()
+	# Directly assign vertices and polygon indices — avoids the deprecated
+	# make_polygons_from_outlines() call. Works because our shape is a simple
+	# convex quad (no triangulation needed).
+	nav_poly.vertices = outline
+	nav_poly.add_polygon(PackedInt32Array([0, 1, 2, 3]))
 	nav_region.navigation_polygon = nav_poly
 
 func _spawn_enemies() -> void:

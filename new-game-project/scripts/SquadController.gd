@@ -23,7 +23,7 @@ const FORMATION_RADIUS := 40.0 # pixels; spread between soldiers in formation
 var soldiers: Array[Node2D] = []    # live Soldier nodes managed by this controller
 
 # Reference to the camera so we can convert screen → world coordinates
-@onready var camera: Camera2D = get_tree().get_first_node_in_group("main_camera")
+@onready var camera: Camera2D = get_tree().get_first_node_in_group("main_camera") as Camera2D
 
 # ---------------------------------------------------------------------------
 # _ready — wire up the GameManager signal so dead soldiers auto-remove

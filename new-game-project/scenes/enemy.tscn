@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://cohiqpndtgam"]
 
-[ext_resource type="Script" uid="uid://0od5reurqo3r" path="res://scripts/Enemy.gd" id="1_5uy6h"]
+[ext_resource type="Script" uid="uid://db3usdxk3e6mm" path="res://scripts/Enemy.gd" id="1_5uy6h"]
+[ext_resource type="PackedScene" uid="uid://dtclgpudk4ih3" path="res://scenes/bullet.tscn" id="6_bullet"]
 [ext_resource type="Texture2D" uid="uid://cyxcqh735a8cw" path="res://resources/tdstilepack/PNG/Zombie 1/zoimbie1_stand.png" id="2_5uy6h"]
 [ext_resource type="Texture2D" uid="uid://mjlvyvf0dp0n" path="res://resources/tdstilepack/PNG/Zombie 1/zoimbie1_reload.png" id="3_c4w8v"]
 [ext_resource type="Texture2D" uid="uid://jrfjglikiyu7" path="res://resources/tdstilepack/PNG/Zombie 1/zoimbie1_machine.png" id="4_xwavj"]
@@ -40,6 +41,7 @@ radius = 200.0
 
 [node name="Enemy" type="CharacterBody2D" unique_id=1280486674]
 script = ExtResource("1_5uy6h")
+bullet_scene = ExtResource("6_bullet")
 
 [node name="NavigationAgent2D" type="NavigationAgent2D" parent="." unique_id=335110758]
 

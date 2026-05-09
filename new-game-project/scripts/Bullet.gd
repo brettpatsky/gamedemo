@@ -43,10 +43,13 @@ func initialise(direction: Vector2, shooter: Node2D) -> void:
 # _ready — connect screen-exit signal for auto-cleanup
 # ---------------------------------------------------------------------------
 func _ready() -> void:
-	# body_entered fires when this Area2D overlaps another physics body / area
 	area_entered.connect(_on_area_entered)
 	body_entered.connect(_on_body_entered)
 	$VisibleOnScreenNotifier2D.screen_exited.connect(queue_free)
+	queue_redraw()
+
+func _draw() -> void:
+	draw_circle(Vector2.ZERO, 3.0, Color.YELLOW)
 
 # ---------------------------------------------------------------------------
 # _process — move bullet each frame; cull after lifetime expires
@@ -63,15 +66,15 @@ func _process(delta: float) -> void:
 func _on_body_entered(body: Node2D) -> void:
 	_try_hit(body)
 
-func _on_area_entered(area: Node2D) -> void:
+func _on_area_entered(area: Area2D) -> void:
 	_try_hit(area)
 
 func _try_hit(target: Node2D) -> void:
-	# Don't hit the soldier that fired this bullet
 	if target == _shooter:
 		return
-
-	# Deal damage if the target has a take_damage() method (duck typing)
+	# Prevent soldiers from hitting their own squad mates
+	if _shooter != null and _shooter.is_in_group("soldiers") and target.is_in_group("soldiers"):
+		return
 	if target.has_method("take_damage"):
 		target.take_damage(damage)
 		_spawn_hit_particles()
