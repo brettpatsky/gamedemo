@@ -20,6 +20,10 @@ signal score_changed(new_score)       # UI listens here
 var score: int = 0
 var soldiers_alive: int = 0           # decremented by Soldier.die()
 var enemies_alive: int = 0            # decremented by Enemy.die()
+var current_level: int = 1            # persists across scene reloads (1–3)
+
+func advance_level() -> void:
+	current_level = min(current_level + 1, 3)
 
 # ---------------------------------------------------------------------------
 # Called once at startup
@@ -46,9 +50,10 @@ func on_soldier_died(soldier) -> void:
 		emit_signal("all_soldiers_dead")
 
 # ---------------------------------------------------------------------------
-# Call when an enemy dies; checks win condition
+# Call when an enemy dies; checks win condition for Level 1 only.
+# Levels 2 and 3 have separate objectives (structure / escort).
 # ---------------------------------------------------------------------------
 func on_enemy_died() -> void:
 	enemies_alive -= 1
-	if enemies_alive <= 0:
+	if enemies_alive <= 0 and current_level == 1:
 		emit_signal("mission_complete")

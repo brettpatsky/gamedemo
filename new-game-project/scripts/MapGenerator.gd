@@ -45,16 +45,23 @@ const TILE_ROCK   := 3
 var _noise := FastNoiseLite.new()
 var _passable_cells: Array[Vector2i] = []
 
+# References to level-specific nodes set during generate(); read by Main.gd.
+var _objective_nodes: Dictionary = {}
+
 # ---------------------------------------------------------------------------
 func _ready() -> void:
 	add_to_group("map_generator")
 
 # ---------------------------------------------------------------------------
 func generate(seed_value: int = 0) -> void:
+	_objective_nodes.clear()
 	_configure_noise(seed_value)
 	_fill_tiles()
 	_bake_navigation()
 	_spawn_enemies()
+	match GameManager.current_level:
+		2: _spawn_fortified_structure()
+		3: _spawn_escort_mission()
 
 # ---------------------------------------------------------------------------
 # Returns the world-centre of the map so the camera can snap there on start.
@@ -161,12 +168,12 @@ func _spawn_enemies() -> void:
 
 	var enemy_scene: PackedScene = load("res://scenes/enemy.tscn")
 	if enemy_scene == null:
-		# Try capitalised name as fallback
 		enemy_scene = load("res://scenes/Enemy.tscn")
 	if enemy_scene == null:
 		push_warning("[MapGenerator] Enemy.tscn not found — skipping enemy spawn.")
 		return
 
+	@warning_ignore("integer_division")
 	var count: int = spawn_zone.size() / enemy_density
 	GameManager.enemies_alive = count
 
@@ -176,3 +183,65 @@ func _spawn_enemies() -> void:
 		var enemy: Node2D = enemy_scene.instantiate()
 		enemy.position = tile_map.map_to_local(spawn_zone[i])
 		add_child(enemy)
+
+# ---------------------------------------------------------------------------
+# Returns a level-specific node by group name (set during generate()).
+# ---------------------------------------------------------------------------
+func get_objective_node(group: String) -> Node:
+	return _objective_nodes.get(group, null)
+
+# ---------------------------------------------------------------------------
+# Level 2 — spawn a fortified structure in the upper-centre of the map.
+# ---------------------------------------------------------------------------
+func _spawn_fortified_structure() -> void:
+	var zone = _passable_cells.filter(func(c): return c.y > map_height * 0.10 and c.y < map_height * 0.25)
+	if zone.is_empty():
+		zone = _passable_cells.filter(func(c): return c.y < map_height * 0.35)
+	if zone.is_empty():
+		return
+	zone.shuffle()
+
+	var scene: PackedScene = load("res://scenes/fortified_structure.tscn")
+	if scene == null:
+		push_warning("[MapGenerator] fortified_structure.tscn not found.")
+		return
+	var node: Node2D = scene.instantiate()
+	node.position = tile_map.map_to_local(zone[0])
+	add_child(node)
+	_objective_nodes["fortified_structure"] = node
+
+# ---------------------------------------------------------------------------
+# Level 3 — spawn an escort NPC near soldiers and an extraction zone at the top.
+# ---------------------------------------------------------------------------
+func _spawn_escort_mission() -> void:
+	# NPC spawns close to the player start area
+	var npc_zone = _passable_cells.filter(func(c): return c.y > map_height * 0.70)
+	if npc_zone.is_empty():
+		return
+	npc_zone.shuffle()
+
+	var npc_scene: PackedScene = load("res://scenes/npc_escort.tscn")
+	if npc_scene == null:
+		push_warning("[MapGenerator] npc_escort.tscn not found.")
+		return
+	var npc: Node2D = npc_scene.instantiate()
+	npc.position = tile_map.map_to_local(npc_zone[0])
+	add_child(npc)
+	_objective_nodes["escort_npc"] = npc
+
+	# Extraction zone at the very top of the map
+	var ext_zone = _passable_cells.filter(func(c): return c.y < map_height * 0.10)
+	if ext_zone.is_empty():
+		ext_zone = _passable_cells.filter(func(c): return c.y < map_height * 0.20)
+	if ext_zone.is_empty():
+		return
+	ext_zone.shuffle()
+
+	var ext_scene: PackedScene = load("res://scenes/extraction_zone.tscn")
+	if ext_scene == null:
+		push_warning("[MapGenerator] extraction_zone.tscn not found.")
+		return
+	var zone_node: Node2D = ext_scene.instantiate()
+	zone_node.position = tile_map.map_to_local(ext_zone[0])
+	add_child(zone_node)
+	_objective_nodes["extraction_zone"] = zone_node

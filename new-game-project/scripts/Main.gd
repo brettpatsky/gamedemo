@@ -11,92 +11,103 @@
 #   │                              ← add to group "squad_controller"
 #   ├── Camera2D                   ← CameraController.gd attached
 #   │                              ← add to group "main_camera"
-#   └── HUD (CanvasLayer)          ← HUD.gd attached (separate file below)
+#   └── HUD (CanvasLayer)          ← HUD.gd attached
 #       ├── ScoreLabel (Label)
 #       ├── SoldierCountLabel (Label)
 #       └── MissionLabel (Label)   ← hidden until win/lose
 # =============================================================================
 extends Node2D
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-@export var squad_size:    int  = 6     # how many soldiers to spawn (1–8)
-@export var map_seed:      int  = 0     # 0 = random each run
-@export var soldier_scene: PackedScene  # drag Soldier.tscn into Inspector
+@export var squad_size:    int  = 6
+@export var map_seed:      int  = 0
+@export var soldier_scene: PackedScene
 
-# ---------------------------------------------------------------------------
-# Node references
-# ---------------------------------------------------------------------------
-@onready var map_gen:       Node2D  = $MapGenerator
-@onready var squad_ctrl:    Node2D  = $SquadController
-@onready var hud:           CanvasLayer = $HUD
+@onready var map_gen:    Node2D      = $MapGenerator
+@onready var squad_ctrl: Node2D      = $SquadController
+@onready var hud:        CanvasLayer = $HUD
+
+var _mission_ended: bool = false
 
 # ---------------------------------------------------------------------------
 func _ready() -> void:
-	# Choose a seed: fixed for debugging, random for real runs
-	var seed_to_use: int = map_seed if map_seed != 0 else randi()
+	add_to_group("main_scene")
 
-	# 1. Generate the procedural map (tiles + nav-mesh + enemies)
+	var seed_to_use: int = map_seed if map_seed != 0 else randi()
 	map_gen.generate(seed_to_use)
 
-	# 2. Spawn soldiers at valid map positions
-	_spawn_squad()
+	GameManager.soldiers_alive = 0
+	_mission_ended = false
 
-	# 3. Wire up GameManager signals so HUD and endgame respond
+	_spawn_squad()
+	squad_ctrl.snap_to_formation()
+
 	GameManager.score_changed.connect(hud.update_score)
 	GameManager.soldier_died.connect(_on_soldier_died)
 	GameManager.all_soldiers_dead.connect(_on_mission_fail)
-	GameManager.mission_complete.connect(_on_mission_win)
 
-	# 4. Update initial HUD state
+	_setup_objective()
+
 	hud.update_score(GameManager.score)
 	hud.update_soldier_count(squad_size)
+	hud.show_objective(GameManager.current_level)
 
 # ---------------------------------------------------------------------------
 func _spawn_squad() -> void:
 	if soldier_scene == null:
 		push_error("[Main] soldier_scene not assigned in Inspector!")
 		return
-
-	# Ask the map for valid spawn positions
 	var positions: Array[Vector2] = map_gen.get_spawn_positions(squad_size)
-
 	for i in squad_size:
 		var soldier: Node2D = soldier_scene.instantiate()
-
-		# Alternate gender for visual variety (0,2,4… male; 1,3,5… female)
 		soldier.is_female = (i % 2 == 1)
-
-		# Soldiers must be in the "soldiers" group for enemy detection
 		soldier.add_to_group("soldiers")
-
 		add_child(soldier)
-
-		# Position after adding to tree so global_position is valid
-		if i < positions.size():
-			soldier.global_position = positions[i]
-		else:
-			# Fallback if map couldn't find enough spawn points
-			soldier.global_position = Vector2(200 + i * 40, 400)
-
+		soldier.global_position = positions[i] if i < positions.size() \
+				else Vector2(200 + i * 40, 400)
 		squad_ctrl.add_soldier(soldier)
 
 # ---------------------------------------------------------------------------
-# Expose squad centroid so CameraController can follow the group
-# (Added here so SquadController stays input-focused)
+func _setup_objective() -> void:
+	match GameManager.current_level:
+		1:
+			GameManager.mission_complete.connect(_on_mission_win)
+		2:
+			var structure: Node = map_gen.get_objective_node("fortified_structure")
+			if structure:
+				structure.structure_destroyed.connect(_on_mission_win)
+		3:
+			var zone: Node = map_gen.get_objective_node("extraction_zone")
+			var npc:  Node = map_gen.get_objective_node("escort_npc")
+			if zone:
+				zone.npc_extracted.connect(_on_mission_win)
+			if npc:
+				npc.escort_killed.connect(_on_mission_fail)
+				npc.health_changed.connect(hud.update_escort_health)
+				hud.update_escort_health(npc.get_health(), npc.MAX_HEALTH)
+
 # ---------------------------------------------------------------------------
 func _on_soldier_died(_soldier) -> void:
 	hud.update_soldier_count(GameManager.soldiers_alive)
 
 func _on_mission_win() -> void:
-	hud.show_mission_result("MISSION COMPLETE!", Color.GREEN)
+	if _mission_ended:
+		return
+	_mission_ended = true
+	if GameManager.current_level >= 3:
+		hud.show_mission_result("YOU WIN! ALL LEVELS COMPLETE!", Color.YELLOW, false)
+	else:
+		hud.show_mission_result("MISSION COMPLETE!", Color.GREEN, true)
 
 func _on_mission_fail() -> void:
-	hud.show_mission_result("MISSION FAILED", Color.RED)
+	if _mission_ended:
+		return
+	_mission_ended = true
+	hud.show_mission_result("MISSION FAILED", Color.RED, false)
 
 # ---------------------------------------------------------------------------
-# Restart the mission — called by the HUD retry button
-# ---------------------------------------------------------------------------
+func advance_level() -> void:
+	GameManager.advance_level()
+	get_tree().reload_current_scene()
+
 func restart() -> void:
 	get_tree().reload_current_scene()

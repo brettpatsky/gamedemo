@@ -1,8 +1,31 @@
 extends Node2D
 
-const MAX_SOLDIERS     := 8
-const FORMATION_RADIUS := 40.0
-const AUTO_INTERVAL    := 0.5   # seconds between shots for the AUTO weapon
+const MAX_SOLDIERS  := 8
+const AUTO_INTERVAL := 0.5
+
+const FORMATION_NAMES := ["2×3", "3×2", "1×6", "6×1", "Pentagram"]
+
+const FORMATIONS: Array = [
+	# 0: 2×3 — 2 columns, 3 rows, 80 px gap throughout
+	[Vector2(-40, -80), Vector2( 40, -80),
+	 Vector2(-40,   0), Vector2( 40,   0),
+	 Vector2(-40,  80), Vector2( 40,  80)],
+	# 1: 3×2 — 3 columns, 2 rows, 80 px gap throughout (mission start)
+	[Vector2(-80, -40), Vector2(0, -40), Vector2(80, -40),
+	 Vector2(-80,  40), Vector2(0,  40), Vector2(80,  40)],
+	# 2: 1×6 — single file, 80 px between each soldier
+	[Vector2(0, -200), Vector2(0, -120), Vector2(0, -40),
+	 Vector2(0,   40), Vector2(0,  120), Vector2(0, 200)],
+	# 3: 6×1 — line abreast, 80 px between each soldier
+	[Vector2(-200, 0), Vector2(-120, 0), Vector2(-40, 0),
+	 Vector2(  40, 0), Vector2( 120, 0), Vector2(200, 0)],
+	# 4: Pentagram — 1 centre + 5 equally-spaced pentagon points, radius 110
+	[Vector2(   0,    0),
+	 Vector2(   0, -110), Vector2( 105, -34), Vector2( 64,  89),
+	 Vector2(-64,   89), Vector2(-105, -34)],
+]
+
+var _formation_index: int = 1   # 3×2 on every mission start
 
 var soldiers: Array[Node2D] = []
 
@@ -40,6 +63,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_Q:
 			_cycle_weapons()
+			get_viewport().set_input_as_handled()
+		elif event.keycode == KEY_F:
+			_cycle_formation()
 			get_viewport().set_input_as_handled()
 
 # ---------------------------------------------------------------------------
@@ -111,13 +137,26 @@ func _is_continuous_weapon() -> bool:
 # PRIVATE — FORMATION MATH
 # =============================================================================
 
-func _formation_offset(index: int, total: int) -> Vector2:
-	if index == 0 or total == 1:
-		return Vector2.ZERO
-	var ring   := 1 if index <= 6 else 2
-	var ring_r := FORMATION_RADIUS * ring
-	var angle  := deg_to_rad(float(index - 1) * (360.0 / min(total - 1, 6)))
-	return Vector2(cos(angle), sin(angle)) * ring_r
+func _formation_offset(index: int, _total: int) -> Vector2:
+	var f: Array = FORMATIONS[_formation_index]
+	return f[index] if index < f.size() else Vector2.ZERO
+
+func _cycle_formation() -> void:
+	_formation_index = (_formation_index + 1) % FORMATIONS.size()
+	if not soldiers.is_empty():
+		_issue_move_order(get_centroid())
+	var hud: Node = get_tree().get_first_node_in_group("hud")
+	if hud and hud.has_method("update_formation"):
+		hud.update_formation(FORMATION_NAMES[_formation_index])
+
+func snap_to_formation() -> void:
+	if soldiers.is_empty():
+		return
+	var center := get_centroid()
+	var f: Array = FORMATIONS[_formation_index]
+	for i in soldiers.size():
+		var offset: Vector2 = f[i] if i < f.size() else Vector2.ZERO
+		soldiers[i].global_position = center + offset
 
 # =============================================================================
 # PRIVATE — COORDINATE CONVERSION

@@ -42,11 +42,11 @@ func _explode() -> void:
 	get_tree().create_timer(SHOW_TIME).timeout.connect(queue_free)
 
 func _deal_damage() -> void:
-	for group in ["enemies", "soldiers"]:
+	for group in ["enemies", "soldiers", "structures"]:
 		for target in get_tree().get_nodes_in_group(group):
 			if target == _shooter:
 				continue
-			# No friendly fire on soldiers
+			# No friendly fire on soldiers (but structures and enemies always take damage)
 			if _shooter != null and _shooter.is_in_group("soldiers") and target.is_in_group("soldiers"):
 				continue
 			if not target.has_method("take_damage"):
