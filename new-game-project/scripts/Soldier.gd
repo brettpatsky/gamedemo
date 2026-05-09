@@ -1,10 +1,3 @@
-# =============================================================================
-# Soldier.gd  (FIXED)
-# Fix 1: CollisionShape2D.disabled now uses set_deferred() — same physics
-#         flush error as Enemy.gd when a bullet hits during a physics step.
-# Fix 2: "die" animation is set to loop=false in SpriteFrames, but as a
-#         safety net we check animation_finished only when not looping.
-# =============================================================================
 extends CharacterBody2D
 
 @export var is_female: bool = false
@@ -21,6 +14,29 @@ extends CharacterBody2D
 @onready var health_bar: ProgressBar          = $HealthBar
 @onready var footstep:   AudioStreamPlayer2D  = $FootstepAudio
 
+# ---------------------------------------------------------------------------
+# Weapon system
+# ---------------------------------------------------------------------------
+enum WeaponType { PISTOL, AUTO, GRENADE }
+const WEAPON_NAMES := ["Pistol", "Auto", "Grenade"]
+
+const _GRENADE_SCRIPT = preload("res://scripts/Grenade.gd")
+
+var _weapon: WeaponType = WeaponType.PISTOL
+
+func cycle_weapon() -> void:
+	_weapon = (_weapon + 1) % 3 as WeaponType
+
+func get_weapon() -> WeaponType:
+	return _weapon
+
+# Returns true for the weapon that fires continuously while the button is held.
+func is_continuous_fire() -> bool:
+	return _weapon == WeaponType.AUTO
+
+# ---------------------------------------------------------------------------
+# State machine
+# ---------------------------------------------------------------------------
 enum State { IDLE, MOVING, SHOOTING, DEAD }
 var _state: State = State.IDLE
 
@@ -28,8 +44,11 @@ var _health: int
 var _move_target: Vector2 = Vector2.ZERO
 var _fire_target: Vector2 = Vector2.ZERO
 var _shoot_cooldown: float = 0.0
-const SHOOT_COOLDOWN_SEC := 0.25
-const ARRIVAL_THRESHOLD  := 8.0
+
+const SHOOT_COOLDOWN_SEC   := 0.25
+const GRENADE_COOLDOWN_SEC := 1.5
+const ARRIVAL_THRESHOLD    := 8.0
+const WATER_SPEED_MULT     := 0.4   # 40 % normal speed in water
 
 func _ready() -> void:
 	_health = max_health
@@ -77,7 +96,11 @@ func fire_at(target: Vector2) -> void:
 	if _state == State.DEAD:
 		return
 	_fire_target = target
-	_state = State.SHOOTING
+	match _weapon:
+		WeaponType.PISTOL, WeaponType.AUTO:
+			_state = State.SHOOTING
+		WeaponType.GRENADE:
+			_throw_grenade(target)
 
 func take_damage(amount: int) -> void:
 	if _state == State.DEAD:
@@ -101,7 +124,7 @@ func _do_move(_delta: float) -> void:
 	var next_pos:  Vector2 = nav_agent.get_next_path_position()
 	var direction: Vector2 = (next_pos - global_position).normalized()
 
-	velocity = direction * move_speed
+	velocity = direction * move_speed * _water_speed_mult()
 	move_and_slide()
 
 	if direction.x != 0:
@@ -128,21 +151,42 @@ func _do_shoot() -> void:
 
 	_shoot_cooldown = SHOOT_COOLDOWN_SEC
 
+func _throw_grenade(target: Vector2) -> void:
+	if _shoot_cooldown > 0.0:
+		return
+	var dir: Vector2 = (target - global_position).normalized()
+	if dir.x != 0:
+		sprite.flip_h = dir.x < 0
+	_play_anim("shoot")
+
+	var grenade    := Node2D.new()
+	grenade.set_script(_GRENADE_SCRIPT)
+	var spawn_pos  := global_position
+	get_tree().current_scene.add_child(grenade)
+	grenade.global_position = spawn_pos
+	grenade.initialise(spawn_pos, target, self)
+
+	_shoot_cooldown = GRENADE_COOLDOWN_SEC
+
+# ---------------------------------------------------------------------------
+# Returns a speed multiplier based on the tile the soldier is standing on.
+func _water_speed_mult() -> float:
+	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	if map_gen and map_gen.has_method("is_water_at") and map_gen.is_water_at(global_position):
+		return WATER_SPEED_MULT
+	return 1.0
+
 func _die() -> void:
 	_state = State.DEAD
 	velocity = Vector2.ZERO
 	_play_anim("die")
 	footstep.stop()
 
-	# FIX: set_deferred prevents "can't change state while flushing queries"
-	# which happens when take_damage() is called from a bullet collision callback
+	# set_deferred prevents "can't change state while flushing queries"
 	$CollisionShape2D.set_deferred("disabled", true)
 
 	GameManager.on_soldier_died(self)
 
-	# FIX: only await animation_finished if the die anim is not set to loop.
-	# If it IS looping in your SpriteFrames, this would wait forever.
-	# Safe approach: use a timer as fallback.
 	if not sprite.sprite_frames.get_animation_loop("die"):
 		await sprite.animation_finished
 	else:

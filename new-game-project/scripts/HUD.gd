@@ -1,11 +1,3 @@
-# =============================================================================
-# HUD.gd — simplified to match Main.tscn node tree
-# HUD (CanvasLayer)
-# ├── ScoreLabel         (Label)
-# ├── SoldierCountLabel  (Label)
-# ├── MissionLabel       (Label)   — set Visible = false in Inspector
-# └── RetryButton        (Button)  — set Visible = false in Inspector
-# =============================================================================
 extends CanvasLayer
 
 @onready var score_label:   Label  = $ScoreLabel
@@ -13,9 +5,19 @@ extends CanvasLayer
 @onready var mission_label: Label  = $MissionLabel
 @onready var retry_button:  Button = $RetryButton
 
+var _weapon_label: Label
+
 func _ready() -> void:
-	score_label.position = Vector2(10, 10)
+	add_to_group("hud")
+
+	score_label.position   = Vector2(10, 10)
 	soldier_label.position = Vector2(10, 40)
+
+	# Weapon indicator — created in code so no scene change needed.
+	_weapon_label          = Label.new()
+	_weapon_label.position = Vector2(10, 70)
+	_weapon_label.text     = "WEAPON: Pistol  (Q to cycle)"
+	add_child(_weapon_label)
 
 	var center := get_viewport().get_visible_rect().size / 2.0
 	mission_label.position = center + Vector2(-120.0, -30.0)
@@ -30,6 +32,9 @@ func update_score(new_score: int) -> void:
 
 func update_soldier_count(alive: int) -> void:
 	soldier_label.text = "SOLDIERS: %d" % alive
+
+func update_weapon(weapon_name: String) -> void:
+	_weapon_label.text = "WEAPON: %s  (Q to cycle)" % weapon_name
 
 func show_mission_result(message: String, colour: Color) -> void:
 	mission_label.text = message

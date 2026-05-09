@@ -31,7 +31,10 @@ var _patrol_dest:      Vector2
 const PATROL_INTERVAL  := 3.0
 const SHOOT_COOLDOWN   := 0.8
 
+const WATER_SPEED_MULT := 0.4
+
 func _ready() -> void:
+	add_to_group("enemies")
 	_health              = max_health
 	health_bar.max_value = max_health
 	health_bar.value     = _health
@@ -103,10 +106,16 @@ func _move_toward_nav_target() -> void:
 		return
 	var next: Vector2 = nav_agent.get_next_path_position()
 	var dir:  Vector2 = (next - global_position).normalized()
-	velocity = dir * move_speed
+	velocity = dir * move_speed * _water_speed_mult()
 	move_and_slide()
 	if dir.x != 0:
 		sprite.flip_h = dir.x < 0
+
+func _water_speed_mult() -> float:
+	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	if map_gen and map_gen.has_method("is_water_at") and map_gen.is_water_at(global_position):
+		return WATER_SPEED_MULT
+	return 1.0
 
 func _set_new_patrol_dest() -> void:
 	var offset := Vector2(randf_range(-150, 150), randf_range(-150, 150))

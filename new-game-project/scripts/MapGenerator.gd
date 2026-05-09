@@ -20,7 +20,7 @@ extends Node2D
 @export var map_height: int   = 60
 @export var tile_size:  int   = 64
 
-@export var water_threshold: float = 0.25
+@export var water_threshold: float = 0.40
 @export var dirt_threshold:  float = 0.55
 @export var rock_threshold:  float = 0.80
 @export var noise_frequency: float = 0.05
@@ -46,6 +46,10 @@ var _noise := FastNoiseLite.new()
 var _passable_cells: Array[Vector2i] = []
 
 # ---------------------------------------------------------------------------
+func _ready() -> void:
+	add_to_group("map_generator")
+
+# ---------------------------------------------------------------------------
 func generate(seed_value: int = 0) -> void:
 	_configure_noise(seed_value)
 	_fill_tiles()
@@ -63,6 +67,13 @@ func get_map_centre() -> Vector2:
 	return tile_map.to_global(tile_map.map_to_local(centre_tile))
 
 # ---------------------------------------------------------------------------
+# Returns true when world_pos is over a water tile — used by soldiers/enemies
+# to apply the wading speed penalty.
+func is_water_at(world_pos: Vector2) -> bool:
+	var local_pos := tile_map.to_local(world_pos)
+	var tile_pos  := tile_map.local_to_map(local_pos)
+	return tile_map.get_cell_atlas_coords(tile_pos) == ATLAS_WATER
+
 func get_spawn_positions(count: int) -> Array[Vector2]:
 	var result: Array[Vector2] = []
 	var candidates = _passable_cells.filter(func(c): return c.y > map_height * 0.75)

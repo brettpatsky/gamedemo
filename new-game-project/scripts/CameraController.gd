@@ -29,10 +29,14 @@ func _ready() -> void:
 	add_to_group("main_camera")
 	_target_zoom = zoom.x
 
-	# FIX: centre the camera on the map so the play area is visible on launch.
-	# Without this, Camera2D starts at (0,0) which is the very top-left corner,
-	# making the map appear down and to the right outside the window.
-	position = Vector2(map_pixel_width * 0.5, map_pixel_height * 0.5)
+	# Use the map generator's own coordinate maths so any TileMapLayer offset
+	# is accounted for exactly.  Falls back to the hardcoded pixel estimate when
+	# MapGenerator isn't in the tree yet (e.g. editing a sub-scene).
+	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	if map_gen and map_gen.has_method("get_map_centre"):
+		position = map_gen.get_map_centre()
+	else:
+		position = Vector2(map_pixel_width * 0.5, map_pixel_height * 0.5)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
