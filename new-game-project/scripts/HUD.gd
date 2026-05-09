@@ -12,6 +12,7 @@ var _group_label: Label
 var _objective_label: Label
 var _escort_label: Label
 var _next_level_button: Button
+var _menu_button: Button
 
 func _ready() -> void:
 	add_to_group("hud")
@@ -48,12 +49,20 @@ func _ready() -> void:
 	_escort_label.hide()
 	add_child(_escort_label)
 
+	# Persistent top-right button — always accessible during play and on mission end.
+	var vp := get_viewport().get_visible_rect().size
+	_menu_button          = Button.new()
+	_menu_button.text     = "MAIN MENU"
+	_menu_button.position = Vector2(vp.x - 120, 10)
+	add_child(_menu_button)
+	_menu_button.pressed.connect(_on_menu_pressed)
+
 	var center := get_viewport().get_visible_rect().size / 2.0
 	mission_label.position = center + Vector2(-120.0, -30.0)
 	retry_button.position  = center + Vector2(-60.0,  20.0)
 
-	_next_level_button = Button.new()
-	_next_level_button.text = "NEXT LEVEL"
+	_next_level_button          = Button.new()
+	_next_level_button.text     = "NEXT LEVEL"
 	_next_level_button.position = center + Vector2(-60.0, 60.0)
 	_next_level_button.hide()
 	add_child(_next_level_button)
@@ -108,6 +117,7 @@ func show_mission_result(message: String, colour: Color, show_next: bool = false
 		_next_level_button.show()
 	else:
 		_next_level_button.hide()
+	# _menu_button is already visible in the corner — no extra work needed.
 
 func _on_retry_pressed() -> void:
 	var main: Node = get_tree().get_first_node_in_group("main_scene")
@@ -118,3 +128,6 @@ func _on_next_level_pressed() -> void:
 	var main: Node = get_tree().get_first_node_in_group("main_scene")
 	if main and main.has_method("advance_level"):
 		main.advance_level()
+
+func _on_menu_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
