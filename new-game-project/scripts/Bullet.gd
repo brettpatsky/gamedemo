@@ -19,7 +19,7 @@ extends Area2D
 # ---------------------------------------------------------------------------
 # Tunables
 # ---------------------------------------------------------------------------
-@export var speed:        float = 400.0   # pixels per second
+@export var speed:        float = 600.0   # pixels per second
 @export var damage:       int   = 1       # hits dealt on impact
 @export var lifetime_sec: float = 2.5     # seconds before auto-free (safety net)
 

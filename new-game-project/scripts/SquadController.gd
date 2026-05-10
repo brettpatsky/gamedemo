@@ -2,6 +2,7 @@ extends Node2D
 
 const MAX_SOLDIERS  := 8
 const AUTO_INTERVAL := 0.12   # seconds between rifle bursts while right mouse is held
+const FIRE_EXTENSION := 100.0  # pixels beyond click; pushes bullet convergence point far out of view
 
 const FORMATION_NAMES := ["2×3", "3×2", "1×6", "6×1", "Pentagram"]
 
@@ -168,8 +169,12 @@ func _issue_move_order(target: Vector2) -> void:
 		group[i].move_to(target + _formation_offset(i, count))
 
 func _issue_fire_order(target: Vector2) -> void:
-	for soldier in _active_group_soldiers():
-		soldier.fire_at(target)
+	var group    := _active_group_soldiers()
+	var centroid := _group_centroid(group)
+	var ext_vec  := target - centroid
+	var extended := target + ext_vec.normalized() * FIRE_EXTENSION if ext_vec.length_squared() > 0.0 else target
+	for soldier in group:
+		soldier.fire_at(target, extended)
 	_update_ammo_hud()
 	_update_weapon_hud()   # weapon may auto-switch when ammo runs out
 
@@ -257,6 +262,14 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 
 func _on_soldier_died(soldier: Node2D) -> void:
 	remove_soldier(soldier)
+
+func _group_centroid(group: Array) -> Vector2:
+	if group.is_empty():
+		return Vector2.ZERO
+	var sum := Vector2.ZERO
+	for s in group:
+		sum += s.global_position
+	return sum / float(group.size())
 
 # Returns the average position of the active group (falls back to all soldiers).
 # CameraController uses this to softly follow the group.

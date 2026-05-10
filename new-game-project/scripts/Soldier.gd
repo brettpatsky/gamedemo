@@ -59,7 +59,8 @@ var _state: State = State.IDLE
 
 var _health: int
 var _move_target: Vector2 = Vector2.ZERO
-var _fire_target: Vector2 = Vector2.ZERO
+var _fire_target: Vector2 = Vector2.ZERO   # exact click (used by grenades)
+var _bullet_aim:  Vector2 = Vector2.ZERO   # extended aim point for rifle/pistol direction
 var _shoot_cooldown:    float = 0.0
 var _shoot_flash_timer: float = 0.0
 
@@ -140,10 +141,11 @@ func halt() -> void:
 	velocity = Vector2.ZERO
 	_state = State.IDLE
 
-func fire_at(target: Vector2) -> void:
+func fire_at(target: Vector2, bullet_aim: Vector2 = Vector2.ZERO) -> void:
 	if _state == State.DEAD:
 		return
 	_fire_target = target
+	_bullet_aim  = bullet_aim if bullet_aim != Vector2.ZERO else target
 	match _weapon:
 		WeaponType.PISTOL, WeaponType.AUTO:
 			_state = State.SHOOTING
@@ -213,7 +215,7 @@ func _do_shoot() -> void:
 		_:
 			return
 
-	var dir: Vector2 = (_fire_target - global_position).normalized()
+	var dir: Vector2 = (_bullet_aim - global_position).normalized()
 	if dir.x != 0:
 		sprite.flip_h = dir.x < 0
 
