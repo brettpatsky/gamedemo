@@ -5,6 +5,7 @@
 [ext_resource type="PackedScene" uid="uid://dtcbbmugibghc" path="res://scenes/soldier.tscn" id="2_tefeu"]
 [ext_resource type="Script" uid="uid://26cpjs3hddgx" path="res://scripts/SquadController.gd" id="3_tefeu"]
 [ext_resource type="Texture2D" uid="uid://dmcudegdya745" path="res://resources/tdstilepack/Spritesheet/spritesheet_tiles.png" id="4_o6xl0"]
+[ext_resource type="Resource" uid="uid://dddqm4ftxf30d" path="res://resources/tile_config_default.tres" id="4_ya4ey"]
 [ext_resource type="Script" uid="uid://ljwbenej0an7" path="res://scripts/HUD.gd" id="6_tefeu"]
 [ext_resource type="Script" uid="uid://dqa11ydochvwm" path="res://scripts/CameraController.gd" id="7_tefeu"]
 [ext_resource type="Texture2D" uid="uid://dfonxoy27aiau" path="res://resources/tdstilepack/PNG/weapon_machine.png" id="8_choun"]
@@ -693,6 +694,7 @@ soldier_scene = ExtResource("2_tefeu")
 
 [node name="MapGenerator" type="Node2D" parent="." unique_id=1721416304 groups=["map_generator"]]
 script = ExtResource("2_tbgi4")
+tile_config = ExtResource("4_ya4ey")
 
 [node name="TileMapLayer" type="TileMapLayer" parent="MapGenerator" unique_id=1736835566]
 tile_set = SubResource("TileSet_o6xl0")
@@ -812,3 +814,11 @@ layout_mode = 2
 [node name="Spacer" type="Control" parent="HUD/BottomPanel/MarginContainer/HBoxContainer" unique_id=145854157]
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="ScoreLabel" type="Label" parent="HUD" unique_id=1402954541]
+offset_right = 40.0
+offset_bottom = 23.0
+
+[node name="SoldierCountLabel" type="Label" parent="HUD" unique_id=2049030645]
+offset_right = 40.0
+offset_bottom = 23.0

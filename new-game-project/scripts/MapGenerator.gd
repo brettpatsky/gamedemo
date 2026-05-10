@@ -17,6 +17,7 @@
 extends Node2D
 
 const ObstacleClass = preload("res://scripts/Obstacle.gd")
+const TileConfig    = preload("res://scripts/TileConfig.gd")
 
 @export var map_width:  int   = 220
 @export var map_height: int   = 200
@@ -27,22 +28,10 @@ const ObstacleClass = preload("res://scripts/Obstacle.gd")
 @export var rock_threshold:  float = 0.80
 @export var noise_frequency: float = 0.05
 @export var enemy_density:   int   = 30
-
-# Atlas grid coordinates (column, row) for each terrain type.
-# Hover any tile in the TileSet panel at the bottom of the editor to see its (col, row).
-const ATLAS_WATER := Vector2i(18, 0)
-const ATLAS_GRASS := Vector2i(16,  0)   # <- update these to your actual tile positions
-const ATLAS_DIRT  := Vector2i(13,  0)
-const ATLAS_ROCK  := Vector2i(20,  8)
-const TILESET_SOURCE_ID := 4           # must match the Source ID in your TileSet panel
+@export var tile_config:     TileConfig
 
 @onready var tile_map:   TileMapLayer       = $TileMapLayer
 @onready var nav_region: NavigationRegion2D = $NavigationRegion2D
-
-const TILE_WATER  := 0
-const TILE_GRASS  := 1
-const TILE_DIRT   := 2
-const TILE_ROCK   := 3
 
 var _noise := FastNoiseLite.new()
 var _passable_cells: Array[Vector2i] = []
@@ -53,6 +42,8 @@ var _objective_nodes: Dictionary = {}
 # ---------------------------------------------------------------------------
 func _ready() -> void:
 	add_to_group("map_generator")
+	if tile_config == null:
+		tile_config = TileConfig.new()
 
 # ---------------------------------------------------------------------------
 func generate(seed_value: int = 0) -> void:
@@ -82,7 +73,7 @@ func get_map_centre() -> Vector2:
 func is_water_at(world_pos: Vector2) -> bool:
 	var local_pos := tile_map.to_local(world_pos)
 	var tile_pos  := tile_map.local_to_map(local_pos)
-	return tile_map.get_cell_atlas_coords(tile_pos) == ATLAS_WATER
+	return tile_map.get_cell_atlas_coords(tile_pos) == tile_config.water
 
 func get_spawn_positions(count: int) -> Array[Vector2]:
 	var result: Array[Vector2] = []
@@ -129,17 +120,17 @@ func _fill_tiles() -> void:
 
 			var atlas_coord: Vector2i
 			if value < water_threshold:
-				atlas_coord = ATLAS_WATER
+				atlas_coord = tile_config.water
 			elif value < dirt_threshold:
-				atlas_coord = ATLAS_DIRT
+				atlas_coord = tile_config.dirt
 				_passable_cells.append(Vector2i(x, y))
 			elif value < rock_threshold:
-				atlas_coord = ATLAS_GRASS
+				atlas_coord = tile_config.grass
 				_passable_cells.append(Vector2i(x, y))
 			else:
-				atlas_coord = ATLAS_ROCK
+				atlas_coord = tile_config.rock
 
-			tile_map.set_cell(Vector2i(x, y), TILESET_SOURCE_ID, atlas_coord)
+			tile_map.set_cell(Vector2i(x, y), tile_config.tileset_source_id, atlas_coord)
 
 func _spawn_obstacles() -> void:
 	# Keep the player centre-spawn zone and map border clear of obstacles.
@@ -203,7 +194,12 @@ func _bake_navigation() -> void:
 	nav_region.navigation_polygon = nav_poly
 
 func _spawn_enemies() -> void:
-	var spawn_zone = _passable_cells.filter(func(c): return c.y < map_height * 0.4)
+	# Spawn enemies across the entire map except the centre band where squad spawns
+	var spawn_zone = _passable_cells.filter(func(c):
+		var cy := float(c.y) / map_height
+		# Avoid centre 30% (where squad starts at 0.45-0.55) — use top, bottom, sides
+		return cy < 0.35 or cy > 0.65
+	)
 	spawn_zone.shuffle()
 
 	var enemy_scene: PackedScene = load("res://scenes/enemy.tscn")
@@ -213,8 +209,7 @@ func _spawn_enemies() -> void:
 		push_warning("[MapGenerator] Enemy.tscn not found — skipping enemy spawn.")
 		return
 
-	@warning_ignore("integer_division")
-	var count: int = spawn_zone.size() / enemy_density
+	var count: int = 50  # Fixed 50 enemies
 	GameManager.enemies_alive = count
 
 	for i in count:

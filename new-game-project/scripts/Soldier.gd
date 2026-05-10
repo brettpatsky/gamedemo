@@ -1,7 +1,7 @@
 extends CharacterBody2D
 
 @export var is_female: bool = false
-@export var move_speed: float = 90.0
+@export var move_speed: float = 157.5
 @export var max_health: int = 3
 
 @export var male_frames:   SpriteFrames
@@ -60,8 +60,10 @@ var _state: State = State.IDLE
 var _health: int
 var _move_target: Vector2 = Vector2.ZERO
 var _fire_target: Vector2 = Vector2.ZERO
-var _shoot_cooldown: float = 0.0
+var _shoot_cooldown:    float = 0.0
+var _shoot_flash_timer: float = 0.0
 
+const SHOOT_FLASH_DURATION  := 0.18
 const SHOOT_COOLDOWN_PISTOL := 0.5
 const SHOOT_COOLDOWN_AUTO   := 0.12   # fast burst fire
 const GRENADE_COOLDOWN_SEC  := 2.0
@@ -95,7 +97,8 @@ func _ready() -> void:
 	await get_tree().physics_frame
 
 func _physics_process(delta: float) -> void:
-	_shoot_cooldown = max(_shoot_cooldown - delta, 0.0)
+	_shoot_cooldown    = max(_shoot_cooldown    - delta, 0.0)
+	_shoot_flash_timer = max(_shoot_flash_timer - delta, 0.0)
 
 	match _state:
 		State.MOVING:
@@ -106,6 +109,8 @@ func _physics_process(delta: float) -> void:
 		State.IDLE:
 			velocity = Vector2.ZERO
 			move_and_slide()
+			if _shoot_flash_timer <= 0.0:
+				_play_anim("idle")
 		State.DEAD:
 			pass
 
@@ -121,7 +126,6 @@ func move_to(destination: Vector2) -> void:
 	_stuck_timer     = STUCK_CHECK_INTERVAL
 	_stuck_check_pos = global_position
 	_state = State.MOVING
-	_play_anim("walk")
 
 func fire_at(target: Vector2) -> void:
 	if _state == State.DEAD:
@@ -167,8 +171,8 @@ func _do_move(delta: float) -> void:
 	velocity = direction * move_speed * _water_speed_mult()
 	move_and_slide()
 
-	if direction.x != 0:
-		sprite.flip_h = direction.x < 0
+	if _shoot_flash_timer <= 0.0:
+		_play_walk_anim(direction)
 
 	if not footstep.playing:
 		footstep.play()
@@ -201,6 +205,7 @@ func _do_shoot() -> void:
 		sprite.flip_h = dir.x < 0
 
 	_play_anim("shoot")
+	_shoot_flash_timer = SHOOT_FLASH_DURATION
 
 	if bullet_scene:
 		var bullet: Node2D = bullet_scene.instantiate()
@@ -222,6 +227,7 @@ func _throw_grenade(target: Vector2) -> void:
 	if dir.x != 0:
 		sprite.flip_h = dir.x < 0
 	_play_anim("shoot")
+	_shoot_flash_timer = SHOOT_FLASH_DURATION
 
 	var grenade   := Node2D.new()
 	grenade.set_script(_GRENADE_SCRIPT)
@@ -263,3 +269,11 @@ func _die() -> void:
 func _play_anim(anim_name: String) -> void:
 	if sprite.animation != anim_name:
 		sprite.play(anim_name)
+
+func _play_walk_anim(direction: Vector2) -> void:
+	if abs(direction.y) > abs(direction.x):
+		sprite.flip_h = false
+		_play_anim("walk_up" if direction.y < 0 else "walk_down")
+	else:
+		sprite.flip_h = direction.x < 0
+		_play_anim("walk_side")

@@ -6,7 +6,7 @@
 # =============================================================================
 extends CharacterBody2D
 
-@export var move_speed:   float = 55.0
+@export var move_speed:   float = 82.5
 @export var max_health:   int   = 2
 @export var sight_range:  float = 200.0
 @export var attack_range: float = 120.0
@@ -66,7 +66,6 @@ func _tick_patrol(delta: float) -> void:
 	if _patrol_timer <= 0.0:
 		_set_new_patrol_dest()
 	_move_toward_nav_target()
-	_play_anim("patrol")
 
 func _tick_alert(_delta: float) -> void:
 	if not is_instance_valid(_target):
@@ -78,7 +77,6 @@ func _tick_alert(_delta: float) -> void:
 		return
 	nav_agent.target_position = _target.global_position
 	_move_toward_nav_target()
-	_play_anim("patrol")
 
 func _tick_attack(_delta: float) -> void:
 	if not is_instance_valid(_target):
@@ -108,8 +106,15 @@ func _move_toward_nav_target() -> void:
 	var dir:  Vector2 = (next - global_position).normalized()
 	velocity = dir * move_speed * _water_speed_mult()
 	move_and_slide()
-	if dir.x != 0:
-		sprite.flip_h = dir.x < 0
+	_play_walk_anim(dir)
+
+func _play_walk_anim(direction: Vector2) -> void:
+	if abs(direction.y) > abs(direction.x):
+		sprite.flip_h = false
+		_play_anim("walk_up" if direction.y < 0 else "walk_down")
+	else:
+		sprite.flip_h = direction.x < 0
+		_play_anim("walk_side")
 
 func _water_speed_mult() -> float:
 	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
@@ -161,6 +166,11 @@ func _die() -> void:
 	GameManager.on_enemy_died()
 
 	await sprite.animation_finished
+
+	# Fade out over 2 seconds before removing from scene
+	var tween := create_tween()
+	tween.tween_property(self, "modulate:a", 0.0, 2.0)
+	await tween.finished
 	queue_free()
 
 # =============================================================================

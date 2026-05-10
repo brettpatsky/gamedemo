@@ -13,6 +13,8 @@ signal soldier_died(soldier)          # emitted when any soldier is killed
 signal all_soldiers_dead              # mission-fail condition
 signal mission_complete               # all enemies cleared
 signal score_changed(new_score)       # UI listens here
+signal enemies_changed(count)         # count enemies remaining
+
 
 # ---------------------------------------------------------------------------
 # Game state
@@ -55,5 +57,6 @@ func on_soldier_died(soldier) -> void:
 # ---------------------------------------------------------------------------
 func on_enemy_died() -> void:
 	enemies_alive -= 1
+	emit_signal("enemies_changed", enemies_alive) #broardcast remaining enemies to HUD
 	if enemies_alive <= 0 and current_level == 1:
 		emit_signal("mission_complete")
