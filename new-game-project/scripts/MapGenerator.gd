@@ -17,10 +17,9 @@
 extends Node2D
 
 const ObstacleClass = preload("res://scripts/Obstacle.gd")
-const TileConfig    = preload("res://scripts/TileConfig.gd")
 
-@export var map_width:  int   = 220
-@export var map_height: int   = 200
+@export var map_width:  int   = 55
+@export var map_height: int   = 50
 @export var tile_size:  int   = 64
 
 @export var water_threshold: float = 0.40
@@ -211,6 +210,7 @@ func _spawn_enemies() -> void:
 
 	var count: int = 50  # Fixed 50 enemies
 	GameManager.enemies_alive = count
+	GameManager.enemies_changed.emit(count)
 
 	for i in count:
 		if i >= spawn_zone.size():

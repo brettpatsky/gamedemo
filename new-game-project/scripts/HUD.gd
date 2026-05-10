@@ -1,8 +1,8 @@
 extends CanvasLayer
 
 # Original mission UI (from main.tscn structure)
-@onready var score_label:   Label  = $ScoreLabel
-@onready var soldier_label: Label  = $SoldierCountLabel
+var score_label:   Label  = null
+var soldier_label: Label  = null
 @onready var mission_label: Label  = $MissionLabel
 @onready var retry_button:  Button = $RetryButton
 
@@ -15,12 +15,13 @@ extends CanvasLayer
 @onready var formation_icon:       TextureRect = $BottomPanel/MarginContainer/HBoxContainer/FormationSection/VBoxContainer/TextureRect
 @onready var formation_label:      Label  = $BottomPanel/MarginContainer/HBoxContainer/FormationSection/VBoxContainer/Label
 
-@onready var group_button:         Button = $BottomPanel/MarginContainer/HBoxContainer/GroupSection
-@onready var group_icon:           TextureRect = $BottomPanel/MarginContainer/HBoxContainer/GroupSection/VBoxContainer/TextureRect
-@onready var group_label:          Label  = $BottomPanel/MarginContainer/HBoxContainer/GroupSection/VBoxContainer/Label
+@onready var group_button:           Button    = $BottomPanel/MarginContainer/HBoxContainer/GroupSection
+@onready var group_icon:             TextureRect = $BottomPanel/MarginContainer/HBoxContainer/GroupSection/VBoxContainer/TextureRect
+@onready var group_label:            Label     = $BottomPanel/MarginContainer/HBoxContainer/GroupSection/VBoxContainer/Label
+@onready var _group_buttons_container: VBoxContainer = $BottomPanel/MarginContainer/HBoxContainer/GroupButtonsContainer
 
-@onready var soldiers_label:       Label  = $BottomPanel/MarginContainer/HBoxContainer/StatsSection/Soldiers
-@onready var score_label_bottom:   Label  = $BottomPanel/MarginContainer/HBoxContainer/StatsSection/Score
+@onready var soldiers_label:         Label  = $BottomPanel/MarginContainer/HBoxContainer/StatsSection/Soldiers
+@onready var score_label_bottom:     Label  = $BottomPanel/MarginContainer/HBoxContainer/StatsSection/Score
 
 var _objective_label: Label
 var _escort_label: Label
@@ -39,7 +40,9 @@ const WEAPON_ICONS := {
 
 func _ready() -> void:
 	add_to_group("hud")
-	
+	score_label   = get_node_or_null("ScoreLabel")
+	soldier_label = get_node_or_null("SoldierCountLabel")
+
 	enemy_label = Label.new()
 	enemy_label.name = "EnemyLabel"
 	add_child(enemy_label)
@@ -156,14 +159,9 @@ func _rebuild_group_buttons(num_groups: int, active: int) -> void:
 	if num_groups <= 1:
 		return
 	var squad_ctrl: Node = get_tree().get_first_node_in_group("squad_controller")
-	var screen_size := get_viewport().get_visible_rect().size
-	var btn_width := 55.0
-	var start_x := screen_size.x * 0.5 - (num_groups * btn_width) * 0.5
 	for i in num_groups:
 		var btn := Button.new()
 		btn.text = "GRP %d" % (i + 1)
-		btn.position = Vector2(start_x + i * btn_width, screen_size.y - 90.0)
-		btn.size = Vector2(50.0, 30.0)
 		if i == active:
 			btn.add_theme_color_override("font_color", Color.YELLOW)
 		var idx := i
@@ -171,7 +169,7 @@ func _rebuild_group_buttons(num_groups: int, active: int) -> void:
 			if squad_ctrl and squad_ctrl.has_method("_select_group"):
 				squad_ctrl._select_group(idx)
 		)
-		add_child(btn)
+		_group_buttons_container.add_child(btn)
 		_group_buttons.append(btn)
 
 func show_objective(level: int) -> void:

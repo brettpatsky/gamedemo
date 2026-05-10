@@ -44,6 +44,8 @@ func _ready() -> void:
 
 	detection.body_entered.connect(_on_body_entered_detection)
 	detection.body_exited.connect(_on_body_exited_detection)
+	# Soldiers are on collision layer 2; detection area must include it.
+	detection.set_collision_mask_value(2, true)
 
 	await get_tree().physics_frame
 	_set_new_patrol_dest()
@@ -132,7 +134,7 @@ func _fire(direction: Vector2) -> void:
 	if bullet_scene == null:
 		return
 	var b: Node2D = bullet_scene.instantiate()
-	get_tree().current_scene.add_child(b)
+	get_viewport().add_child(b)
 	b.global_position = global_position
 	b.initialise(direction, self)
 

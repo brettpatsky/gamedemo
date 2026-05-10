@@ -22,15 +22,24 @@ extends Node2D
 @export var map_seed:      int  = 0
 @export var soldier_scene: PackedScene
 
-@onready var map_gen:    Node2D      = $MapGenerator
-@onready var squad_ctrl: Node2D      = $SquadController
+@onready var map_gen:    Node2D      = $GameViewport/SubViewport/MapGenerator
+@onready var squad_ctrl: Node2D      = $GameViewport/SubViewport/SquadController
 @onready var hud:        CanvasLayer = $HUD
+@onready var _subviewport: SubViewport = $GameViewport/SubViewport
+
+const HUD_HEIGHT := 120.0
 
 var _mission_ended: bool = false
 
 # ---------------------------------------------------------------------------
 func _ready() -> void:
 	add_to_group("main_scene")
+
+	# SubViewportContainer is a Control child of a Node2D, so anchors don't
+	# resolve automatically — set its size explicitly from the viewport rect.
+	var vp_size := get_viewport().get_visible_rect().size
+	$GameViewport.set_position(Vector2.ZERO)
+	$GameViewport.set_size(Vector2(vp_size.x, vp_size.y - HUD_HEIGHT))
 
 	var seed_to_use: int = map_seed if map_seed != 0 else randi()
 	map_gen.generate(seed_to_use)
@@ -61,7 +70,7 @@ func _spawn_squad() -> void:
 		var soldier: Node2D = soldier_scene.instantiate()
 		soldier.is_female = (i % 2 == 1)
 		soldier.add_to_group("soldiers")
-		add_child(soldier)
+		_subviewport.add_child(soldier)
 		soldier.global_position = positions[i] if i < positions.size() \
 				else Vector2(200 + i * 40, 400)
 		squad_ctrl.add_soldier(soldier)

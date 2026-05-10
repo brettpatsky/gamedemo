@@ -94,6 +94,12 @@ func _ready() -> void:
 	nav_agent.path_desired_distance  = 4.0
 	nav_agent.target_desired_distance = 12.0
 
+	# Soldiers live on layer 2; their mask only covers layer 1 (environment/tilemap).
+	# This lets soldiers pass through each other instead of physically blocking,
+	# which was causing groups to lock up when they occupied the same space.
+	collision_layer = 2
+	collision_mask  = 1
+
 	await get_tree().physics_frame
 
 func _physics_process(delta: float) -> void:
@@ -126,6 +132,13 @@ func move_to(destination: Vector2) -> void:
 	_stuck_timer     = STUCK_CHECK_INTERVAL
 	_stuck_check_pos = global_position
 	_state = State.MOVING
+
+func halt() -> void:
+	if _state == State.DEAD:
+		return
+	nav_agent.target_position = global_position
+	velocity = Vector2.ZERO
+	_state = State.IDLE
 
 func fire_at(target: Vector2) -> void:
 	if _state == State.DEAD:
@@ -178,10 +191,10 @@ func _do_move(delta: float) -> void:
 		footstep.play()
 
 func _try_unstick() -> void:
-	# Small random nudge to pop the soldier off the obstacle surface,
-	# then re-request the navigation path.
-	global_position += Vector2(randf_range(-20.0, 20.0), randf_range(-20.0, 20.0))
-	nav_agent.target_position = _move_target
+	# Re-path to a jittered version of the target so the nav mesh finds an
+	# alternate route around the obstacle without teleporting the body.
+	var nudge := Vector2(randf_range(-24.0, 24.0), randf_range(-24.0, 24.0))
+	nav_agent.target_position = _move_target + nudge
 
 func _do_shoot() -> void:
 	if _shoot_cooldown > 0.0:
@@ -209,7 +222,7 @@ func _do_shoot() -> void:
 
 	if bullet_scene:
 		var bullet: Node2D = bullet_scene.instantiate()
-		get_tree().current_scene.add_child(bullet)
+		get_viewport().add_child(bullet)
 		bullet.global_position = global_position
 		bullet.initialise(dir, self)
 
@@ -232,7 +245,7 @@ func _throw_grenade(target: Vector2) -> void:
 	var grenade   := Node2D.new()
 	grenade.set_script(_GRENADE_SCRIPT)
 	var spawn_pos := global_position
-	get_tree().current_scene.add_child(grenade)
+	get_viewport().add_child(grenade)
 	grenade.global_position = spawn_pos
 	grenade.initialise(spawn_pos, target, self)
 

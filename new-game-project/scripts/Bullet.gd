@@ -46,6 +46,8 @@ func _ready() -> void:
 	area_entered.connect(_on_area_entered)
 	body_entered.connect(_on_body_entered)
 	$VisibleOnScreenNotifier2D.screen_exited.connect(queue_free)
+	# Soldiers are on layer 2; include it so bullets can still hit them.
+	set_collision_mask_value(2, true)
 	queue_redraw()
 
 func _draw() -> void:

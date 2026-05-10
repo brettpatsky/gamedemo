@@ -133,12 +133,20 @@ func _cycle_group_count() -> void:
 	# Redistribute soldiers round-robin across all groups.
 	for i in soldiers.size():
 		soldiers[i].group_id = i % _num_groups
+	# Stop all soldiers — their old formation targets are stale after a resplit.
+	for s in soldiers:
+		s.halt()
 	_update_group_hud()
 
 func _select_group(group: int) -> void:
 	if group >= _num_groups:
 		return
 	_active_group = group
+	# Halt soldiers in groups that are no longer active so they hold position
+	# and don't collide with the newly commanded group.
+	for s in soldiers:
+		if s.group_id != _active_group:
+			s.halt()
 	_update_group_hud()
 
 # Returns only the soldiers that belong to the currently active group.
