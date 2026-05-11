@@ -17,21 +17,26 @@ extends CharacterBody2D
 # ---------------------------------------------------------------------------
 # Weapon system
 # ---------------------------------------------------------------------------
-enum WeaponType { PISTOL, AUTO, GRENADE }
-const WEAPON_NAMES := ["Pistol", "Auto", "Grenade"]
+enum WeaponType { PISTOL, AUTO, GRENADE, SACRIFICE }
+const WEAPON_NAMES := ["Pistol", "Auto", "Grenade", "Sacrifice"]
+const WEAPON_COUNT := 4
 
 const _GRENADE_SCRIPT = preload("res://scripts/Grenade.gd")
 
 var _weapon: WeaponType = WeaponType.PISTOL
 
-# Ammo limits — pistol has unlimited ammo
+# Ammo limits — pistol has unlimited ammo, sacrifice is limited by squad size
 const RIFLE_AMMO_MAX   := 90
 const GRENADE_AMMO_MAX := 5
 var _rifle_ammo:   int = RIFLE_AMMO_MAX
 var _grenade_ammo: int = GRENADE_AMMO_MAX
 
 func cycle_weapon() -> void:
-	_weapon = (_weapon + 1) % 3 as WeaponType
+	_weapon = (_weapon + 1) % WEAPON_COUNT as WeaponType
+
+func set_weapon(idx: int) -> void:
+	if idx >= 0 and idx < WEAPON_COUNT:
+		_weapon = idx as WeaponType
 
 func get_weapon() -> WeaponType:
 	return _weapon
@@ -54,7 +59,7 @@ var group_id: int = 0
 # ---------------------------------------------------------------------------
 # State machine
 # ---------------------------------------------------------------------------
-enum State { IDLE, MOVING, SHOOTING, DEAD }
+enum State { IDLE, MOVING, SHOOTING, BOMB, DEAD }
 var _state: State = State.IDLE
 
 var _health: int
@@ -70,6 +75,14 @@ const SHOOT_COOLDOWN_AUTO   := 0.12   # fast burst fire
 const GRENADE_COOLDOWN_SEC  := 2.0
 const ARRIVAL_THRESHOLD     := 8.0
 const WATER_SPEED_MULT      := 0.4
+
+# Walking-bomb (SACRIFICE) tunables — soldier sprints toward target then detonates.
+const BOMB_SPEED_MULT     := 1.6     # multiplier applied to move_speed while armed
+const BOMB_RADIUS         := 200.0   # explosion damage radius (px)
+const BOMB_DAMAGE         := 15      # huge damage — instakill most things
+const BOMB_ARRIVAL_DIST   := 24.0    # px from target to trigger detonation
+const BOMB_FX_TIME        := 0.35    # explosion visual lifetime (sec)
+var _bomb_target: Vector2 = Vector2.ZERO
 
 # Stuck detection — if the soldier barely moves for STUCK_CHECK_INTERVAL seconds
 # while in MOVING state, nudge them to escape corners of rocks/trees.
@@ -113,6 +126,8 @@ func _physics_process(delta: float) -> void:
 		State.SHOOTING:
 			_do_shoot()
 			_state = State.MOVING if not nav_agent.is_navigation_finished() else State.IDLE
+		State.BOMB:
+			_do_bomb_charge(delta)
 		State.IDLE:
 			velocity = Vector2.ZERO
 			move_and_slide()
@@ -126,7 +141,7 @@ func _physics_process(delta: float) -> void:
 # =============================================================================
 
 func move_to(destination: Vector2) -> void:
-	if _state == State.DEAD:
+	if _state == State.DEAD or _state == State.BOMB:
 		return
 	_move_target = destination
 	nav_agent.target_position = destination
@@ -135,14 +150,14 @@ func move_to(destination: Vector2) -> void:
 	_state = State.MOVING
 
 func halt() -> void:
-	if _state == State.DEAD:
+	if _state == State.DEAD or _state == State.BOMB:
 		return
 	nav_agent.target_position = global_position
 	velocity = Vector2.ZERO
 	_state = State.IDLE
 
 func fire_at(target: Vector2, bullet_aim: Vector2 = Vector2.ZERO) -> void:
-	if _state == State.DEAD:
+	if _state == State.DEAD or _state == State.BOMB:
 		return
 	_fire_target = target
 	_bullet_aim  = bullet_aim if bullet_aim != Vector2.ZERO else target
@@ -151,6 +166,21 @@ func fire_at(target: Vector2, bullet_aim: Vector2 = Vector2.ZERO) -> void:
 			_state = State.SHOOTING
 		WeaponType.GRENADE:
 			_throw_grenade(target)
+		WeaponType.SACRIFICE:
+			# Designation handled at squad level (closest soldier becomes the bomb).
+			pass
+
+# Switch this soldier into walking-bomb mode: sprint toward target, detonate on
+# arrival OR on death. Called by SquadController for the SACRIFICE weapon.
+func arm_as_bomb(target: Vector2) -> void:
+	if _state == State.DEAD or _state == State.BOMB:
+		return
+	_bomb_target = target
+	nav_agent.target_position = target
+	_state = State.BOMB
+	# Tint the sprite red so it's visually obvious this soldier is armed.
+	sprite.modulate = Color(1.0, 0.4, 0.4)
+	footstep.play()
 
 func take_damage(amount: int) -> void:
 	if _state == State.DEAD:
@@ -158,6 +188,10 @@ func take_damage(amount: int) -> void:
 	_health -= amount
 	health_bar.value = _health
 	if _health <= 0:
+		if _state == State.BOMB:
+			# Detonate where we fell rather than dying quietly.
+			_explode()
+			return
 		_die()
 
 # =============================================================================
@@ -197,6 +231,49 @@ func _try_unstick() -> void:
 	# alternate route around the obstacle without teleporting the body.
 	var nudge := Vector2(randf_range(-24.0, 24.0), randf_range(-24.0, 24.0))
 	nav_agent.target_position = _move_target + nudge
+
+func _do_bomb_charge(_delta: float) -> void:
+	# Sprint directly toward the bomb target. On arrival OR if killed in transit
+	# (handled in take_damage), detonate.
+	if global_position.distance_to(_bomb_target) <= BOMB_ARRIVAL_DIST:
+		_explode()
+		return
+
+	if nav_agent.is_navigation_finished():
+		_explode()
+		return
+
+	var next_pos:  Vector2 = nav_agent.get_next_path_position()
+	var direction: Vector2 = (next_pos - global_position).normalized()
+	velocity = direction * move_speed * BOMB_SPEED_MULT * _water_speed_mult()
+	move_and_slide()
+	_play_walk_anim(direction)
+
+func _explode() -> void:
+	# Splash damage to everything in range (enemies + structures; no soldier FF).
+	var origin := global_position
+	for group in ["enemies", "structures", "soldiers"]:
+		for target in get_tree().get_nodes_in_group(group):
+			if target == self:
+				continue
+			if target.is_in_group("soldiers"):
+				continue  # no friendly fire on remaining squad
+			if not target.has_method("take_damage"):
+				continue
+			if (target as Node2D).global_position.distance_to(origin) <= BOMB_RADIUS:
+				target.take_damage(BOMB_DAMAGE)
+
+	# Visual explosion: spawn a temporary Node2D that draws the blast circle.
+	var fx := Node2D.new()
+	fx.set_script(preload("res://scripts/BombExplosionFX.gd"))
+	get_tree().current_scene.add_child(fx)
+	fx.global_position = origin
+	fx.start(BOMB_RADIUS, BOMB_FX_TIME)
+
+	# The soldier dies in the blast.
+	_health = 0
+	health_bar.value = 0
+	_die()
 
 func _do_shoot() -> void:
 	if _shoot_cooldown > 0.0:

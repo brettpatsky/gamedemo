@@ -27,7 +27,7 @@ extends Node2D
 @onready var hud:        CanvasLayer = $HUD
 @onready var _subviewport: SubViewport = $GameViewport/SubViewport
 
-const HUD_HEIGHT := 120.0
+const HUD_HEIGHT := 90.0
 
 var _mission_ended: bool = false
 

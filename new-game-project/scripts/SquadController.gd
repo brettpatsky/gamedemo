@@ -116,6 +116,10 @@ func add_soldier(soldier: Node2D) -> void:
 	soldier.group_id = 0   # all soldiers start in group 0
 	soldiers.append(soldier)
 	GameManager.soldiers_alive += 1
+	_update_weapon_hud()
+	_update_ammo_hud()
+	_update_formation_hud()
+	_update_group_hud()
 
 func remove_soldier(soldier: Node2D) -> void:
 	soldiers.erase(soldier)
@@ -123,6 +127,7 @@ func remove_soldier(soldier: Node2D) -> void:
 	if _active_group_soldiers().is_empty() and not soldiers.is_empty():
 		_active_group = soldiers[0].group_id
 	_update_group_hud()
+	_update_ammo_hud()   # SACRIFICE 'ammo' depends on remaining squad size
 
 # =============================================================================
 # PRIVATE — GROUP MANAGEMENT
@@ -169,7 +174,20 @@ func _issue_move_order(target: Vector2) -> void:
 		group[i].move_to(target + _formation_offset(i, count))
 
 func _issue_fire_order(target: Vector2) -> void:
-	var group    := _active_group_soldiers()
+	var group := _active_group_soldiers()
+	if group.is_empty():
+		return
+
+	# SACRIFICE: closest soldier in the active group becomes a walking bomb.
+	# Refuse if it would leave the entire squad empty.
+	if _active_weapon() == 3:  # WeaponType.SACRIFICE
+		if soldiers.size() <= 1:
+			return
+		var bomber: Node2D = _closest_to(group, target)
+		if bomber != null and bomber.has_method("arm_as_bomb"):
+			bomber.arm_as_bomb(target)
+		return
+
 	var centroid := _group_centroid(group)
 	var ext_vec  := target - centroid
 	var extended := target + ext_vec.normalized() * FIRE_EXTENSION if ext_vec.length_squared() > 0.0 else target
@@ -177,6 +195,23 @@ func _issue_fire_order(target: Vector2) -> void:
 		soldier.fire_at(target, extended)
 	_update_ammo_hud()
 	_update_weapon_hud()   # weapon may auto-switch when ammo runs out
+
+# Returns the weapon index of the first soldier in the active group, or -1.
+func _active_weapon() -> int:
+	var group := _active_group_soldiers()
+	if group.is_empty() or not group[0].has_method("get_weapon"):
+		return -1
+	return group[0].get_weapon()
+
+func _closest_to(group: Array, target: Vector2) -> Node2D:
+	var best: Node2D = null
+	var best_d := INF
+	for s in group:
+		var d: float = (s as Node2D).global_position.distance_to(target)
+		if d < best_d:
+			best_d = d
+			best   = s
+	return best
 
 # =============================================================================
 # PRIVATE — WEAPON CYCLING
@@ -189,6 +224,24 @@ func _cycle_weapons() -> void:
 	_update_weapon_hud()
 	_update_ammo_hud()
 
+# Public: set every active-group soldier's weapon to a specific index (used by the
+# HUD weapon grid). Index matches Soldier.WeaponType ordering.
+func set_weapon(idx: int) -> void:
+	for s in _active_group_soldiers():
+		if s.has_method("set_weapon"):
+			s.set_weapon(idx)
+	_update_weapon_hud()
+	_update_ammo_hud()
+
+# Public: set the formation directly (used by the HUD formation grid).
+func set_formation(idx: int) -> void:
+	if idx < 0 or idx >= FORMATIONS.size():
+		return
+	_formation_index = idx
+	if not soldiers.is_empty():
+		_issue_move_order(get_centroid())
+	_update_formation_hud()
+
 func _update_weapon_hud() -> void:
 	var group := _active_group_soldiers()
 	if group.is_empty():
@@ -196,9 +249,7 @@ func _update_weapon_hud() -> void:
 	var hud: Node = get_tree().get_first_node_in_group("hud")
 	if hud == null or not hud.has_method("update_weapon"):
 		return
-	var idx: int = group[0].get_weapon()
-	var names := ["Pistol", "Auto", "Grenade"]
-	hud.update_weapon(names[idx])
+	hud.update_weapon(group[0].get_weapon())
 
 func _update_ammo_hud() -> void:
 	var group := _active_group_soldiers()
@@ -209,7 +260,9 @@ func _update_ammo_hud() -> void:
 		return
 	var s: Node2D = group[0]
 	if s.has_method("get_rifle_ammo") and s.has_method("get_grenade_ammo"):
-		hud.update_ammo(s.get_rifle_ammo(), s.get_grenade_ammo())
+		# Sacrifice "ammo" = squad members that can be spent (must leave 1 alive).
+		var sac_avail: int = max(soldiers.size() - 1, 0)
+		hud.update_ammo(s.get_rifle_ammo(), s.get_grenade_ammo(), sac_avail)
 
 func _update_group_hud() -> void:
 	var hud: Node = get_tree().get_first_node_in_group("hud")
@@ -234,9 +287,12 @@ func _cycle_formation() -> void:
 	_formation_index = (_formation_index + 1) % FORMATIONS.size()
 	if not soldiers.is_empty():
 		_issue_move_order(get_centroid())
+	_update_formation_hud()
+
+func _update_formation_hud() -> void:
 	var hud: Node = get_tree().get_first_node_in_group("hud")
 	if hud and hud.has_method("update_formation"):
-		hud.update_formation(FORMATION_NAMES[_formation_index])
+		hud.update_formation(_formation_index)
 
 func snap_to_formation() -> void:
 	if soldiers.is_empty():

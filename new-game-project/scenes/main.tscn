@@ -6,11 +6,8 @@
 [ext_resource type="Script" uid="uid://26cpjs3hddgx" path="res://scripts/SquadController.gd" id="3_tefeu"]
 [ext_resource type="Texture2D" uid="uid://bls6mk50c2lay" path="res://resources/tdstilepack/Spritesheet/spritesheet_tiles.png" id="4_o6xl0"]
 [ext_resource type="Resource" uid="uid://dreypr0e4y7ma" path="res://resources/tile_config_default.tres" id="4_ya4ey"]
-[ext_resource type="Script" uid="uid://ljwbenej0an7" path="res://scripts/HUD.gd" id="6_tefeu"]
+[ext_resource type="PackedScene" uid="uid://eo30kruldshw" path="res://scenes/hud.tscn" id="6_hud"]
 [ext_resource type="Script" uid="uid://dqa11ydochvwm" path="res://scripts/CameraController.gd" id="7_tefeu"]
-[ext_resource type="Texture2D" uid="uid://dfonxoy27aiau" path="res://resources/tdstilepack/PNG/weapon_machine.png" id="8_choun"]
-[ext_resource type="Texture2D" uid="uid://y26jw77betph" path="res://resources/tdstilepack/PNG/Soldier 1/soldier1_hold.png" id="9_ya4ey"]
-[ext_resource type="Texture2D" uid="uid://caf6y07qthfpg" path="res://resources/tdstilepack/PNG/Woman Green/womanGreen_hold.png" id="10_eb6dy"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_ya4ey"]
 texture = ExtResource("4_o6xl0")
@@ -591,111 +588,4 @@ script = ExtResource("3_tefeu")
 [node name="Camera2D" type="Camera2D" parent="GameViewport/SubViewport" unique_id=718995731 groups=["main_camera"]]
 script = ExtResource("7_tefeu")
 
-[node name="HUD" type="CanvasLayer" parent="." unique_id=663955661]
-script = ExtResource("6_tefeu")
-
-[node name="MissionLabel" type="Label" parent="HUD" unique_id=156576448]
-offset_left = -3.0
-offset_right = 37.0
-offset_bottom = 23.0
-metadata/_edit_use_anchors_ = true
-
-[node name="RetryButton" type="Button" parent="HUD" unique_id=1314996177]
-offset_left = -3.0
-offset_right = 5.0
-offset_bottom = 8.0
-metadata/_edit_use_anchors_ = true
-
-[node name="BottomPanel" type="PanelContainer" parent="HUD" unique_id=1225440937]
-anchors_preset = 12
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = -120.0
-grow_horizontal = 2
-grow_vertical = 0
-
-[node name="MarginContainer" type="MarginContainer" parent="HUD/BottomPanel" unique_id=1906632450]
-layout_mode = 2
-theme_override_constants/margin_left = 20
-theme_override_constants/margin_top = 20
-theme_override_constants/margin_right = 20
-theme_override_constants/margin_bottom = 20
-
-[node name="HBoxContainer" type="HBoxContainer" parent="HUD/BottomPanel/MarginContainer" unique_id=1363416934]
-layout_mode = 2
-theme_override_constants/separation = 30
-
-[node name="WeaponButton" type="Button" parent="HUD/BottomPanel/MarginContainer/HBoxContainer" unique_id=1026474396]
-custom_minimum_size = Vector2(100, 80)
-layout_mode = 2
-
-[node name="VBoxContainer" type="VBoxContainer" parent="HUD/BottomPanel/MarginContainer/HBoxContainer/WeaponButton" unique_id=1949680734]
-layout_mode = 0
-offset_right = 40.0
-offset_bottom = 40.0
-
-[node name="TextureRect" type="TextureRect" parent="HUD/BottomPanel/MarginContainer/HBoxContainer/WeaponButton/VBoxContainer" unique_id=680036013]
-layout_mode = 2
-texture = ExtResource("8_choun")
-
-[node name="Label" type="Label" parent="HUD/BottomPanel/MarginContainer/HBoxContainer/WeaponButton/VBoxContainer" unique_id=1618746775]
-layout_mode = 2
-text = "Rifle 45"
-
-[node name="VSeparator" type="VSeparator" parent="HUD/BottomPanel/MarginContainer/HBoxContainer" unique_id=1977489161]
-layout_mode = 2
-
-[node name="FormationSection" type="Button" parent="HUD/BottomPanel/MarginContainer/HBoxContainer" unique_id=1016290427]
-custom_minimum_size = Vector2(100, 80)
-layout_mode = 2
-
-[node name="VBoxContainer" type="VBoxContainer" parent="HUD/BottomPanel/MarginContainer/HBoxContainer/FormationSection" unique_id=1238682206]
-layout_mode = 0
-offset_right = 40.0
-offset_bottom = 40.0
-
-[node name="TextureRect" type="TextureRect" parent="HUD/BottomPanel/MarginContainer/HBoxContainer/FormationSection/VBoxContainer" unique_id=1547730251]
-layout_mode = 2
-texture = ExtResource("9_ya4ey")
-
-[node name="Label" type="Label" parent="HUD/BottomPanel/MarginContainer/HBoxContainer/FormationSection/VBoxContainer" unique_id=642109662]
-layout_mode = 2
-text = "3x2"
-
-[node name="VSeparator2" type="VSeparator" parent="HUD/BottomPanel/MarginContainer/HBoxContainer" unique_id=1948914832]
-layout_mode = 2
-
-[node name="GroupSection" type="Button" parent="HUD/BottomPanel/MarginContainer/HBoxContainer" unique_id=999210712]
-custom_minimum_size = Vector2(100, 80)
-layout_mode = 2
-
-[node name="VBoxContainer" type="VBoxContainer" parent="HUD/BottomPanel/MarginContainer/HBoxContainer/GroupSection" unique_id=426246652]
-layout_mode = 0
-offset_right = 40.0
-offset_bottom = 40.0
-
-[node name="TextureRect" type="TextureRect" parent="HUD/BottomPanel/MarginContainer/HBoxContainer/GroupSection/VBoxContainer" unique_id=843819225]
-layout_mode = 2
-texture = ExtResource("10_eb6dy")
-
-[node name="Label" type="Label" parent="HUD/BottomPanel/MarginContainer/HBoxContainer/GroupSection/VBoxContainer" unique_id=382712753]
-layout_mode = 2
-text = "1x1"
-
-[node name="VSeparator" type="VSeparator" parent="HUD/BottomPanel/MarginContainer/HBoxContainer/GroupSection" unique_id=1293153318]
-layout_mode = 0
-offset_right = 4.0
-offset_bottom = 40.0
-
-[node name="GroupButtonsContainer" type="VBoxContainer" parent="HUD/BottomPanel/MarginContainer/HBoxContainer" unique_id=900000003]
-layout_mode = 2
-
-[node name="StatsSection" type="VBoxContainer" parent="HUD/BottomPanel/MarginContainer/HBoxContainer" unique_id=1355857392]
-layout_mode = 2
-
-[node name="Soldiers" type="Label" parent="HUD/BottomPanel/MarginContainer/HBoxContainer/StatsSection" unique_id=125590684]
-layout_mode = 2
-
-[node name="Score" type="Label" parent="HUD/BottomPanel/MarginContainer/HBoxContainer/StatsSection" unique_id=1714727635]
-layout_mode = 2
+[node name="HUD" parent="." instance=ExtResource("6_hud")]
