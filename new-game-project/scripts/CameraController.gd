@@ -6,10 +6,16 @@
 # =============================================================================
 extends Camera2D
 
+# zoom_min is now computed dynamically — see _get_min_zoom().
+# This exported value acts as a floor only if the map rect isn't known yet.
 @export var zoom_min:     float = 0.5
 @export var zoom_max:     float = 2.5
 @export var zoom_step:    float = 0.15
 @export var zoom_speed:   float = 8.0
+
+# Never reveal more than this fraction of the map in any single axis at max zoom-out.
+# 0.40 = player sees at most 40% of map width or height at once. Raise to show more.
+const MAX_MAP_FRACTION := 1
 
 @export var pan_speed:    float = 350.0
 @export var follow_speed: float = 3.0
@@ -37,9 +43,9 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-			_target_zoom = clamp(_target_zoom + zoom_step, zoom_min, zoom_max)
+			_target_zoom = clamp(_target_zoom + zoom_step, _get_min_zoom(), zoom_max)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-			_target_zoom = clamp(_target_zoom - zoom_step, zoom_min, zoom_max)
+			_target_zoom = clamp(_target_zoom - zoom_step, _get_min_zoom(), zoom_max)
 		elif event.button_index == MOUSE_BUTTON_MIDDLE:
 			_pan_dragging  = event.pressed
 			_drag_start    = event.position
@@ -63,7 +69,16 @@ func _handle_keyboard_pan(delta: float) -> void:
 	if dir != Vector2.ZERO:
 		position += dir.normalized() * pan_speed * delta / zoom.x
 
+func _get_min_zoom() -> float:
+	var vp := get_viewport_rect().size
+	if _map_rect.size.x <= 0.0 or _map_rect.size.y <= 0.0:
+		return zoom_min
+	var min_x := vp.x / (_map_rect.size.x * MAX_MAP_FRACTION)
+	var min_y := vp.y / (_map_rect.size.y * MAX_MAP_FRACTION)
+	return maxf(maxf(min_x, min_y), zoom_min)
+
 func _smooth_zoom(delta: float) -> void:
+	_target_zoom = maxf(_target_zoom, _get_min_zoom())
 	var new_z := lerpf(zoom.x, _target_zoom, zoom_speed * delta)
 	zoom = Vector2(new_z, new_z)
 
