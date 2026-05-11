@@ -81,9 +81,15 @@ func _setup_objective() -> void:
 		1:
 			GameManager.mission_complete.connect(_on_mission_win)
 		2:
-			var structure: Node = map_gen.get_objective_node("fortified_structure")
-			if structure:
-				structure.structure_destroyed.connect(_on_mission_win)
+			var structures = map_gen.get_objective_node("fortified_structure")
+			if structures is Array and not structures.is_empty():
+				var remaining := [structures.size()]
+				for s: Node in structures:
+					s.structure_destroyed.connect(func() -> void:
+						remaining[0] -= 1
+						if remaining[0] <= 0:
+							_on_mission_win()
+					)
 		3:
 			var zone: Node = map_gen.get_objective_node("extraction_zone")
 			var npc:  Node = map_gen.get_objective_node("escort_npc")

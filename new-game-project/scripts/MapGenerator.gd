@@ -195,6 +195,8 @@ func _bake_navigation() -> void:
 func _spawn_enemies() -> void:
 	# Spawn enemies across the entire map except the centre band where squad spawns
 	var spawn_zone = _passable_cells.filter(func(c):
+		if c.x < 2 or c.x > map_width  - 3: return false
+		if c.y < 2 or c.y > map_height - 3: return false
 		var cy := float(c.y) / map_height
 		# Avoid centre 30% (where squad starts at 0.45-0.55) — use top, bottom, sides
 		return cy < 0.35 or cy > 0.65
@@ -222,28 +224,50 @@ func _spawn_enemies() -> void:
 # ---------------------------------------------------------------------------
 # Returns a level-specific node by group name (set during generate()).
 # ---------------------------------------------------------------------------
-func get_objective_node(group: String) -> Node:
+func get_objective_node(group: String) -> Variant:
 	return _objective_nodes.get(group, null)
 
 # ---------------------------------------------------------------------------
-# Level 2 — spawn a fortified structure in the upper-centre of the map.
+# Level 2 — spawn 5 fortified structures spread across the map.
 # ---------------------------------------------------------------------------
 func _spawn_fortified_structure() -> void:
-	var zone = _passable_cells.filter(func(c): return c.y > map_height * 0.10 and c.y < map_height * 0.25)
-	if zone.is_empty():
-		zone = _passable_cells.filter(func(c): return c.y < map_height * 0.35)
-	if zone.is_empty():
-		return
-	zone.shuffle()
-
 	var scene: PackedScene = load("res://scenes/fortified_structure.tscn")
 	if scene == null:
 		push_warning("[MapGenerator] fortified_structure.tscn not found.")
 		return
-	var node: Node2D = scene.instantiate()
-	node.position = tile_map.map_to_local(zone[0])
-	add_child(node)
-	_objective_nodes["fortified_structure"] = node
+
+	# Five non-overlapping zones covering different parts of the map.
+	# Border-padded by 2 tiles; centre squad-spawn area naturally avoided.
+	var zone_filters: Array[Callable] = [
+		func(c: Vector2i) -> bool:  # top strip
+			return c.x >= 2 and c.x <= map_width - 3 \
+				and c.y >= 2 and c.y < int(map_height * 0.28),
+		func(c: Vector2i) -> bool:  # left flank
+			return c.x >= 2 and c.x < int(map_width * 0.25) \
+				and c.y >= int(map_height * 0.28) and c.y <= map_height - 3,
+		func(c: Vector2i) -> bool:  # right flank
+			return c.x > int(map_width * 0.75) and c.x <= map_width - 3 \
+				and c.y >= int(map_height * 0.28) and c.y <= map_height - 3,
+		func(c: Vector2i) -> bool:  # bottom-left
+			return c.x >= 2 and c.x < int(map_width * 0.50) \
+				and c.y > int(map_height * 0.70) and c.y <= map_height - 3,
+		func(c: Vector2i) -> bool:  # bottom-right
+			return c.x >= int(map_width * 0.50) and c.x <= map_width - 3 \
+				and c.y > int(map_height * 0.70) and c.y <= map_height - 3,
+	]
+
+	var spawned: Array[Node2D] = []
+	for filter in zone_filters:
+		var candidates := _passable_cells.filter(filter)
+		if candidates.is_empty():
+			continue
+		candidates.shuffle()
+		var node: Node2D = scene.instantiate()
+		node.position = tile_map.map_to_local(candidates[0])
+		add_child(node)
+		spawned.append(node)
+
+	_objective_nodes["fortified_structure"] = spawned
 
 # ---------------------------------------------------------------------------
 # Level 3 — spawn an escort NPC near soldiers and an extraction zone at the top.
