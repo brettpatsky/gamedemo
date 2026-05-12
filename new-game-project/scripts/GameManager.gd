@@ -24,6 +24,29 @@ var soldiers_alive: int = 0           # decremented by Soldier.die()
 var enemies_alive: int = 0            # decremented by Enemy.die()
 var current_level: int = 1            # persists across scene reloads (1–3)
 
+# Per-soldier accuracy stats (indexed by spawn slot 0..squad_size-1).
+# Persisted in GameManager so dead soldiers' final totals survive after queue_free.
+var soldier_shots: Array[int] = []
+var soldier_hits:  Array[int] = []
+var soldier_alive: Array[bool] = []
+
+func reset_squad_stats(size: int) -> void:
+	soldier_shots.resize(size)
+	soldier_hits.resize(size)
+	soldier_alive.resize(size)
+	for i in size:
+		soldier_shots[i] = 0
+		soldier_hits[i]  = 0
+		soldier_alive[i] = true
+
+func record_shot(slot: int) -> void:
+	if slot >= 0 and slot < soldier_shots.size():
+		soldier_shots[slot] += 1
+
+func record_hit(slot: int) -> void:
+	if slot >= 0 and slot < soldier_hits.size():
+		soldier_hits[slot] += 1
+
 func advance_level() -> void:
 	current_level = min(current_level + 1, 3)
 
@@ -47,6 +70,10 @@ func add_score(points: int) -> void:
 # ---------------------------------------------------------------------------
 func on_soldier_died(soldier) -> void:
 	soldiers_alive -= 1
+	if soldier and "slot_index" in soldier:
+		var slot: int = soldier.slot_index
+		if slot >= 0 and slot < soldier_alive.size():
+			soldier_alive[slot] = false
 	emit_signal("soldier_died", soldier)
 	if soldiers_alive <= 0:
 		emit_signal("all_soldiers_dead")

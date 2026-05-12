@@ -57,8 +57,8 @@ const FORMATION_NAMES := ["2×3", "3×2", "1×6", "6×1", "★"]
 @onready var _group_cycle_button: Button        = $BottomPanel/MarginContainer/HBoxContainer/GroupSection/GroupButton
 @onready var _group_buttons_container: HBoxContainer = $BottomPanel/MarginContainer/HBoxContainer/GroupSection/GroupButtonsContainer
 
-@onready var _soldiers_label: Label = $BottomPanel/MarginContainer/HBoxContainer/StatsSection/Soldiers
-@onready var _score_label:    Label = $BottomPanel/MarginContainer/HBoxContainer/StatsSection/Score
+@onready var _soldier_stats_grid: GridContainer = $BottomPanel/MarginContainer/HBoxContainer/SoldierStatsGrid
+var _soldier_stat_labels: Array[Label] = []
 
 # ---------------------------------------------------------------------------
 # Programmatic UI (created in _ready)
@@ -88,6 +88,7 @@ func _ready() -> void:
 	_wire_weapon_buttons()
 	_wire_formation_buttons()
 	_wire_group_section()
+	_wire_soldier_stats_grid()
 
 	# Mission-end UI (hidden until win/lose)
 	var center := get_viewport().get_visible_rect().size / 2.0
@@ -185,16 +186,22 @@ func _wire_group_section() -> void:
 	if _group_cycle_button:
 		_group_cycle_button.pressed.connect(_on_group_cycle_pressed)
 
+func _wire_soldier_stats_grid() -> void:
+	_soldier_stat_labels.clear()
+	if _soldier_stats_grid == null:
+		return
+	for child in _soldier_stats_grid.get_children():
+		if child is Label:
+			(child as Label).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			_soldier_stat_labels.append(child)
+
 # =============================================================================
 # PUBLIC UPDATE API — called by SquadController and GameManager
 # =============================================================================
-func update_score(new_score: int) -> void:
-	if _score_label:
-		_score_label.text = "SCORE: %d" % new_score
-
-func update_soldier_count(alive: int) -> void:
-	if _soldiers_label:
-		_soldiers_label.text = "SOLDIERS: %d" % alive
+# Kept as a no-op for callers that still invoke it; the per-soldier grid
+# implicitly shows who is alive (dead slots dim out).
+func update_soldier_count(_alive: int) -> void:
+	pass
 
 # Accepts either an int (preferred) or a String (legacy, mapped by name).
 func update_weapon(weapon: Variant) -> void:
@@ -336,6 +343,23 @@ func _on_group_cycle_pressed() -> void:
 func _process(_delta: float) -> void:
 	if _arrow_node:
 		_arrow_node.queue_redraw()
+	_refresh_soldier_stats()
+
+func _refresh_soldier_stats() -> void:
+	var n: int = _soldier_stat_labels.size()
+	for i in n:
+		var lbl := _soldier_stat_labels[i]
+		var shots: int = GameManager.soldier_shots[i] if i < GameManager.soldier_shots.size() else 0
+		var hits:  int = GameManager.soldier_hits[i]  if i < GameManager.soldier_hits.size()  else 0
+		var alive: bool = i < GameManager.soldier_alive.size() and GameManager.soldier_alive[i]
+		var acc_text := "--%"
+		if shots > 0:
+			acc_text = "%d%%" % int(round(100.0 * float(hits) / float(shots)))
+		var tag := "S%d" % (i + 1)
+		if not alive:
+			tag += " †"
+		lbl.text = "%s\n%d/%d  %s" % [tag, hits, shots, acc_text]
+		lbl.modulate = Color(1, 1, 1, 1) if alive else Color(0.6, 0.6, 0.6, 1)
 
 func _draw_enemy_arrow() -> void:
 	if GameManager.enemies_alive <= 0 or GameManager.enemies_alive >= 10:

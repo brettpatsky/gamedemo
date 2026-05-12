@@ -47,18 +47,17 @@ func _ready() -> void:
 	map_gen.generate(seed_to_use)
 
 	GameManager.soldiers_alive = 0
+	GameManager.reset_squad_stats(squad_size)
 	_mission_ended = false
 
 	_spawn_squad()
 	squad_ctrl.snap_to_formation()
 
-	GameManager.score_changed.connect(hud.update_score)
 	GameManager.soldier_died.connect(_on_soldier_died)
 	GameManager.all_soldiers_dead.connect(_on_mission_fail)
 
 	_setup_objective()
 
-	hud.update_score(GameManager.score)
 	hud.update_soldier_count(squad_size)
 	hud.show_objective(GameManager.current_level)
 
@@ -71,6 +70,7 @@ func _spawn_squad() -> void:
 	for i in squad_size:
 		var scene: PackedScene = soldier_scenes[i % soldier_scenes.size()]
 		var soldier: Node2D = scene.instantiate()
+		soldier.slot_index = i
 		soldier.add_to_group("soldiers")
 		_subviewport.add_child(soldier)
 		soldier.global_position = positions[i] if i < positions.size() \

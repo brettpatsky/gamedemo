@@ -92,6 +92,8 @@ func _try_hit(target: Node2D) -> void:
 		return
 	if target.has_method("take_damage"):
 		target.take_damage(damage)
+		if _shooter != null and _shooter.has_method("on_bullet_hit"):
+			_shooter.on_bullet_hit(target)
 		_spawn_hit_particles()
 		queue_free()
 

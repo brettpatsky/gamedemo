@@ -1,29 +1,29 @@
-[gd_scene load_steps=7 format=3 uid="uid://eo30kruldshw"]
+[gd_scene format=3 uid="uid://eo30kruldshw"]
 
 [ext_resource type="Script" uid="uid://ljwbenej0an7" path="res://scripts/HUD.gd" id="1_hud"]
 [ext_resource type="Texture2D" uid="uid://dfonxoy27aiau" path="res://resources/tdstilepack/PNG/weapon_machine.png" id="2_auto"]
-[ext_resource type="Texture2D" path="res://resources/tdstilepack/PNG/weapon_pistol.png" id="3_pistol"]
-[ext_resource type="Texture2D" path="res://resources/tdstilepack/PNG/weapon_grenade.png" id="4_grenade"]
-[ext_resource type="Texture2D" path="res://resources/tdstilepack/PNG/weapon_gun.png" id="5_sac"]
+[ext_resource type="Texture2D" uid="uid://dnih1binkkv5a" path="res://resources/tdstilepack/PNG/weapon_pistol.png" id="3_pistol"]
+[ext_resource type="Texture2D" uid="uid://beo836ok1xtb0" path="res://resources/tdstilepack/PNG/weapon_grenade.png" id="4_grenade"]
+[ext_resource type="Texture2D" uid="uid://ckiu60btwt5fk" path="res://resources/tdstilepack/PNG/weapon_gun.png" id="5_sac"]
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_weapons"]
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_formations"]
 
-[node name="HUD" type="CanvasLayer"]
+[node name="HUD" type="CanvasLayer" unique_id=1792064493]
 script = ExtResource("1_hud")
 
-[node name="MissionLabel" type="Label" parent="."]
+[node name="MissionLabel" type="Label" parent="." unique_id=606623974]
 offset_left = -3.0
 offset_right = 37.0
 offset_bottom = 23.0
 
-[node name="RetryButton" type="Button" parent="."]
+[node name="RetryButton" type="Button" parent="." unique_id=1368670323]
 offset_left = -3.0
 offset_right = 5.0
 offset_bottom = 8.0
 
-[node name="BottomPanel" type="PanelContainer" parent="."]
+[node name="BottomPanel" type="PanelContainer" parent="." unique_id=700885010]
 anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
@@ -32,32 +32,32 @@ offset_top = -90.0
 grow_horizontal = 2
 grow_vertical = 0
 
-[node name="MarginContainer" type="MarginContainer" parent="BottomPanel"]
+[node name="MarginContainer" type="MarginContainer" parent="BottomPanel" unique_id=221241058]
 layout_mode = 2
 theme_override_constants/margin_left = 10
 theme_override_constants/margin_top = 6
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 6
 
-[node name="HBoxContainer" type="HBoxContainer" parent="BottomPanel/MarginContainer"]
+[node name="HBoxContainer" type="HBoxContainer" parent="BottomPanel/MarginContainer" unique_id=1194220352]
 layout_mode = 2
 theme_override_constants/separation = 16
+alignment = 1
 
-; ─── WEAPON GRID (2 columns × 2 rows = 4 buttons) ────────────────────────────
-[node name="WeaponGrid" type="GridContainer" parent="BottomPanel/MarginContainer/HBoxContainer"]
+[node name="WeaponGrid" type="GridContainer" parent="BottomPanel/MarginContainer/HBoxContainer" unique_id=1473177983]
 layout_mode = 2
-columns = 2
 theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 4
+columns = 2
 
-[node name="WeaponButton0" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid"]
+[node name="WeaponButton0" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid" unique_id=1679684025]
 custom_minimum_size = Vector2(36, 36)
 layout_mode = 2
 toggle_mode = true
-button_group = SubResource("ButtonGroup_weapons")
 button_pressed = true
+button_group = SubResource("ButtonGroup_weapons")
 
-[node name="Icon" type="TextureRect" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton0"]
+[node name="Icon" type="TextureRect" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton0" unique_id=1823555407]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -66,11 +66,13 @@ offset_left = 2.0
 offset_top = 2.0
 offset_right = -2.0
 offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
 texture = ExtResource("3_pistol")
 expand_mode = 3
 stretch_mode = 5
 
-[node name="Ammo" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton0"]
+[node name="Ammo" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton0" unique_id=2052809259]
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -80,16 +82,18 @@ anchor_bottom = 1.0
 offset_left = -20.0
 offset_top = -14.0
 offset_right = 20.0
-horizontal_alignment = 1
+grow_horizontal = 2
+grow_vertical = 0
 text = "∞"
+horizontal_alignment = 1
 
-[node name="WeaponButton1" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid"]
+[node name="WeaponButton1" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid" unique_id=5988256]
 custom_minimum_size = Vector2(36, 36)
 layout_mode = 2
 toggle_mode = true
 button_group = SubResource("ButtonGroup_weapons")
 
-[node name="Icon" type="TextureRect" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton1"]
+[node name="Icon" type="TextureRect" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton1" unique_id=1278481295]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -98,11 +102,13 @@ offset_left = 2.0
 offset_top = 2.0
 offset_right = -2.0
 offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
 texture = ExtResource("2_auto")
 expand_mode = 3
 stretch_mode = 5
 
-[node name="Ammo" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton1"]
+[node name="Ammo" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton1" unique_id=2023672060]
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -112,16 +118,18 @@ anchor_bottom = 1.0
 offset_left = -20.0
 offset_top = -14.0
 offset_right = 20.0
-horizontal_alignment = 1
+grow_horizontal = 2
+grow_vertical = 0
 text = "90"
+horizontal_alignment = 1
 
-[node name="WeaponButton2" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid"]
+[node name="WeaponButton2" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid" unique_id=216472149]
 custom_minimum_size = Vector2(36, 36)
 layout_mode = 2
 toggle_mode = true
 button_group = SubResource("ButtonGroup_weapons")
 
-[node name="Icon" type="TextureRect" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton2"]
+[node name="Icon" type="TextureRect" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton2" unique_id=365601905]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -130,11 +138,13 @@ offset_left = 2.0
 offset_top = 2.0
 offset_right = -2.0
 offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
 texture = ExtResource("4_grenade")
 expand_mode = 3
 stretch_mode = 5
 
-[node name="Ammo" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton2"]
+[node name="Ammo" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton2" unique_id=914249584]
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -144,16 +154,19 @@ anchor_bottom = 1.0
 offset_left = -20.0
 offset_top = -14.0
 offset_right = 20.0
-horizontal_alignment = 1
+grow_horizontal = 2
+grow_vertical = 0
 text = "5"
+horizontal_alignment = 1
 
-[node name="WeaponButton3" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid"]
+[node name="WeaponButton3" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid" unique_id=233846737]
 custom_minimum_size = Vector2(36, 36)
 layout_mode = 2
 toggle_mode = true
 button_group = SubResource("ButtonGroup_weapons")
 
-[node name="Icon" type="TextureRect" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton3"]
+[node name="Icon" type="TextureRect" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton3" unique_id=1058220988]
+self_modulate = Color(1, 0.4, 0.4, 1)
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -162,12 +175,13 @@ offset_left = 2.0
 offset_top = 2.0
 offset_right = -2.0
 offset_bottom = -10.0
-self_modulate = Color(1, 0.4, 0.4, 1)
+grow_horizontal = 2
+grow_vertical = 2
 texture = ExtResource("5_sac")
 expand_mode = 3
 stretch_mode = 5
 
-[node name="Ammo" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton3"]
+[node name="Ammo" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/WeaponGrid/WeaponButton3" unique_id=464718576]
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -177,128 +191,174 @@ anchor_bottom = 1.0
 offset_left = -20.0
 offset_top = -14.0
 offset_right = 20.0
-horizontal_alignment = 1
+grow_horizontal = 2
+grow_vertical = 0
 text = "0"
+horizontal_alignment = 1
 
-; ─── DIVIDER ─────────────────────────────────────────────────────────────────
-[node name="VSeparator" type="VSeparator" parent="BottomPanel/MarginContainer/HBoxContainer"]
+[node name="VSeparator" type="VSeparator" parent="BottomPanel/MarginContainer/HBoxContainer" unique_id=2103992870]
 layout_mode = 2
 
-; ─── FORMATION GRID (3 columns × 2 rows = 6 cells; 5 + 1 reserved) ──────────
-[node name="FormationGrid" type="GridContainer" parent="BottomPanel/MarginContainer/HBoxContainer"]
+[node name="FormationGrid" type="GridContainer" parent="BottomPanel/MarginContainer/HBoxContainer" unique_id=778968950]
 layout_mode = 2
-columns = 3
 theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 4
+columns = 3
 
-[node name="FormationButton0" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid"]
+[node name="FormationButton0" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid" unique_id=1932849353]
 custom_minimum_size = Vector2(40, 36)
 layout_mode = 2
 toggle_mode = true
 button_group = SubResource("ButtonGroup_formations")
 
-[node name="Name" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid/FormationButton0"]
+[node name="Name" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid/FormationButton0" unique_id=699340126]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-horizontal_alignment = 1
-vertical_alignment = 1
+grow_horizontal = 2
+grow_vertical = 2
 text = "2×3"
+horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="FormationButton1" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid"]
+[node name="FormationButton1" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid" unique_id=1289348639]
 custom_minimum_size = Vector2(40, 36)
 layout_mode = 2
 toggle_mode = true
-button_group = SubResource("ButtonGroup_formations")
 button_pressed = true
+button_group = SubResource("ButtonGroup_formations")
 
-[node name="Name" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid/FormationButton1"]
+[node name="Name" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid/FormationButton1" unique_id=2087334103]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-horizontal_alignment = 1
-vertical_alignment = 1
+grow_horizontal = 2
+grow_vertical = 2
 text = "3×2"
+horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="FormationButton2" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid"]
+[node name="FormationButton2" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid" unique_id=782902604]
 custom_minimum_size = Vector2(40, 36)
 layout_mode = 2
 toggle_mode = true
 button_group = SubResource("ButtonGroup_formations")
 
-[node name="Name" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid/FormationButton2"]
+[node name="Name" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid/FormationButton2" unique_id=606264942]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-horizontal_alignment = 1
-vertical_alignment = 1
+grow_horizontal = 2
+grow_vertical = 2
 text = "1×6"
+horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="FormationButton3" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid"]
+[node name="FormationButton3" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid" unique_id=783650491]
 custom_minimum_size = Vector2(40, 36)
 layout_mode = 2
 toggle_mode = true
 button_group = SubResource("ButtonGroup_formations")
 
-[node name="Name" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid/FormationButton3"]
+[node name="Name" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid/FormationButton3" unique_id=1204888344]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-horizontal_alignment = 1
-vertical_alignment = 1
+grow_horizontal = 2
+grow_vertical = 2
 text = "6×1"
+horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="FormationButton4" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid"]
+[node name="FormationButton4" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid" unique_id=2120032266]
 custom_minimum_size = Vector2(40, 36)
 layout_mode = 2
 toggle_mode = true
 button_group = SubResource("ButtonGroup_formations")
 
-[node name="Name" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid/FormationButton4"]
+[node name="Name" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid/FormationButton4" unique_id=1185911680]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "★"
 horizontal_alignment = 1
 vertical_alignment = 1
-text = "★"
 
-[node name="FormationButtonReserved" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid"]
+[node name="FormationButtonReserved" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/FormationGrid" unique_id=1615740715]
 custom_minimum_size = Vector2(40, 36)
 layout_mode = 2
 disabled = true
 text = "?"
 
-; ─── DIVIDER ─────────────────────────────────────────────────────────────────
-[node name="VSeparator2" type="VSeparator" parent="BottomPanel/MarginContainer/HBoxContainer"]
+[node name="VSeparator2" type="VSeparator" parent="BottomPanel/MarginContainer/HBoxContainer" unique_id=1870840051]
 layout_mode = 2
 
-; ─── GROUP SECTION ───────────────────────────────────────────────────────────
-[node name="GroupSection" type="VBoxContainer" parent="BottomPanel/MarginContainer/HBoxContainer"]
+[node name="GroupSection" type="VBoxContainer" parent="BottomPanel/MarginContainer/HBoxContainer" unique_id=1852250663]
 layout_mode = 2
 
-[node name="GroupButton" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/GroupSection"]
+[node name="GroupButton" type="Button" parent="BottomPanel/MarginContainer/HBoxContainer/GroupSection" unique_id=194407362]
 custom_minimum_size = Vector2(80, 32)
 layout_mode = 2
 text = "GRP 1/1"
 
-[node name="GroupButtonsContainer" type="HBoxContainer" parent="BottomPanel/MarginContainer/HBoxContainer/GroupSection"]
+[node name="GroupButtonsContainer" type="HBoxContainer" parent="BottomPanel/MarginContainer/HBoxContainer/GroupSection" unique_id=597598030]
 layout_mode = 2
 theme_override_constants/separation = 2
 
-; ─── STATS SECTION ───────────────────────────────────────────────────────────
-[node name="StatsSection" type="VBoxContainer" parent="BottomPanel/MarginContainer/HBoxContainer"]
+[node name="VSeparator3" type="VSeparator" parent="BottomPanel/MarginContainer/HBoxContainer" unique_id=214890263]
 layout_mode = 2
-size_flags_horizontal = 3
 
-[node name="Soldiers" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/StatsSection"]
+[node name="SoldierStatsGrid" type="GridContainer" parent="BottomPanel/MarginContainer/HBoxContainer" unique_id=1417348324]
 layout_mode = 2
-text = "SOLDIERS: 6"
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 2
+columns = 3
 
-[node name="Score" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/StatsSection"]
+[node name="SoldierStat0" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/SoldierStatsGrid" unique_id=1386969637]
+custom_minimum_size = Vector2(96, 36)
 layout_mode = 2
-text = "SCORE: 0"
+theme_override_font_sizes/font_size = 10
+text = "S1
+0/0  --%"
+
+[node name="SoldierStat1" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/SoldierStatsGrid" unique_id=1384941133]
+custom_minimum_size = Vector2(96, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "S2
+0/0  --%"
+
+[node name="SoldierStat2" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/SoldierStatsGrid" unique_id=2067746169]
+custom_minimum_size = Vector2(96, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "S3
+0/0  --%"
+
+[node name="SoldierStat3" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/SoldierStatsGrid" unique_id=1402552758]
+custom_minimum_size = Vector2(96, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "S4
+0/0  --%"
+
+[node name="SoldierStat4" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/SoldierStatsGrid" unique_id=1165457260]
+custom_minimum_size = Vector2(96, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "S5
+0/0  --%"
+
+[node name="SoldierStat5" type="Label" parent="BottomPanel/MarginContainer/HBoxContainer/SoldierStatsGrid" unique_id=641242058]
+custom_minimum_size = Vector2(96, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "S6
+0/0  --%"

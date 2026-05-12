@@ -74,6 +74,15 @@ func is_continuous_fire() -> bool:
 # ---------------------------------------------------------------------------
 var group_id: int = 0
 
+# Spawn-order slot (0..squad_size-1). Set by Main; used to index per-soldier
+# accuracy stats stored in GameManager.
+var slot_index: int = -1
+
+# Called by Bullet.gd when a bullet fired by this soldier successfully hits
+# a damageable target. Bumps the shared accuracy counter.
+func on_bullet_hit(_target: Node2D) -> void:
+	GameManager.record_hit(slot_index)
+
 # ---------------------------------------------------------------------------
 # State machine
 # ---------------------------------------------------------------------------
@@ -326,6 +335,7 @@ func _do_shoot() -> void:
 			bullet.set_stats(rifle_damage, rifle_speed, rifle_distance, bullet_color)
 		else:
 			bullet.set_stats(pistol_damage, pistol_speed, pistol_distance, bullet_color)
+		GameManager.record_shot(slot_index)
 
 func _throw_grenade(target: Vector2) -> void:
 	if _shoot_cooldown > 0.0:
