@@ -17,18 +17,21 @@
 extends Area2D
 
 # ---------------------------------------------------------------------------
-# Tunables
+# Tunables — defaults used by enemy bullets and as a fallback. Soldiers
+# override these per-shot via set_stats() so each squad member's pistol and
+# rifle behave independently.
 # ---------------------------------------------------------------------------
 @export var speed:        float = 600.0   # pixels per second
 @export var damage:       int   = 1       # hits dealt on impact
-@export var lifetime_sec: float = 2.5     # seconds before auto-free (safety net)
+@export var max_distance: float = 1500.0  # pixels of travel before auto-free
+@export var color:        Color = Color.YELLOW
 
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
 var _direction: Vector2 = Vector2.RIGHT
 var _shooter: Node2D    = null            # who fired this (to avoid self-hits)
-var _lifetime: float    = 0.0
+var _distance_travelled: float = 0.0
 
 # ---------------------------------------------------------------------------
 # Called by SquadController or Enemy immediately after instantiate()
@@ -38,6 +41,15 @@ func initialise(direction: Vector2, shooter: Node2D) -> void:
 	_shooter   = shooter
 	# Rotate the bullet sprite to match travel direction (optional visual nicety)
 	rotation   = _direction.angle()
+
+# Per-shot stat override. Called by Soldier so each squad member's pistol and
+# rifle can have independent damage / speed / range / color values.
+func set_stats(p_damage: int, p_speed: float, p_distance: float, p_color: Color) -> void:
+	damage       = p_damage
+	speed        = p_speed
+	max_distance = p_distance
+	color        = p_color
+	queue_redraw()
 
 # ---------------------------------------------------------------------------
 # _ready — connect screen-exit signal for auto-cleanup
@@ -51,15 +63,16 @@ func _ready() -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	draw_circle(Vector2.ZERO, 3.0, Color.YELLOW)
+	draw_circle(Vector2.ZERO, 3.0, color)
 
 # ---------------------------------------------------------------------------
-# _process — move bullet each frame; cull after lifetime expires
+# _process — move bullet each frame; cull after travelling max_distance
 # ---------------------------------------------------------------------------
 func _process(delta: float) -> void:
-	position  += _direction * speed * delta
-	_lifetime += delta
-	if _lifetime >= lifetime_sec:
+	var step := speed * delta
+	position             += _direction * step
+	_distance_travelled  += step
+	if _distance_travelled >= max_distance:
 		queue_free()
 
 # ---------------------------------------------------------------------------

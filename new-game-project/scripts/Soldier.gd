@@ -9,6 +9,24 @@ extends CharacterBody2D
 
 @export var bullet_scene: PackedScene
 
+# ---------------------------------------------------------------------------
+# Per-soldier weapon stats. Pistol and rifle (AUTO) are independently tunable.
+# Grenade and SACRIFICE intentionally use shared constants and are NOT exposed
+# here — they're balance-critical squad-level abilities.
+# ---------------------------------------------------------------------------
+@export_group("Pistol")
+@export var pistol_damage:   int   = 1
+@export var pistol_speed:    float = 600.0
+@export var pistol_distance: float = 1500.0
+
+@export_group("Rifle")
+@export var rifle_damage:   int   = 1
+@export var rifle_speed:    float = 700.0
+@export var rifle_distance: float = 1200.0
+
+@export_group("Projectile")
+@export var bullet_color: Color = Color.YELLOW
+
 @onready var nav_agent:  NavigationAgent2D    = $NavigationAgent2D
 @onready var sprite:     AnimatedSprite2D     = $AnimatedSprite2D
 @onready var health_bar: ProgressBar          = $HealthBar
@@ -304,6 +322,10 @@ func _do_shoot() -> void:
 		get_viewport().add_child(bullet)
 		bullet.global_position = global_position
 		bullet.initialise(dir, self)
+		if _weapon == WeaponType.AUTO:
+			bullet.set_stats(rifle_damage, rifle_speed, rifle_distance, bullet_color)
+		else:
+			bullet.set_stats(pistol_damage, pistol_speed, pistol_distance, bullet_color)
 
 func _throw_grenade(target: Vector2) -> void:
 	if _shoot_cooldown > 0.0:

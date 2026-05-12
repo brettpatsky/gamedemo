@@ -20,7 +20,9 @@ extends Node2D
 
 @export var squad_size:    int  = 6
 @export var map_seed:      int  = 0
-@export var soldier_scene: PackedScene
+# One scene per squad slot so each soldier can have a distinct sprite, stats,
+# bullet colour, etc. Falls back to wrapping if fewer scenes than squad_size.
+@export var soldier_scenes: Array[PackedScene]
 
 @onready var map_gen:    Node2D      = $GameViewport/SubViewport/MapGenerator
 @onready var squad_ctrl: Node2D      = $GameViewport/SubViewport/SquadController
@@ -62,13 +64,13 @@ func _ready() -> void:
 
 # ---------------------------------------------------------------------------
 func _spawn_squad() -> void:
-	if soldier_scene == null:
-		push_error("[Main] soldier_scene not assigned in Inspector!")
+	if soldier_scenes.is_empty():
+		push_error("[Main] soldier_scenes is empty — assign at least one PackedScene in the Inspector!")
 		return
 	var positions: Array[Vector2] = map_gen.get_spawn_positions(squad_size)
 	for i in squad_size:
-		var soldier: Node2D = soldier_scene.instantiate()
-		soldier.is_female = (i % 2 == 1)
+		var scene: PackedScene = soldier_scenes[i % soldier_scenes.size()]
+		var soldier: Node2D = scene.instantiate()
 		soldier.add_to_group("soldiers")
 		_subviewport.add_child(soldier)
 		soldier.global_position = positions[i] if i < positions.size() \

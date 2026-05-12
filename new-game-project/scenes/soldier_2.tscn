@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://bqvjduiqhnscl"]
+
+[ext_resource type="PackedScene" uid="uid://dtcbbmugibghc" path="res://scenes/soldier.tscn" id="1_base"]
+
+[node name="Soldier2" instance=ExtResource("1_base")]
+is_female = true
+max_health = 6
+pistol_damage = 1
+pistol_speed = 500.0
+pistol_distance = 350.0
+rifle_damage = 1
+rifle_speed = 650.0
+rifle_distance = 450.0
+bullet_color = Color(1, 1, 1, 1)
