@@ -38,6 +38,10 @@ var _passable_cells: Array[Vector2i] = []
 # References to level-specific nodes set during generate(); read by Main.gd.
 var _objective_nodes: Dictionary = {}
 
+# Level-3 safe-zone exclusion (tile coords) — enemies must not spawn inside.
+var _enemy_exclusion_centre: Vector2i = Vector2i.ZERO
+var _enemy_exclusion_radius: int = 0
+
 # ---------------------------------------------------------------------------
 func _ready() -> void:
 	add_to_group("map_generator")
@@ -47,14 +51,16 @@ func _ready() -> void:
 # ---------------------------------------------------------------------------
 func generate(seed_value: int = 0) -> void:
 	_objective_nodes.clear()
+	_enemy_exclusion_radius = 0
 	_configure_noise(seed_value)
 	_fill_tiles()
 	_spawn_obstacles()
 	_bake_navigation()
-	_spawn_enemies()
+	# Escort mission picks the NPC spot first so enemy spawn can avoid it.
 	match GameManager.current_level:
 		2: _spawn_fortified_structure()
 		3: _spawn_escort_mission()
+	_spawn_enemies()
 
 # ---------------------------------------------------------------------------
 # Returns the world-centre of the map so the camera can snap there on start.
@@ -194,9 +200,17 @@ func _bake_navigation() -> void:
 
 func _spawn_enemies() -> void:
 	# Spawn enemies across the entire map except the centre band where squad spawns
-	var spawn_zone = _passable_cells.filter(func(c):
+	var excl_centre := _enemy_exclusion_centre
+	var excl_r2 := _enemy_exclusion_radius * _enemy_exclusion_radius
+	var has_excl := _enemy_exclusion_radius > 0
+	var spawn_zone = _passable_cells.filter(func(c: Vector2i) -> bool:
 		if c.x < 2 or c.x > map_width  - 3: return false
 		if c.y < 2 or c.y > map_height - 3: return false
+		if has_excl:
+			var dx: int = c.x - excl_centre.x
+			var dy: int = c.y - excl_centre.y
+			if dx * dx + dy * dy <= excl_r2:
+				return false
 		var cy := float(c.y) / map_height
 		# Avoid centre 30% (where squad starts at 0.45-0.55) — use top, bottom, sides
 		return cy < 0.35 or cy > 0.65
@@ -270,28 +284,74 @@ func _spawn_fortified_structure() -> void:
 	_objective_nodes["fortified_structure"] = spawned
 
 # ---------------------------------------------------------------------------
-# Level 3 — spawn an escort NPC near soldiers and an extraction zone at the top.
+# Level 3 — NPC begins penned inside a small shelter of destructible walls,
+# placed away from the squad spawn so the player must travel to the rescue
+# point. A surrounding safe radius keeps enemies from spawning inside the
+# shelter — only the wall is between the NPC and incoming fire.
 # ---------------------------------------------------------------------------
 func _spawn_escort_mission() -> void:
-	# NPC spawns close to the player start area
-	var npc_zone = _passable_cells.filter(func(c): return c.y > map_height * 0.70)
+	# Pick an NPC spot in the bottom band of the map with clearance for walls.
+	var npc_zone := _passable_cells.filter(func(c: Vector2i) -> bool:
+		if c.x < 4 or c.x > map_width  - 5: return false
+		if c.y < 4 or c.y > map_height - 5: return false
+		return float(c.y) / map_height > 0.78
+	)
+	if npc_zone.is_empty():
+		npc_zone = _passable_cells.filter(func(c: Vector2i) -> bool:
+			return c.x >= 4 and c.x <= map_width - 5 \
+				and c.y >= 4 and c.y <= map_height - 5 \
+				and float(c.y) / map_height > 0.70
+		)
 	if npc_zone.is_empty():
 		return
 	npc_zone.shuffle()
+	var npc_cell: Vector2i = npc_zone[0]
 
 	var npc_scene: PackedScene = load("res://scenes/npc_escort.tscn")
 	if npc_scene == null:
 		push_warning("[MapGenerator] npc_escort.tscn not found.")
 		return
 	var npc: Node2D = npc_scene.instantiate()
-	npc.position = tile_map.map_to_local(npc_zone[0])
+	npc.position = tile_map.map_to_local(npc_cell)
 	add_child(npc)
 	_objective_nodes["escort_npc"] = npc
 
+	# Mark the surrounding tiles as off-limits to enemy spawn so the NPC has a
+	# pocket of safety while the squad fights its way over.
+	_enemy_exclusion_centre = npc_cell
+	_enemy_exclusion_radius = 6
+
+	# Build a ring of destructible walls around the NPC (cardinal directions,
+	# 2 tiles out). The squad only needs to take down one to free the NPC.
+	var wall_scene: PackedScene = load("res://scenes/escort_wall.tscn")
+	if wall_scene == null:
+		push_warning("[MapGenerator] escort_wall.tscn not found.")
+	else:
+		var wall_offsets: Array[Vector2i] = [
+			Vector2i( 0, -2),  # north — facing the squad
+			Vector2i( 2,  0),
+			Vector2i(-2,  0),
+			Vector2i( 0,  2),
+		]
+		var walls: Array[Node2D] = []
+		for off in wall_offsets:
+			var cell: Vector2i = npc_cell + off
+			if cell.x < 1 or cell.x > map_width - 2: continue
+			if cell.y < 1 or cell.y > map_height - 2: continue
+			var wall: Node2D = wall_scene.instantiate()
+			wall.position = tile_map.map_to_local(cell)
+			add_child(wall)
+			walls.append(wall)
+		_objective_nodes["escort_walls"] = walls
+
 	# Extraction zone at the very top of the map
-	var ext_zone = _passable_cells.filter(func(c): return c.y < map_height * 0.10)
+	var ext_zone := _passable_cells.filter(func(c: Vector2i) -> bool:
+		return float(c.y) / map_height < 0.10
+	)
 	if ext_zone.is_empty():
-		ext_zone = _passable_cells.filter(func(c): return c.y < map_height * 0.20)
+		ext_zone = _passable_cells.filter(func(c: Vector2i) -> bool:
+			return float(c.y) / map_height < 0.20
+		)
 	if ext_zone.is_empty():
 		return
 	ext_zone.shuffle()

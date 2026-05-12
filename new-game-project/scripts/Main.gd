@@ -101,6 +101,21 @@ func _setup_objective() -> void:
 				npc.escort_killed.connect(_on_mission_fail)
 				npc.health_changed.connect(hud.update_escort_health)
 				hud.update_escort_health(npc.get_health(), npc.MAX_HEALTH)
+				hud.set_escort_targets(npc, zone)
+				npc.joined_squad.connect(hud.on_escort_joined)
+			# Any sheltering wall destroyed frees the NPC and topples the rest.
+			var walls: Variant = map_gen.get_objective_node("escort_walls")
+			if walls is Array and npc:
+				for w: Node in walls:
+					w.wall_destroyed.connect(func() -> void:
+						if is_instance_valid(npc) and npc.has_method("release"):
+							npc.release()
+						# Use queue_free() directly to avoid re-emitting wall_destroyed
+						# and triggering this lambda again (stack overflow).
+						for other: Node in walls:
+							if is_instance_valid(other):
+								other.queue_free()
+					)
 
 # ---------------------------------------------------------------------------
 func _on_soldier_died(_soldier) -> void:

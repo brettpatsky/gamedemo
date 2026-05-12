@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://c1escwall0001"]
+
+[ext_resource type="Script" path="res://scripts/EscortWall.gd" id="1_ew01"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ew01"]
+size = Vector2(56, 56)
+
+[node name="EscortWall" type="StaticBody2D"]
+script = ExtResource("1_ew01")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_ew01")
+
+[node name="HealthBar" type="ProgressBar" parent="."]
+offset_left = -28.0
+offset_top = -44.0
+offset_right = 28.0
+offset_bottom = -34.0

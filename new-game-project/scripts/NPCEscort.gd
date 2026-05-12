@@ -9,6 +9,7 @@ extends CharacterBody2D
 
 signal health_changed(current_hp: int, max_hp: int)
 signal escort_killed
+signal joined_squad
 
 const MAX_HEALTH: int   = 5
 const MOVE_SPEED: float = 80.0
@@ -16,6 +17,8 @@ const FOLLOW_DIST: float = 55.0
 
 var _health: int = MAX_HEALTH
 var _dead:   bool = false
+var _freed:  bool = false   # set true once a sheltering wall is destroyed
+var _joined: bool = false   # set true the first time we reach the squad
 
 @onready var nav_agent:  NavigationAgent2D = $NavigationAgent2D
 @onready var health_bar: ProgressBar       = $HealthBar
@@ -32,17 +35,32 @@ func _ready() -> void:
 func _physics_process(_delta: float) -> void:
 	if _dead:
 		return
+	# Stay put inside the shelter until the squad blows open a wall.
+	if not _freed:
+		velocity = Vector2.ZERO
+		move_and_slide()
+		return
 	var squad_ctrl: Node = get_tree().get_first_node_in_group("squad_controller")
 	if squad_ctrl and squad_ctrl.has_method("get_centroid"):
 		var centroid: Vector2 = squad_ctrl.get_centroid()
-		if global_position.distance_to(centroid) > FOLLOW_DIST:
+		var dist: float = global_position.distance_to(centroid)
+		if dist > FOLLOW_DIST:
 			nav_agent.target_position = centroid
+		elif not _joined:
+			_joined = true
+			joined_squad.emit()
 	if not nav_agent.is_navigation_finished():
 		var next: Vector2 = nav_agent.get_next_path_position()
 		velocity = (next - global_position).normalized() * MOVE_SPEED
 	else:
 		velocity = Vector2.ZERO
 	move_and_slide()
+
+func release() -> void:
+	_freed = true
+
+func has_joined_squad() -> bool:
+	return _joined
 
 func get_health() -> int:
 	return _health

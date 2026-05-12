@@ -1,36 +1,28 @@
 extends CanvasLayer
 
 # =============================================================================
-# HUD.gd
-# Attached to the root CanvasLayer of scenes/hud.tscn.
+# HUD.gd  —  attached to the root CanvasLayer of scenes/hud.tscn.
 #
-# Expected scene tree (built in scenes/hud.tscn):
-#   HUD (CanvasLayer)
-#   ├── BottomPanel (PanelContainer, anchored bottom-full, ~90px tall)
-#   │   └── MarginContainer
-#   │       └── HBoxContainer
-#   │           ├── WeaponGrid (GridContainer, columns=2)
-#   │           │   ├── WeaponButton0 (Button + child TextureRect "Icon", Label "Ammo")
-#   │           │   ├── WeaponButton1
-#   │           │   ├── WeaponButton2
-#   │           │   └── WeaponButton3
-#   │           ├── VSeparator
-#   │           ├── FormationGrid (GridContainer, columns=3)
-#   │           │   ├── FormationButton0 (Button + Label child "Name")
-#   │           │   ├── FormationButton1
-#   │           │   ├── FormationButton2
-#   │           │   ├── FormationButton3
-#   │           │   ├── FormationButton4
-#   │           │   └── FormationButtonReserved (disabled "?" Button)
-#   │           ├── VSeparator2
-#   │           ├── GroupSection (VBoxContainer)
-#   │           │   ├── GroupButton (Button — cycle group count)
-#   │           │   └── GroupButtonsContainer (HBoxContainer — per-group select)
-#   │           └── StatsSection (VBoxContainer)
-#   │               ├── Soldiers (Label)
-#   │               └── Score (Label)
-#   ├── MissionLabel (Label, hidden)
-#   └── RetryButton (Button, hidden)
+# All nodes live in the scene file; nothing is created in code.
+#
+# Direct CanvasLayer children:
+#   MissionLabel      Label     (centre-anchored, hidden until mission ends)
+#   RetryButton       Button    (centre-anchored, hidden until mission ends)
+#   NextLevelButton   Button    (centre-anchored, hidden until mission won)
+#   MainMenuButton    Button    (top-right anchor)
+#   ObjectiveLabel    Label     (top-left)
+#   EscortLabel       Label     (top-left, hidden unless escort mission)
+#   EnemyLabel        Label     (top-left)
+#   ArrowNode         Control   (full-rect, MOUSE_FILTER_IGNORE — draws enemy arrow)
+#   BottomPanel       PanelContainer (bottom-full anchor, ~90 px)
+#     └─ MarginContainer
+#          └─ HBoxContainer (centred)
+#               ├─ WeaponGrid        GridContainer(2 cols)
+#               ├─ FormationGrid     GridContainer(3 cols)
+#               ├─ GroupSection      VBoxContainer
+#               │    ├─ GroupButton
+#               │    └─ GroupButtonsContainer
+#               └─ SoldierStatsGrid  GridContainer(3 cols)
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -56,21 +48,23 @@ const FORMATION_NAMES := ["2×3", "3×2", "1×6", "6×1", "★"]
 @onready var _formation_grid:     GridContainer = $BottomPanel/MarginContainer/HBoxContainer/FormationGrid
 @onready var _group_cycle_button: Button        = $BottomPanel/MarginContainer/HBoxContainer/GroupSection/GroupButton
 @onready var _group_buttons_container: HBoxContainer = $BottomPanel/MarginContainer/HBoxContainer/GroupSection/GroupButtonsContainer
-
 @onready var _soldier_stats_grid: GridContainer = $BottomPanel/MarginContainer/HBoxContainer/SoldierStatsGrid
+
+@onready var _next_level_button: Button  = $NextLevelButton
+@onready var _menu_button:       Button  = $MainMenuButton
+@onready var _objective_label:   Label   = $ObjectiveLabel
+@onready var _escort_label:      Label   = $EscortLabel
+@onready var _enemy_label:       Label   = $EnemyLabel
+@onready var _arrow_node:        Control = $ArrowNode
+
 var _soldier_stat_labels: Array[Label] = []
-
-# ---------------------------------------------------------------------------
-# Programmatic UI (created in _ready)
-# ---------------------------------------------------------------------------
-var _objective_label: Label
-var _escort_label:    Label
-var _enemy_label:     Label
-var _next_level_button: Button
-var _menu_button:     Button
-var _arrow_node:      Control
-
 var _group_buttons: Array[Button] = []
+
+# Level-3 arrow targets. Arrow points to the NPC until it joins the squad,
+# then redirects to the extraction zone.
+var _escort_npc: Node2D = null
+var _extraction_zone: Node2D = null
+var _escort_joined: bool = false
 
 # Caches for current state — used to render highlights & ammo
 var _current_weapon:    int = 0
@@ -90,57 +84,14 @@ func _ready() -> void:
 	_wire_group_section()
 	_wire_soldier_stats_grid()
 
-	# Mission-end UI (hidden until win/lose)
-	var center := get_viewport().get_visible_rect().size / 2.0
-	mission_label.position = center + Vector2(-120.0, -30.0)
-	retry_button.position  = center + Vector2(-60.0,  20.0)
-	retry_button.text                = "Retry Level"
-	retry_button.custom_minimum_size = Vector2(120.0, 40.0)
-	mission_label.hide()
-	retry_button.hide()
 	retry_button.pressed.connect(_on_retry_pressed)
-
-	# NEXT LEVEL button (hidden until mission complete)
-	_next_level_button = Button.new()
-	_next_level_button.text = "NEXT LEVEL"
-	_next_level_button.custom_minimum_size = Vector2(120.0, 40.0)
-	_next_level_button.position = center + Vector2(-60.0, 60.0)
-	_next_level_button.hide()
-	add_child(_next_level_button)
 	_next_level_button.pressed.connect(_on_next_level_pressed)
-
-	# Top-right main-menu button
-	var vp := get_viewport().get_visible_rect().size
-	_menu_button = Button.new()
-	_menu_button.text = "MAIN MENU"
-	_menu_button.position = Vector2(vp.x - 120, 10)
-	add_child(_menu_button)
 	_menu_button.pressed.connect(_on_menu_pressed)
+	_arrow_node.draw.connect(_draw_enemy_arrow)
 
-	# Objective / escort / enemy-count labels (top-left)
-	_objective_label = Label.new()
-	_objective_label.position = Vector2(10, 10)
-	add_child(_objective_label)
-
-	_escort_label = Label.new()
-	_escort_label.position = Vector2(10, 40)
-	_escort_label.hide()
-	add_child(_escort_label)
-
-	_enemy_label = Label.new()
-	_enemy_label.position = Vector2(10, 40)
-	add_child(_enemy_label)
 	GameManager.enemies_changed.connect(update_enemy_count)
 	update_enemy_count(GameManager.enemies_alive)
 
-	# Off-screen-enemy arrow
-	_arrow_node = Control.new()
-	_arrow_node.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_arrow_node.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_arrow_node)
-	_arrow_node.draw.connect(_draw_enemy_arrow)
-
-	# Paint initial states.
 	_refresh_weapon_highlight()
 	_refresh_formation_highlight()
 
@@ -244,13 +195,22 @@ func show_objective(level: int) -> void:
 	_objective_label.text = texts.get(level, "")
 	if level == 3:
 		_escort_label.show()
-		_enemy_label.position = Vector2(10, 70)
 	else:
 		_escort_label.hide()
-		_enemy_label.position = Vector2(10, 40)
 
 func update_escort_health(current: int, max_hp: int) -> void:
 	_escort_label.text = "ESCORT HEALTH: %d / %d" % [current, max_hp]
+
+# Main.gd calls these once the level-3 nodes exist so the arrow knows where
+# to point. Until the NPC joins the squad the arrow tracks the NPC; after
+# that it tracks the extraction zone.
+func set_escort_targets(npc: Node2D, zone: Node2D) -> void:
+	_escort_npc = npc
+	_extraction_zone = zone
+	_escort_joined = false
+
+func on_escort_joined() -> void:
+	_escort_joined = true
 
 func show_mission_result(message: String, colour: Color, show_next: bool = false) -> void:
 	mission_label.text = message
@@ -362,26 +322,38 @@ func _refresh_soldier_stats() -> void:
 		lbl.modulate = Color(1, 1, 1, 1) if alive else Color(0.6, 0.6, 0.6, 1)
 
 func _draw_enemy_arrow() -> void:
-	if GameManager.enemies_alive <= 0 or GameManager.enemies_alive >= 10:
-		return
 	var squad_ctrl: Node = get_tree().get_first_node_in_group("squad_controller")
 	if squad_ctrl == null:
 		return
 	var origin: Vector2 = squad_ctrl.get_centroid()
-	var enemies := get_tree().get_nodes_in_group("enemies")
-	if enemies.is_empty():
+
+	var target: Node2D = null
+	if GameManager.current_level == 3:
+		# Point at the trapped/unfreed NPC, then at the extraction zone once
+		# they've linked up with the squad.
+		if _escort_joined:
+			target = _extraction_zone if is_instance_valid(_extraction_zone) else null
+		else:
+			target = _escort_npc if is_instance_valid(_escort_npc) else null
+	else:
+		# Original behaviour — surface the arrow once the map is nearly clear
+		# so it acts as a closest-enemy finder rather than constant clutter.
+		if GameManager.enemies_alive <= 0 or GameManager.enemies_alive >= 10:
+			return
+		var enemies := get_tree().get_nodes_in_group("enemies")
+		var best_dist := INF
+		for e in enemies:
+			if e is Node2D:
+				var d := origin.distance_to(e.global_position)
+				if d < best_dist:
+					best_dist = d
+					target = e
+
+	if target == null:
 		return
-	var closest: Node2D = null
-	var best_dist := INF
-	for e in enemies:
-		if e is Node2D:
-			var d := origin.distance_to(e.global_position)
-			if d < best_dist:
-				best_dist = d
-				closest = e
-	if closest == null:
-		return
-	var dir  := (closest.global_position - origin).normalized()
+
+	var dist: float = origin.distance_to(target.global_position)
+	var dir  := (target.global_position - origin).normalized()
 	var perp := Vector2(-dir.y, dir.x)
 	var screen_size := get_viewport().get_visible_rect().size
 	var center := Vector2(screen_size.x * 0.5, screen_size.y - 100.0)
@@ -392,7 +364,7 @@ func _draw_enemy_arrow() -> void:
 	_arrow_node.draw_string(
 		ThemeDB.fallback_font,
 		center + dir * 50.0,
-		"%d tiles" % int(best_dist / 64.0),
+		"%d tiles" % int(dist / 64.0),
 		HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color.WHITE
 	)
 

@@ -7,7 +7,7 @@ extends StaticBody2D
 
 signal structure_destroyed
 
-const MAX_HEALTH: int = 45
+const MAX_HEALTH: int = 90
 
 var _health: int
 
