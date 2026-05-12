@@ -9,9 +9,15 @@ extends CharacterBody2D
 @export var move_speed:   float = 105.0
 @export var max_health:   int   = 2
 @export var sight_range:  float = 480.0
-@export var attack_range: float = 320.0
+@export var attack_range: float = 280.0
 @export var score_value:  int   = 10
 @export var aim_jitter:   float = 0.22  # radians of random spread per shot
+@export var bullet_speed:    float = 500.0
+# Enemy bullet range is intentionally capped below every soldier weapon range
+# (smallest squad range is soldier_2's pistol at 350) so the squad always
+# out-ranges the enemy.
+@export var bullet_distance: float = 300.0
+@export var bullet_damage:   int   = 1
 
 @export var bullet_scene: PackedScene
 
@@ -176,6 +182,9 @@ func _fire(direction: Vector2) -> void:
 	get_viewport().add_child(b)
 	b.global_position = global_position
 	b.initialise(aim, self)
+	# Cap travel distance so enemy weapons are strictly out-ranged by the squad.
+	if b.has_method("set_stats"):
+		b.set_stats(bullet_damage, bullet_speed, bullet_distance, Color.ORANGE_RED)
 
 func _play_anim(anim_name: String) -> void:
 	if sprite.animation != anim_name:

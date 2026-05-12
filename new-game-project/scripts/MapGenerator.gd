@@ -219,16 +219,22 @@ func _draw() -> void:
 # enemies can squeeze past the edge of the navigable area.
 # ---------------------------------------------------------------------------
 func _spawn_boundary_walls() -> void:
-	var rect: Rect2     = get_map_rect()
-	var origin: Vector2 = to_local(rect.position)
-	var w: float        = rect.size.x
-	var h: float        = rect.size.y
-	const T := 64.0   # wall thickness
-	# Top, bottom, left, right — built individually to avoid typed-for issues.
-	_add_wall(origin.x - T,     origin.y - T,  w + T * 2.0, T)
-	_add_wall(origin.x - T,     origin.y + h,  w + T * 2.0, T)
-	_add_wall(origin.x - T,     origin.y,      T,           h)
-	_add_wall(origin.x + w,     origin.y,      T,           h)
+	# Compute the *actual* visible-tile bounds. map_to_local() returns the
+	# CENTRE of a tile, so the visible corners are half a tile beyond the
+	# corner tiles' centres.
+	var half_tile: Vector2 = Vector2(tile_size, tile_size) * 0.5
+	var tl_local: Vector2 = tile_map.position + tile_map.map_to_local(Vector2i(0, 0)) - half_tile
+	var br_local: Vector2 = tile_map.position + tile_map.map_to_local(Vector2i(map_width - 1, map_height - 1)) + half_tile
+	var w: float = br_local.x - tl_local.x
+	var h: float = br_local.y - tl_local.y
+	const T := 256.0   # very thick walls so RVO avoidance can't tunnel past
+
+	# Top, bottom, left, right.  Walls sit OUTSIDE the visible tile region,
+	# their inner face touching the visible edge exactly.
+	_add_wall(tl_local.x - T, tl_local.y - T, w + T * 2.0, T)             # top
+	_add_wall(tl_local.x - T, br_local.y,     w + T * 2.0, T)             # bottom
+	_add_wall(tl_local.x - T, tl_local.y,     T,           h)             # left
+	_add_wall(br_local.x,     tl_local.y,     T,           h)             # right
 
 func _add_wall(x: float, y: float, w: float, h: float) -> void:
 	var body  := StaticBody2D.new()
@@ -344,10 +350,13 @@ func _bake_navigation() -> void:
 	# -------------------------------------------------------------------------
 	var nav_poly := NavigationPolygon.new()
 
-	# Get world-space corners of the full map via to_global so any node
-	# offsets are accounted for automatically.
-	var top_left  := tile_map.to_global(tile_map.map_to_local(Vector2i(0, 0)))
-	var bot_right := tile_map.to_global(tile_map.map_to_local(Vector2i(map_width, map_height)))
+	# Use the exact corners of the first and last visible tiles. map_to_local()
+	# returns tile CENTRES, so add half a tile to reach the actual outer
+	# corners. Then inset slightly so the path stays a hair inside the walls.
+	var half_tile := Vector2(tile_size, tile_size) * 0.5
+	var inset     := Vector2(tile_size, tile_size) * 0.25
+	var top_left  := tile_map.to_global(tile_map.map_to_local(Vector2i(0, 0)) - half_tile + inset)
+	var bot_right := tile_map.to_global(tile_map.map_to_local(Vector2i(map_width - 1, map_height - 1)) + half_tile - inset)
 
 	# NavigationPolygon works in the NavigationRegion2D's LOCAL space.
 	# Convert from global → nav_region local.

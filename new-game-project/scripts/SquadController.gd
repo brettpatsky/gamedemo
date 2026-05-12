@@ -1,8 +1,9 @@
 extends Node2D
 
 const MAX_SOLDIERS  := 8
-const AUTO_INTERVAL := 0.12   # seconds between rifle bursts while right mouse is held
-const FIRE_EXTENSION := 100.0  # pixels beyond click; pushes bullet convergence point far out of view
+# Per-weapon resend cadence for held-fire. Pistols stream slower than rifle.
+const AUTO_INTERVAL_RIFLE  := 0.07
+const AUTO_INTERVAL_PISTOL := 0.2
 
 const FORMATION_NAMES := ["2×3", "3×2", "1×6", "6×1", "Pentagram"]
 
@@ -66,7 +67,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				if event.pressed:
 					_issue_fire_order(_screen_to_world(event.position))
 					_right_held = true
-					_auto_timer = AUTO_INTERVAL
+					_auto_timer = _current_auto_interval()
 				else:
 					_right_held = false
 				get_viewport().set_input_as_handled()
@@ -102,8 +103,14 @@ func _process(delta: float) -> void:
 		return
 	_auto_timer -= delta
 	if _auto_timer <= 0.0:
-		_auto_timer = AUTO_INTERVAL
+		_auto_timer = _current_auto_interval()
 		_issue_fire_order(_screen_to_world(get_viewport().get_mouse_position()))
+
+# Resend cadence depends on which weapon the active group is holding.
+func _current_auto_interval() -> float:
+	if _active_weapon() == 0:   # WeaponType.PISTOL
+		return AUTO_INTERVAL_PISTOL
+	return AUTO_INTERVAL_RIFLE
 
 # =============================================================================
 # PUBLIC API
@@ -188,11 +195,12 @@ func _issue_fire_order(target: Vector2) -> void:
 			bomber.arm_as_bomb(target)
 		return
 
-	var centroid := _group_centroid(group)
-	var ext_vec  := target - centroid
-	var extended := target + ext_vec.normalized() * FIRE_EXTENSION if ext_vec.length_squared() > 0.0 else target
+	# Every soldier aims directly at the click point. Previously the squad
+	# fired toward a single extended convergence point past the click, which
+	# meant off-centre soldiers' bullet lines didn't actually pass through the
+	# click — they missed.
 	for soldier in group:
-		soldier.fire_at(target, extended)
+		soldier.fire_at(target, target)
 	_update_ammo_hud()
 	_update_weapon_hud()   # weapon may auto-switch when ammo runs out
 
@@ -318,14 +326,6 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 
 func _on_soldier_died(soldier: Node2D) -> void:
 	remove_soldier(soldier)
-
-func _group_centroid(group: Array) -> Vector2:
-	if group.is_empty():
-		return Vector2.ZERO
-	var sum := Vector2.ZERO
-	for s in group:
-		sum += s.global_position
-	return sum / float(group.size())
 
 # Returns the average position of the active group (falls back to all soldiers).
 # CameraController uses this to softly follow the group.

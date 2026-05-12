@@ -65,9 +65,10 @@ func get_rifle_ammo() -> int:
 func get_grenade_ammo() -> int:
 	return _grenade_ammo
 
-# Returns true for the weapon that fires continuously while the button is held.
+# Returns true for any weapon that fires continuously while the button is held.
+# Pistol and rifle both stream fire — the per-weapon SHOOT_COOLDOWN governs pace.
 func is_continuous_fire() -> bool:
-	return _weapon == WeaponType.AUTO
+	return _weapon == WeaponType.AUTO or _weapon == WeaponType.PISTOL
 
 # ---------------------------------------------------------------------------
 # Squad group membership (set by SquadController)
