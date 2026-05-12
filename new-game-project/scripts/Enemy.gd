@@ -6,11 +6,12 @@
 # =============================================================================
 extends CharacterBody2D
 
-@export var move_speed:   float = 82.5
+@export var move_speed:   float = 105.0
 @export var max_health:   int   = 2
-@export var sight_range:  float = 200.0
-@export var attack_range: float = 120.0
+@export var sight_range:  float = 480.0
+@export var attack_range: float = 320.0
 @export var score_value:  int   = 10
+@export var aim_jitter:   float = 0.22  # radians of random spread per shot
 
 @export var bullet_scene: PackedScene
 
@@ -28,10 +29,13 @@ var _patrol_timer:     float  = 0.0
 var _shoot_cooldown:   float  = 0.0
 var _patrol_dest:      Vector2
 
-const PATROL_INTERVAL  := 3.0
-const SHOOT_COOLDOWN   := 0.8
+const PATROL_INTERVAL    := 3.0
+const SHOOT_COOLDOWN     := 0.45
+const TARGET_SCAN_PERIOD := 0.4   # seconds between active soldier searches
 
 const WATER_SPEED_MULT := 0.4
+
+var _scan_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -52,6 +56,14 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	_shoot_cooldown = max(_shoot_cooldown - delta, 0.0)
+	_scan_timer     = max(_scan_timer     - delta, 0.0)
+
+	# Periodically actively look for soldiers within sight_range. This lets
+	# enemies engage from much farther than the DetectionArea radius would
+	# allow, and re-acquire a target if one slipped away unnoticed.
+	if _scan_timer <= 0.0 and _state != State.DEAD:
+		_scan_timer = TARGET_SCAN_PERIOD
+		_acquire_target()
 
 	match _state:
 		State.PATROL:  _tick_patrol(delta)
@@ -77,8 +89,13 @@ func _tick_alert(_delta: float) -> void:
 	if dist <= attack_range:
 		_state = State.ATTACK
 		return
+	# Close the distance while opportunistically shooting if roughly in range.
 	nav_agent.target_position = _target.global_position
 	_move_toward_nav_target()
+	if dist <= attack_range * 1.4 and _shoot_cooldown <= 0.0:
+		var dir: Vector2 = (_target.global_position - global_position).normalized()
+		_fire(dir)
+		_shoot_cooldown = SHOOT_COOLDOWN
 
 func _tick_attack(_delta: float) -> void:
 	if not is_instance_valid(_target):
@@ -96,6 +113,24 @@ func _tick_attack(_delta: float) -> void:
 	var dist: float = global_position.distance_to(_target.global_position)
 	if dist > attack_range * 1.2:
 		_state = State.ALERT
+
+# Active soldier search — picks the closest live soldier within sight_range.
+# Runs at TARGET_SCAN_PERIOD so the enemy can engage well before the
+# physics-based DetectionArea would notice an approach.
+func _acquire_target() -> void:
+	var best: Node2D = null
+	var best_d := sight_range
+	for s in get_tree().get_nodes_in_group("soldiers"):
+		if not is_instance_valid(s):
+			continue
+		var d: float = (s as Node2D).global_position.distance_to(global_position)
+		if d < best_d:
+			best_d = d
+			best   = s
+	if best != null:
+		_target = best
+		if _state == State.PATROL:
+			_state = State.ALERT
 
 # =============================================================================
 # PRIVATE HELPERS
@@ -133,10 +168,14 @@ func _set_new_patrol_dest() -> void:
 func _fire(direction: Vector2) -> void:
 	if bullet_scene == null:
 		return
+	# Apply a small random spread so enemies miss occasionally instead of
+	# laser-aiming every shot.
+	var spread := randf_range(-aim_jitter, aim_jitter)
+	var aim    := direction.rotated(spread)
 	var b: Node2D = bullet_scene.instantiate()
 	get_viewport().add_child(b)
 	b.global_position = global_position
-	b.initialise(direction, self)
+	b.initialise(aim, self)
 
 func _play_anim(anim_name: String) -> void:
 	if sprite.animation != anim_name:

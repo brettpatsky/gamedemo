@@ -1,7 +1,7 @@
 extends CharacterBody2D
 
 @export var is_female: bool = false
-@export var move_speed: float = 157.5
+@export var move_speed: float = 215.0
 @export var max_health: int = 3
 
 @export var male_frames:   SpriteFrames
@@ -112,11 +112,15 @@ const BOMB_FX_TIME        := 0.35    # explosion visual lifetime (sec)
 var _bomb_target: Vector2 = Vector2.ZERO
 
 # Stuck detection — if the soldier barely moves for STUCK_CHECK_INTERVAL seconds
-# while in MOVING state, nudge them to escape corners of rocks/trees.
-const STUCK_CHECK_INTERVAL := 1.5
-const STUCK_THRESHOLD      := 10.0   # pixels
+# while in MOVING state, sidestep to escape corners of rocks/trees.
+const STUCK_CHECK_INTERVAL := 0.5
+const STUCK_THRESHOLD      := 8.0    # pixels
+const UNSTICK_DURATION     := 0.35   # seconds spent sidestepping
+const UNSTICK_SPEED_MULT   := 1.0
 var _stuck_timer:     float   = STUCK_CHECK_INTERVAL
 var _stuck_check_pos: Vector2 = Vector2.ZERO
+var _unstick_timer:   float   = 0.0
+var _unstick_dir:     Vector2 = Vector2.ZERO
 
 func _ready() -> void:
 	_health = max_health
@@ -134,6 +138,15 @@ func _ready() -> void:
 	# Tighter arrival tolerance so soldiers don't overshoot and circle back.
 	nav_agent.path_desired_distance  = 4.0
 	nav_agent.target_desired_distance = 12.0
+	# Enable RVO avoidance so soldiers steer around static obstacles (trees/rocks)
+	# instead of grinding into them. Radius matches soldier collision footprint.
+	nav_agent.radius             = 18.0
+	nav_agent.avoidance_enabled  = true
+	nav_agent.neighbor_distance  = 120.0
+	nav_agent.max_neighbors      = 8
+	nav_agent.max_speed          = move_speed
+	if not nav_agent.velocity_computed.is_connected(_on_safe_velocity):
+		nav_agent.velocity_computed.connect(_on_safe_velocity)
 
 	# Soldiers live on layer 2; their mask only covers layer 1 (environment/tilemap).
 	# This lets soldiers pass through each other instead of physically blocking,
@@ -232,20 +245,30 @@ func _do_move(delta: float) -> void:
 		footstep.stop()
 		return
 
+	_unstick_timer = max(_unstick_timer - delta, 0.0)
+
 	# Stuck detection: if we haven't moved STUCK_THRESHOLD pixels in the last
-	# STUCK_CHECK_INTERVAL seconds, nudge and re-path to escape rocks/trees.
+	# STUCK_CHECK_INTERVAL seconds, sidestep to escape corners of rocks/trees.
 	_stuck_timer -= delta
 	if _stuck_timer <= 0.0:
 		_stuck_timer = STUCK_CHECK_INTERVAL
-		if global_position.distance_to(_stuck_check_pos) < STUCK_THRESHOLD:
+		if _unstick_timer <= 0.0 and global_position.distance_to(_stuck_check_pos) < STUCK_THRESHOLD:
 			_try_unstick()
 		_stuck_check_pos = global_position
 
 	var next_pos:  Vector2 = nav_agent.get_next_path_position()
 	var direction: Vector2 = (next_pos - global_position).normalized()
 
-	velocity = direction * move_speed * _water_speed_mult()
-	move_and_slide()
+	# While sidestepping, blend the unstick direction in to escape the obstacle.
+	if _unstick_timer > 0.0:
+		direction = (direction + _unstick_dir * 1.5).normalized()
+
+	var desired := direction * move_speed * _water_speed_mult()
+	if nav_agent.avoidance_enabled:
+		nav_agent.set_velocity(desired)
+	else:
+		velocity = desired
+		move_and_slide()
 
 	if _shoot_flash_timer <= 0.0:
 		_play_walk_anim(direction)
@@ -253,10 +276,23 @@ func _do_move(delta: float) -> void:
 	if not footstep.playing:
 		footstep.play()
 
+func _on_safe_velocity(safe_velocity: Vector2) -> void:
+	velocity = safe_velocity
+	move_and_slide()
+
 func _try_unstick() -> void:
-	# Re-path to a jittered version of the target so the nav mesh finds an
-	# alternate route around the obstacle without teleporting the body.
-	var nudge := Vector2(randf_range(-24.0, 24.0), randf_range(-24.0, 24.0))
+	# Pick a perpendicular sidestep direction relative to the current heading.
+	# Alternating sign across nudges so we don't keep retrying the same side.
+	var heading: Vector2 = (nav_agent.get_next_path_position() - global_position).normalized()
+	if heading == Vector2.ZERO:
+		heading = (_move_target - global_position).normalized()
+	var perp := Vector2(-heading.y, heading.x)
+	if randf() < 0.5:
+		perp = -perp
+	_unstick_dir   = perp
+	_unstick_timer = UNSTICK_DURATION
+	# Also nudge the nav target slightly so the path re-evaluates on the next tick.
+	var nudge := perp * 32.0
 	nav_agent.target_position = _move_target + nudge
 
 func _do_bomb_charge(_delta: float) -> void:

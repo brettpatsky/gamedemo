@@ -26,13 +26,15 @@ const ObstacleClass = preload("res://scripts/Obstacle.gd")
 @export var dirt_threshold:  float = 0.55
 @export var rock_threshold:  float = 0.80
 @export var noise_frequency: float = 0.05
+@export var elevation_frequency: float = 0.025  # lower freq = bigger hill/valley features
 @export var enemy_density:   int   = 30
 @export var tile_config:     TileConfig
 
 @onready var tile_map:   TileMapLayer       = $TileMapLayer
 @onready var nav_region: NavigationRegion2D = $NavigationRegion2D
 
-var _noise := FastNoiseLite.new()
+var _noise           := FastNoiseLite.new()
+var _elevation_noise := FastNoiseLite.new()
 var _passable_cells: Array[Vector2i] = []
 
 # References to level-specific nodes set during generate(); read by Main.gd.
@@ -54,7 +56,9 @@ func generate(seed_value: int = 0) -> void:
 	_enemy_exclusion_radius = 0
 	_configure_noise(seed_value)
 	_fill_tiles()
+	_spawn_topography()
 	_spawn_obstacles()
+	_spawn_boundary_walls()
 	_bake_navigation()
 	# Escort mission picks the NPC spot first so enemy spawn can avoid it.
 	match GameManager.current_level:
@@ -114,6 +118,14 @@ func _configure_noise(seed_value: int) -> void:
 	_noise.fractal_type    = FastNoiseLite.FRACTAL_FBM
 	_noise.fractal_octaves = 4
 
+	# Separate noise field for elevation so hills/valleys don't align with
+	# water/grass/rock biome boundaries.
+	_elevation_noise.seed            = seed_value + 9173
+	_elevation_noise.noise_type      = FastNoiseLite.TYPE_PERLIN
+	_elevation_noise.frequency       = elevation_frequency
+	_elevation_noise.fractal_type    = FastNoiseLite.FRACTAL_FBM
+	_elevation_noise.fractal_octaves = 3
+
 func _fill_tiles() -> void:
 	_passable_cells.clear()
 	tile_map.clear()
@@ -137,6 +149,99 @@ func _fill_tiles() -> void:
 
 			tile_map.set_cell(Vector2i(x, y), tile_config.tileset_source_id, atlas_coord)
 
+# ---------------------------------------------------------------------------
+# Visual hill/valley overlay. Samples a low-frequency elevation noise across
+# every tile and draws a single batched polygon layer of tinted shading per
+# tile — bright/warm for hills, dark/cool for valleys. Purely cosmetic; no
+# gameplay effect. Implemented as one child Node2D so we can hand the noise
+# values into its _draw() once and let Godot handle batching.
+# ---------------------------------------------------------------------------
+func _spawn_topography() -> void:
+	var overlay := Node2D.new()
+	overlay.name = "TopographyOverlay"
+	overlay.z_index = -10   # behind sprites, above tilemap
+	overlay.set_script(_make_topography_script())
+	overlay.set("tile_size",  tile_size)
+	overlay.set("map_width",  map_width)
+	overlay.set("map_height", map_height)
+	# Snapshot the elevation field as a flat float array so _draw() doesn't
+	# touch the FastNoiseLite each frame.
+	var samples := PackedFloat32Array()
+	samples.resize(map_width * map_height)
+	for x in map_width:
+		for y in map_height:
+			samples[x * map_height + y] = _elevation_noise.get_noise_2d(float(x), float(y))
+	overlay.set("elevation", samples)
+	overlay.position = tile_map.position
+	add_child(overlay)
+
+# Inline script for the overlay node — drawn as a single batched mesh of
+# tile-sized quads tinted by elevation.
+func _make_topography_script() -> GDScript:
+	var src := """
+extends Node2D
+
+var tile_size:  int   = 64
+var map_width:  int   = 0
+var map_height: int   = 0
+var elevation:  PackedFloat32Array
+
+const HILL_THRESHOLD   := 0.18
+const VALLEY_THRESHOLD := -0.18
+const HILL_TINT   := Color(1.0, 0.92, 0.65, 0.16)   # warm highlight
+const VALLEY_TINT := Color(0.10, 0.18, 0.32, 0.22)  # cool shadow
+
+func _draw() -> void:
+	if map_width == 0 or map_height == 0:
+		return
+	var ts: float = float(tile_size)
+	for x in map_width:
+		for y in map_height:
+			var e: float = elevation[x * map_height + y]
+			if e > HILL_THRESHOLD:
+				var t: float = clampf((e - HILL_THRESHOLD) / (1.0 - HILL_THRESHOLD), 0.0, 1.0)
+				var col: Color = HILL_TINT
+				col.a = HILL_TINT.a * t
+				draw_rect(Rect2(x * ts, y * ts, ts, ts), col)
+			elif e < VALLEY_THRESHOLD:
+				var t: float = clampf((VALLEY_THRESHOLD - e) / (1.0 + VALLEY_THRESHOLD), 0.0, 1.0)
+				var col: Color = VALLEY_TINT
+				col.a = VALLEY_TINT.a * t
+				draw_rect(Rect2(x * ts, y * ts, ts, ts), col)
+"""
+	var gs := GDScript.new()
+	gs.source_code = src
+	gs.reload()
+	return gs
+
+# ---------------------------------------------------------------------------
+# Invisible static walls around the map perimeter so neither soldiers nor
+# enemies can squeeze past the edge of the navigable area.
+# ---------------------------------------------------------------------------
+func _spawn_boundary_walls() -> void:
+	var rect: Rect2     = get_map_rect()
+	var origin: Vector2 = to_local(rect.position)
+	var w: float        = rect.size.x
+	var h: float        = rect.size.y
+	const T := 64.0   # wall thickness
+	# Top, bottom, left, right — built individually to avoid typed-for issues.
+	_add_wall(origin.x - T,     origin.y - T,  w + T * 2.0, T)
+	_add_wall(origin.x - T,     origin.y + h,  w + T * 2.0, T)
+	_add_wall(origin.x - T,     origin.y,      T,           h)
+	_add_wall(origin.x + w,     origin.y,      T,           h)
+
+func _add_wall(x: float, y: float, w: float, h: float) -> void:
+	var body  := StaticBody2D.new()
+	body.collision_layer = 1
+	body.collision_mask  = 0
+	var shape := RectangleShape2D.new()
+	shape.size = Vector2(w, h)
+	var col   := CollisionShape2D.new()
+	col.shape    = shape
+	col.position = Vector2(x + w * 0.5, y + h * 0.5)
+	body.add_child(col)
+	add_child(body)
+
 func _spawn_obstacles() -> void:
 	# Keep the player centre-spawn zone and map border clear of obstacles.
 	var eligible = _passable_cells.filter(func(c: Vector2i) -> bool:
@@ -148,16 +253,82 @@ func _spawn_obstacles() -> void:
 	)
 	eligible.shuffle()
 
+	# Total obstacle budget — half trees (clustered into forests), half rocks
+	# (scattered individually).
 	var total := mini(int(eligible.size() * 0.08), 220)
 	@warning_ignore("integer_division")
-	var tree_count := total / 2
-	for i in total:
-		var cell: Vector2i = eligible[i]
-		var obs: StaticBody2D = ObstacleClass.new()
-		obs.is_tree = i < tree_count
-		obs.position = tile_map.map_to_local(cell)
-		add_child(obs)
+	var tree_budget := total / 2
+	var rock_budget := total - tree_budget
+
+	# Fast lookup for eligibility / dedup as we flood-fill forest clusters.
+	var eligible_set: Dictionary = {}
+	for c in eligible:
+		eligible_set[c] = true
+
+	# ---- Trees: spawn in clusters of 5+ tiles using a randomised flood-fill ----
+	const MIN_CLUSTER_SIZE := 5
+	const MAX_CLUSTER_SIZE := 14
+	var trees_placed := 0
+	var seed_idx     := 0
+	while trees_placed < tree_budget and seed_idx < eligible.size():
+		var seed_cell: Vector2i = eligible[seed_idx]
+		seed_idx += 1
+		if not eligible_set.has(seed_cell):
+			continue
+
+		# Target size — random within range, but no smaller than the minimum or
+		# what's left in the budget.
+		var remaining := tree_budget - trees_placed
+		var target_size: int = mini(randi_range(MIN_CLUSTER_SIZE, MAX_CLUSTER_SIZE), remaining)
+		if target_size < MIN_CLUSTER_SIZE and remaining >= MIN_CLUSTER_SIZE:
+			target_size = MIN_CLUSTER_SIZE
+
+		var cluster: Array[Vector2i] = []
+		var frontier: Array[Vector2i] = [seed_cell]
+		while cluster.size() < target_size and not frontier.is_empty():
+			# Pop a random frontier cell so clusters grow organically rather than in a line.
+			var pick: int = randi() % frontier.size()
+			var cell: Vector2i = frontier[pick]
+			frontier.remove_at(pick)
+			if not eligible_set.has(cell):
+				continue
+			eligible_set.erase(cell)
+			cluster.append(cell)
+			# 4-neighbour expansion.
+			for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var n: Vector2i = cell + off
+				if eligible_set.has(n):
+					frontier.append(n)
+
+		# If the seed was isolated and we couldn't reach the minimum, skip it.
+		if cluster.size() < MIN_CLUSTER_SIZE:
+			# Return cells to the pool so rocks can still use them.
+			for c in cluster:
+				eligible_set[c] = true
+			continue
+
+		for cell in cluster:
+			var tree: StaticBody2D = ObstacleClass.new()
+			tree.is_tree  = true
+			tree.position = tile_map.map_to_local(cell)
+			add_child(tree)
+			_passable_cells.erase(cell)
+			trees_placed += 1
+
+	# ---- Rocks: scatter individually across whatever's left. ----
+	var rocks_placed := 0
+	for cell in eligible:
+		if rocks_placed >= rock_budget:
+			break
+		if not eligible_set.has(cell):
+			continue
+		eligible_set.erase(cell)
+		var rock: StaticBody2D = ObstacleClass.new()
+		rock.is_tree  = false
+		rock.position = tile_map.map_to_local(cell)
+		add_child(rock)
 		_passable_cells.erase(cell)
+		rocks_placed += 1
 
 func _bake_navigation() -> void:
 	# -------------------------------------------------------------------------
