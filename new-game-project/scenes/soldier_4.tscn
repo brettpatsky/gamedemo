@@ -6,9 +6,9 @@
 is_female = false
 max_health = 5
 pistol_damage = 2
-pistol_speed = 500.0
-pistol_distance = 400.0
+pistol_speed = 650.0
+pistol_distance = 800.0
 rifle_damage = 2
-rifle_speed = 650.0
-rifle_distance = 500.0
+rifle_speed = 850.0
+rifle_distance = 1000.0
 bullet_color = Color(1, 0.55, 0.1, 1)

@@ -16,13 +16,13 @@ extends CharacterBody2D
 # ---------------------------------------------------------------------------
 @export_group("Pistol")
 @export var pistol_damage:   int   = 1
-@export var pistol_speed:    float = 600.0
-@export var pistol_distance: float = 1500.0
+@export var pistol_speed:    float = 700.0
+@export var pistol_distance: float = 2000.0
 
 @export_group("Rifle")
 @export var rifle_damage:   int   = 1
-@export var rifle_speed:    float = 700.0
-@export var rifle_distance: float = 1200.0
+@export var rifle_speed:    float = 900.0
+@export var rifle_distance: float = 2000.0
 
 @export_group("Projectile")
 @export var bullet_color: Color = Color.YELLOW
@@ -109,7 +109,7 @@ const BOMB_SPEED_MULT     := 1.6     # multiplier applied to move_speed while ar
 const BOMB_RADIUS         := 200.0   # explosion damage radius (px)
 const BOMB_DAMAGE         := 15      # huge damage — instakill most things
 const BOMB_ARRIVAL_DIST   := 24.0    # px from target to trigger detonation
-const BOMB_FX_TIME        := 0.35    # explosion visual lifetime (sec)
+const BOMB_FX_TIME        := 0.65    # explosion visual lifetime (sec)
 var _bomb_target: Vector2 = Vector2.ZERO
 
 # Stuck detection — if the soldier barely moves for STUCK_CHECK_INTERVAL seconds

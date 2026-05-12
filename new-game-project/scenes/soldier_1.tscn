@@ -4,11 +4,11 @@
 
 [node name="Soldier1" unique_id=1556563602 instance=ExtResource("1_base")]
 is_female = true
-max_health = 7
-pistol_damage = 3
+max_health = 8
+pistol_damage = 4
 pistol_speed = 900.0
-pistol_distance = 800.0
-rifle_damage = 4
+pistol_distance = 1800.0
+rifle_damage = 5
 rifle_speed = 1100.0
-rifle_distance = 1300.0
+rifle_distance = 2500.0
 bullet_color = Color(1, 0.95, 0.2, 1)

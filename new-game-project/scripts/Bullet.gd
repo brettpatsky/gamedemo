@@ -58,7 +58,8 @@ func _ready() -> void:
 	area_entered.connect(_on_area_entered)
 	body_entered.connect(_on_body_entered)
 	$VisibleOnScreenNotifier2D.screen_exited.connect(queue_free)
-	# Soldiers are on layer 2; include it so bullets can still hit them.
+	# Layer 2 = soldiers/enemies; layer 1 = environment obstacles and walls.
+	set_collision_mask_value(1, true)
 	set_collision_mask_value(2, true)
 	queue_redraw()
 
@@ -79,6 +80,10 @@ func _process(delta: float) -> void:
 # Hit detection — Area2D overlap with CharacterBody2D or another Area2D
 # ---------------------------------------------------------------------------
 func _on_body_entered(body: Node2D) -> void:
+	# Obstacles and boundary walls are StaticBody2D — stop bullet on contact.
+	if body is StaticBody2D:
+		queue_free()
+		return
 	_try_hit(body)
 
 func _on_area_entered(area: Area2D) -> void:
