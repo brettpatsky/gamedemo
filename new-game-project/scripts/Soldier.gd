@@ -406,6 +406,9 @@ func _water_speed_mult() -> float:
 	return 1.0
 
 func _die() -> void:
+	# Soldiers are not removed from the field — they remain as a "downed" body
+	# that can be brought back via the revive potion. queue_free is intentionally
+	# not called here.
 	_state = State.DEAD
 	velocity = Vector2.ZERO
 	_play_anim("die")
@@ -416,12 +419,28 @@ func _die() -> void:
 
 	GameManager.on_soldier_died(self)
 
-	if not sprite.sprite_frames.get_animation_loop("die"):
-		await sprite.animation_finished
-	else:
-		await get_tree().create_timer(1.0).timeout
+	# Dim & desaturate the sprite so a downed soldier reads as inactive at a
+	# glance. Hide the health bar — it will reappear on revive.
+	sprite.modulate = Color(0.55, 0.55, 0.6, 0.75)
+	health_bar.hide()
 
-	queue_free()
+# Brings a downed soldier back to full health. Called by SquadController when
+# the player spends a revive potion.
+func revive() -> void:
+	if _state != State.DEAD:
+		return
+	_health = max_health
+	health_bar.value = _health
+	health_bar.show()
+	sprite.modulate = Color.WHITE
+	$CollisionShape2D.set_deferred("disabled", false)
+	_state = State.IDLE
+	_play_anim("idle")
+	GameManager.on_soldier_revived(self)
+
+# Lets callers check whether this soldier is a revivable corpse.
+func is_downed() -> bool:
+	return _state == State.DEAD
 
 # =============================================================================
 # PRIVATE — ANIMATION

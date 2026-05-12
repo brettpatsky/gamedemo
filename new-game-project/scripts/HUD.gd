@@ -60,6 +60,10 @@ const FORMATION_NAMES := ["2×3", "3×2", "1×6", "6×1", "★"]
 var _soldier_stat_labels: Array[Label] = []
 var _group_buttons: Array[Button] = []
 
+# Revive UI — references resolved during _wire_formation_buttons().
+var _revive_button:        Button = null
+var _revive_counter_label: Label  = null
+
 # Level-3 arrow targets. Arrow points to the NPC until it joins the squad,
 # then redirects to the extraction zone.
 var _escort_npc: Node2D = null
@@ -91,6 +95,9 @@ func _ready() -> void:
 
 	GameManager.enemies_changed.connect(update_enemy_count)
 	update_enemy_count(GameManager.enemies_alive)
+	# Toggle the revive button on/off as soldiers fall and come back.
+	GameManager.soldier_died.connect(func(_s: Node) -> void: _refresh_revive_button())
+	GameManager.soldier_revived.connect(func(_s: Node) -> void: _refresh_revive_button())
 
 	_refresh_weapon_highlight()
 	_refresh_formation_highlight()
@@ -127,11 +134,33 @@ func _wire_formation_buttons() -> void:
 		var idx := i
 		btn.pressed.connect(func() -> void: _on_formation_pressed(idx))
 
-	# Reserved (disabled) placeholder — 6th cell of the 3×2 grid.
-	var reserved := _formation_grid.get_node_or_null("FormationButtonReserved") as Button
-	if reserved:
-		reserved.disabled = true
-		reserved.tooltip_text = "Reserved for future use"
+	# Revive button — repurposes the 6th cell of the formation grid. The "?"
+	# label is replaced with a heart icon and a potion counter. Click to bring
+	# back the most recently downed soldier (one potion per mission).
+	_revive_button = _formation_grid.get_node_or_null("FormationButtonReserved") as Button
+	if _revive_button:
+		_revive_button.disabled = false
+		_revive_button.toggle_mode = false
+		_revive_button.text = "♥"
+		_revive_button.tooltip_text = "Revive last fallen soldier"
+		# Add a small counter label inside the button (same pattern as ammo).
+		var counter := Label.new()
+		counter.name = "Counter"
+		counter.text = str(GameManager.revive_potions)
+		counter.add_theme_font_size_override("font_size", 10)
+		counter.anchor_left   = 0.5
+		counter.anchor_right  = 0.5
+		counter.anchor_top    = 1.0
+		counter.anchor_bottom = 1.0
+		counter.offset_left   = -20.0
+		counter.offset_right  =  20.0
+		counter.offset_top    = -14.0
+		counter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_revive_button.add_child(counter)
+		_revive_counter_label = counter
+		_revive_button.pressed.connect(_on_revive_pressed)
+		GameManager.revives_changed.connect(_on_revives_changed)
+		_refresh_revive_button()
 
 func _wire_group_section() -> void:
 	if _group_cycle_button:
@@ -383,3 +412,28 @@ func _on_next_level_pressed() -> void:
 
 func _on_menu_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+
+# =============================================================================
+# REVIVE BUTTON
+# =============================================================================
+func _on_revive_pressed() -> void:
+	var squad_ctrl: Node = get_tree().get_first_node_in_group("squad_controller")
+	if squad_ctrl and squad_ctrl.has_method("try_revive"):
+		squad_ctrl.try_revive()
+	_refresh_revive_button()
+
+func _on_revives_changed(_remaining: int) -> void:
+	_refresh_revive_button()
+
+# Updates the counter label and enabled state. The button is disabled when
+# either no potions remain OR there is no downed soldier to revive.
+func _refresh_revive_button() -> void:
+	if _revive_button == null:
+		return
+	if _revive_counter_label:
+		_revive_counter_label.text = str(GameManager.revive_potions)
+	var squad_ctrl: Node = get_tree().get_first_node_in_group("squad_controller")
+	var can: bool = GameManager.revive_potions > 0
+	if can and squad_ctrl and squad_ctrl.has_method("can_revive"):
+		can = squad_ctrl.can_revive()
+	_revive_button.disabled = not can

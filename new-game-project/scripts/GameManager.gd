@@ -10,10 +10,12 @@ extends Node
 # Signals — other nodes subscribe to these instead of polling each frame
 # ---------------------------------------------------------------------------
 signal soldier_died(soldier)          # emitted when any soldier is killed
+signal soldier_revived(soldier)       # emitted when a downed soldier is restored
 signal all_soldiers_dead              # mission-fail condition
 signal mission_complete               # all enemies cleared
 signal score_changed(new_score)       # UI listens here
 signal enemies_changed(count)         # count enemies remaining
+signal revives_changed(remaining)     # HUD updates the revive-potion counter
 
 
 # ---------------------------------------------------------------------------
@@ -23,6 +25,11 @@ var score: int = 0
 var soldiers_alive: int = 0           # decremented by Soldier.die()
 var enemies_alive: int = 0            # decremented by Enemy.die()
 var current_level: int = 1            # persists across scene reloads (1–3)
+# Each mission starts with this many revive potions. The HUD shows the count
+# in the formation grid's "?" slot; clicking it brings the last downed soldier
+# back to full health.
+const REVIVES_PER_MISSION := 1
+var revive_potions: int = REVIVES_PER_MISSION
 
 # Per-soldier accuracy stats (indexed by spawn slot 0..squad_size-1).
 # Persisted in GameManager so dead soldiers' final totals survive after queue_free.
@@ -38,6 +45,8 @@ func reset_squad_stats(size: int) -> void:
 		soldier_shots[i] = 0
 		soldier_hits[i]  = 0
 		soldier_alive[i] = true
+	revive_potions = REVIVES_PER_MISSION
+	emit_signal("revives_changed", revive_potions)
 
 func record_shot(slot: int) -> void:
 	if slot >= 0 and slot < soldier_shots.size():
@@ -75,8 +84,28 @@ func on_soldier_died(soldier) -> void:
 		if slot >= 0 and slot < soldier_alive.size():
 			soldier_alive[slot] = false
 	emit_signal("soldier_died", soldier)
-	if soldiers_alive <= 0:
+	# Only fail the mission if there are no revives left — otherwise the
+	# player can still bring someone back.
+	if soldiers_alive <= 0 and revive_potions <= 0:
 		emit_signal("all_soldiers_dead")
+
+# Mirror of on_soldier_died — used when a downed soldier is restored to full
+# health via the revive button.
+func on_soldier_revived(soldier) -> void:
+	soldiers_alive += 1
+	if soldier and "slot_index" in soldier:
+		var slot: int = soldier.slot_index
+		if slot >= 0 and slot < soldier_alive.size():
+			soldier_alive[slot] = true
+	emit_signal("soldier_revived", soldier)
+
+# Returns true if a potion was available and consumed.
+func use_revive() -> bool:
+	if revive_potions <= 0:
+		return false
+	revive_potions -= 1
+	emit_signal("revives_changed", revive_potions)
+	return true
 
 # ---------------------------------------------------------------------------
 # Call when an enemy dies; checks win condition for Level 1 only.

@@ -30,6 +30,8 @@ const FORMATIONS: Array = [
 var _formation_index: int = 1   # 3×2 on every mission start
 
 var soldiers: Array[Node2D] = []
+# Downed (revivable) soldiers, most-recent first. Populated by remove_soldier.
+var _downed:  Array[Node2D] = []
 
 @onready var camera: Camera2D = get_tree().get_first_node_in_group("main_camera") as Camera2D
 
@@ -130,11 +132,41 @@ func add_soldier(soldier: Node2D) -> void:
 
 func remove_soldier(soldier: Node2D) -> void:
 	soldiers.erase(soldier)
+	# Keep a reference for revive — the soldier is still on the field. Newest
+	# downed soldier goes to the front of the list so try_revive() restores the
+	# most recent casualty first.
+	if soldier != null and not _downed.has(soldier):
+		_downed.push_front(soldier)
 	# If the active group is now empty, switch to the first non-empty group.
 	if _active_group_soldiers().is_empty() and not soldiers.is_empty():
 		_active_group = soldiers[0].group_id
 	_update_group_hud()
 	_update_ammo_hud()   # SACRIFICE 'ammo' depends on remaining squad size
+
+# Spends one revive potion to bring the most recently downed soldier back.
+# Returns true on success. Called by the HUD revive button.
+func try_revive() -> bool:
+	# Prune any references that have somehow been freed.
+	_downed = _downed.filter(func(n: Node2D) -> bool: return is_instance_valid(n))
+	if _downed.is_empty():
+		return false
+	if not GameManager.use_revive():
+		return false
+	var target: Node2D = _downed.pop_front()
+	if target.has_method("revive"):
+		target.revive()
+	target.group_id = _active_group
+	if not soldiers.has(target):
+		soldiers.append(target)
+	_update_group_hud()
+	_update_ammo_hud()
+	return true
+
+# Returns true iff a revive potion + at least one downed soldier are available.
+func can_revive() -> bool:
+	return GameManager.revive_potions > 0 and not _downed.filter(
+		func(n: Node2D) -> bool: return is_instance_valid(n)
+	).is_empty()
 
 # =============================================================================
 # PRIVATE — GROUP MANAGEMENT

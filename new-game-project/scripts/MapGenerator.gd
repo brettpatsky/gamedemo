@@ -103,8 +103,13 @@ func get_spawn_positions(count: int) -> Array[Vector2]:
 	return result
 
 func get_map_rect() -> Rect2:
-	var tl := tile_map.to_global(tile_map.map_to_local(Vector2i(0, 0)))
-	var br := tile_map.to_global(tile_map.map_to_local(Vector2i(map_width, map_height)))
+	# map_to_local returns the CENTRE of a tile, so the actual visible bounds
+	# are half a tile past the corner tiles' centres. Using corners (not
+	# centres) makes the camera clamp exactly to the visible map edge — no
+	# stray empty viewport strip on the right/bottom.
+	var half_tile := Vector2(tile_size, tile_size) * 0.5
+	var tl := tile_map.to_global(tile_map.map_to_local(Vector2i(0, 0)) - half_tile)
+	var br := tile_map.to_global(tile_map.map_to_local(Vector2i(map_width - 1, map_height - 1)) + half_tile)
 	return Rect2(tl, br - tl)
 
 # =============================================================================
