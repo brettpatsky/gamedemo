@@ -140,7 +140,15 @@ func remove_soldier(soldier: Node2D) -> void:
 	# If the active group is now empty, switch to the first non-empty group.
 	if _active_group_soldiers().is_empty() and not soldiers.is_empty():
 		_active_group = soldiers[0].group_id
+	# SACRIFICE refuses to fire when only one soldier remains (it would empty
+	# the squad). Force any survivor still holding SACRIFICE onto the pistol so
+	# they can actually shoot.
+	if soldiers.size() == 1:
+		var last: Node2D = soldiers[0]
+		if last.has_method("get_weapon") and last.get_weapon() == 3 and last.has_method("set_weapon"):
+			last.set_weapon(0)
 	_update_group_hud()
+	_update_weapon_hud()
 	_update_ammo_hud()   # SACRIFICE 'ammo' depends on remaining squad size
 
 # Spends one revive potion to bring the most recently downed soldier back.
@@ -186,6 +194,10 @@ func _cycle_group_count() -> void:
 func _select_group(group: int) -> void:
 	if group >= _num_groups:
 		return
+	# Reject empty groups — selecting one would leave the squad un-orderable
+	# and the HUD weapon/ammo readouts stuck on stale state.
+	if not _alive_group_ids().has(group):
+		return
 	_active_group = group
 	# Halt soldiers in groups that are no longer active so they hold position
 	# and don't collide with the newly commanded group.
@@ -201,6 +213,15 @@ func _active_group_soldiers() -> Array:
 		if s.group_id == _active_group:
 			result.append(s)
 	return result
+
+# Returns the set of group_ids that still contain at least one alive soldier.
+# Used by the HUD to grey-out buttons for groups that have been wiped.
+func _alive_group_ids() -> Array:
+	var ids: Array = []
+	for s in soldiers:
+		if not ids.has(s.group_id):
+			ids.append(s.group_id)
+	return ids
 
 # =============================================================================
 # PRIVATE — ORDER LOGIC
@@ -307,7 +328,7 @@ func _update_ammo_hud() -> void:
 func _update_group_hud() -> void:
 	var hud: Node = get_tree().get_first_node_in_group("hud")
 	if hud and hud.has_method("update_group_info"):
-		hud.update_group_info(_active_group + 1, _num_groups)
+		hud.update_group_info(_active_group + 1, _num_groups, _alive_group_ids())
 
 func _is_continuous_weapon() -> bool:
 	var group := _active_group_soldiers()

@@ -210,10 +210,10 @@ func update_formation(formation: Variant) -> void:
 			_current_formation = idx
 	_refresh_formation_highlight()
 
-func update_group_info(active: int, total: int) -> void:
+func update_group_info(active: int, total: int, alive_groups: Array = []) -> void:
 	if _group_cycle_button:
 		_group_cycle_button.text = "GRP %d/%d" % [active, total]
-	_rebuild_group_buttons(total, active - 1)
+	_rebuild_group_buttons(total, active - 1, alive_groups)
 
 func show_objective(level: int) -> void:
 	var texts := {
@@ -282,7 +282,7 @@ func _refresh_ammo_labels() -> void:
 		if ammo_lbl:
 			ammo_lbl.text = ammo_per_weapon[i]
 
-func _rebuild_group_buttons(num_groups: int, active: int) -> void:
+func _rebuild_group_buttons(num_groups: int, active: int, alive_groups: Array = []) -> void:
 	for b in _group_buttons:
 		b.queue_free()
 	_group_buttons.clear()
@@ -293,6 +293,12 @@ func _rebuild_group_buttons(num_groups: int, active: int) -> void:
 		var btn := Button.new()
 		btn.text = str(i + 1)
 		btn.custom_minimum_size = Vector2(28, 28)
+		# Empty groups (whole squad wiped) are not selectable — grey them out so
+		# the player can see at a glance which groups still have soldiers.
+		var is_alive: bool = alive_groups.is_empty() or alive_groups.has(i)
+		if not is_alive:
+			btn.disabled = true
+			btn.modulate = Color(0.5, 0.5, 0.5, 0.6)
 		if i == active:
 			btn.add_theme_color_override("font_color", Color.YELLOW)
 		var idx := i

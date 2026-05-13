@@ -278,6 +278,11 @@ func _do_move(delta: float) -> void:
 		footstep.play()
 
 func _on_safe_velocity(safe_velocity: Vector2) -> void:
+	# Avoidance computes velocities asynchronously — a callback queued during
+	# MOVING can fire after the soldier has died or armed as a bomb. Without
+	# this guard the corpse keeps drifting from a stale safe-velocity result.
+	if _state != State.MOVING:
+		return
 	velocity = safe_velocity
 	move_and_slide()
 

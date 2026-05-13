@@ -88,7 +88,8 @@ func _tick_patrol(delta: float) -> void:
 	_move_toward_nav_target()
 
 func _tick_alert(_delta: float) -> void:
-	if not is_instance_valid(_target):
+	if not _is_target_engageable():
+		_target = null
 		_state = State.PATROL
 		return
 	var dist: float = global_position.distance_to(_target.global_position)
@@ -104,7 +105,8 @@ func _tick_alert(_delta: float) -> void:
 		_shoot_cooldown = SHOOT_COOLDOWN
 
 func _tick_attack(_delta: float) -> void:
-	if not is_instance_valid(_target):
+	if not _is_target_engageable():
+		_target = null
 		_state = State.PATROL
 		return
 	velocity = Vector2.ZERO
@@ -127,7 +129,7 @@ func _acquire_target() -> void:
 	var best: Node2D = null
 	var best_d := sight_range
 	for s in get_tree().get_nodes_in_group("soldiers"):
-		if not is_instance_valid(s):
+		if not _is_soldier_engageable(s):
 			continue
 		var d: float = (s as Node2D).global_position.distance_to(global_position)
 		if d < best_d:
@@ -137,6 +139,18 @@ func _acquire_target() -> void:
 		_target = best
 		if _state == State.PATROL:
 			_state = State.ALERT
+
+# Downed soldiers are still in the "soldiers" group (they remain on the field
+# so they can be revived), but enemies must not target them.
+func _is_soldier_engageable(s: Node) -> bool:
+	if not is_instance_valid(s):
+		return false
+	if s.has_method("is_downed") and s.is_downed():
+		return false
+	return true
+
+func _is_target_engageable() -> bool:
+	return _is_soldier_engageable(_target)
 
 # =============================================================================
 # PRIVATE HELPERS
@@ -229,6 +243,8 @@ func _die() -> void:
 
 func _on_body_entered_detection(body: Node2D) -> void:
 	if body.is_in_group("soldiers") and _state != State.DEAD:
+		if not _is_soldier_engageable(body):
+			return
 		_target = body
 		_state  = State.ALERT
 
