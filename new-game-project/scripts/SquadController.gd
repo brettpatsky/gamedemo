@@ -160,12 +160,21 @@ func try_revive() -> bool:
 		return false
 	if not GameManager.use_revive():
 		return false
+	# Capture the group's current weapon BEFORE adding the revived soldier so
+	# _active_weapon() reads from already-alive squad members, not the returnee.
+	var grp_weapon := _active_weapon()
+	if grp_weapon < 0:
+		grp_weapon = 0  # default to pistol if the whole group was wiped
 	var target: Node2D = _downed.pop_front()
 	if target.has_method("revive"):
 		target.revive()
 	target.group_id = _active_group
 	if not soldiers.has(target):
 		soldiers.append(target)
+	# Sync weapon so the returning soldier doesn't wield whatever they had when
+	# they died — the player may have switched weapons since then.
+	if target.has_method("set_weapon"):
+		target.set_weapon(grp_weapon)
 	_update_group_hud()
 	_update_ammo_hud()
 	return true

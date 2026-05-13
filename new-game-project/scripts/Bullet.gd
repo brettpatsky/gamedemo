@@ -80,9 +80,13 @@ func _process(delta: float) -> void:
 # Hit detection — Area2D overlap with CharacterBody2D or another Area2D
 # ---------------------------------------------------------------------------
 func _on_body_entered(body: Node2D) -> void:
-	# Obstacles and boundary walls are StaticBody2D — stop bullet on contact.
 	if body is StaticBody2D:
-		queue_free()
+		# Damageable structures (e.g. FortifiedStructure) absorb the bullet
+		# and take damage. Plain walls and obstacles just stop it.
+		if body.has_method("take_damage"):
+			_try_hit(body)
+		else:
+			queue_free()
 		return
 	_try_hit(body)
 
