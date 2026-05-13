@@ -88,6 +88,13 @@ func _setup_objective() -> void:
 				var remaining := [structures.size()]
 				for s: Node in structures:
 					s.structure_destroyed.connect(func() -> void:
+						# Snapshot position while the node is still alive (queue_free
+						# runs at end of frame, so global_position is valid here).
+						var spawn_pos: Vector2 = (s as Node2D).global_position
+						# Defer spawn one frame so the structure's StaticBody2D
+						# collision is fully removed before enemies are placed —
+						# enemies spawned inside a live collision box get stuck.
+						call_deferred("_spawn_enemies_at", spawn_pos, 5)
 						remaining[0] -= 1
 						if remaining[0] <= 0:
 							_on_mission_win()
@@ -118,6 +125,24 @@ func _setup_objective() -> void:
 					)
 
 # ---------------------------------------------------------------------------
+func _spawn_enemies_at(world_pos: Vector2, count: int) -> void:
+	var enemy_scene: PackedScene = load("res://scenes/enemy.tscn")
+	if enemy_scene == null:
+		enemy_scene = load("res://scenes/Enemy.tscn")
+	if enemy_scene == null:
+		push_warning("[Main] Enemy scene not found — skipping reinforcement spawn.")
+		return
+	for i in count:
+		var enemy: Node2D = enemy_scene.instantiate()
+		# Spread evenly in a ring around the destroyed structure.
+		# 96px radius keeps every enemy clear of the 80x80 structure collision box.
+		var angle := (TAU / count) * i
+		var offset := Vector2(cos(angle), sin(angle)) * 96.0
+		_subviewport.add_child(enemy)
+		enemy.global_position = world_pos + offset
+	GameManager.enemies_alive += count
+	GameManager.enemies_changed.emit(GameManager.enemies_alive)
+
 func _on_soldier_died(_soldier) -> void:
 	hud.update_soldier_count(GameManager.soldiers_alive)
 

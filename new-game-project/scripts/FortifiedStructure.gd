@@ -10,6 +10,7 @@ signal structure_destroyed
 const MAX_HEALTH: int = 90
 
 var _health: int
+var _destroyed: bool = false
 
 @onready var health_bar: ProgressBar = $HealthBar
 
@@ -21,10 +22,13 @@ func _ready() -> void:
 	queue_redraw()
 
 func take_damage(amount: int) -> void:
+	if _destroyed:
+		return
 	_health -= amount
 	health_bar.value = _health
 	queue_redraw()
 	if _health <= 0:
+		_destroyed = true
 		_destroy()
 
 func _destroy() -> void:
