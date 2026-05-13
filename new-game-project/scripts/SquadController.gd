@@ -181,14 +181,35 @@ func can_revive() -> bool:
 # =============================================================================
 
 func _cycle_group_count() -> void:
+	# Snapshot the true centre of the whole squad before reassigning group ids,
+	# so the spread / formation targets are anchored to the current position.
+	var center := Vector2.ZERO
+	if not soldiers.is_empty():
+		for s in soldiers:
+			center += (s as Node2D).global_position
+		center /= float(soldiers.size())
+
 	_num_groups   = (_num_groups % MAX_GROUPS) + 1
 	_active_group = 0
 	# Redistribute soldiers round-robin across all groups.
 	for i in soldiers.size():
 		soldiers[i].group_id = i % _num_groups
-	# Stop all soldiers — their old formation targets are stale after a resplit.
 	for s in soldiers:
 		s.halt()
+
+	if _num_groups > 1:
+		# Fan each group out 1 tile (64 px) from the squad centre so the split
+		# is immediately obvious at a glance.
+		for g in _num_groups:
+			var angle := (TAU / _num_groups) * g - PI / 2.0
+			var spread := Vector2(cos(angle), sin(angle)) * 64.0
+			var grp := _soldiers_in_group(g)
+			for i in grp.size():
+				grp[i].move_to(center + spread + _formation_offset(i, grp.size()))
+	else:
+		# Collapsing back to one group — automatically reform into formation so
+		# soldiers regroup without the player having to issue a manual move.
+		_issue_move_order(center)
 	_update_group_hud()
 
 func _select_group(group: int) -> void:
@@ -206,13 +227,17 @@ func _select_group(group: int) -> void:
 			s.halt()
 	_update_group_hud()
 
-# Returns only the soldiers that belong to the currently active group.
-func _active_group_soldiers() -> Array:
+# Returns soldiers in any specific group (0-indexed group id).
+func _soldiers_in_group(g: int) -> Array:
 	var result: Array = []
 	for s in soldiers:
-		if s.group_id == _active_group:
+		if s.group_id == g:
 			result.append(s)
 	return result
+
+# Returns only the soldiers that belong to the currently active group.
+func _active_group_soldiers() -> Array:
+	return _soldiers_in_group(_active_group)
 
 # Returns the set of group_ids that still contain at least one alive soldier.
 # Used by the HUD to grey-out buttons for groups that have been wiped.
@@ -382,8 +407,15 @@ func _on_soldier_died(soldier: Node2D) -> void:
 
 # Returns the average position of the active group (falls back to all soldiers).
 # CameraController uses this to softly follow the group.
+# Soldiers armed as walking bombs are excluded so the camera stays on the
+# rest of the squad rather than chasing the bomber across the map.
 func get_centroid() -> Vector2:
 	var src := _active_group_soldiers()
+	src = src.filter(func(s: Node2D) -> bool:
+		return not (s.has_method("is_armed_bomb") and s.is_armed_bomb()))
+	if src.is_empty():
+		src = soldiers.filter(func(s: Node2D) -> bool:
+			return not (s.has_method("is_armed_bomb") and s.is_armed_bomb()))
 	if src.is_empty():
 		src = soldiers
 	if src.is_empty():

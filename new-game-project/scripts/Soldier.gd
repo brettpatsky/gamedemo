@@ -123,6 +123,13 @@ var _stuck_check_pos: Vector2 = Vector2.ZERO
 var _unstick_timer:   float   = 0.0
 var _unstick_dir:     Vector2 = Vector2.ZERO
 
+# Catch-up sprint — triggered when the unstick manoeuvre finishes so the
+# soldier can rejoin the group without the group having to stop.
+const CATCHUP_SPEED_MULT := 1.75
+const CATCHUP_DURATION   := 2.0
+var _catchup_timer:   float = 0.0
+var _was_unsticking:  bool  = false
+
 func _ready() -> void:
 	_health = max_health
 
@@ -195,6 +202,8 @@ func halt() -> void:
 		return
 	nav_agent.target_position = global_position
 	velocity = Vector2.ZERO
+	_catchup_timer  = 0.0
+	_was_unsticking = false
 	_state = State.IDLE
 
 func fire_at(target: Vector2, bullet_aim: Vector2 = Vector2.ZERO) -> void:
@@ -244,6 +253,8 @@ func _do_move(delta: float) -> void:
 		_state = State.IDLE
 		_play_anim("idle")
 		footstep.stop()
+		_catchup_timer  = 0.0
+		_was_unsticking = false
 		return
 
 	_unstick_timer = max(_unstick_timer - delta, 0.0)
@@ -257,15 +268,25 @@ func _do_move(delta: float) -> void:
 			_try_unstick()
 		_stuck_check_pos = global_position
 
+	# Catch-up sprint: when the unstick sidestepping finishes, sprint briefly
+	# so the soldier rejoins the group without forcing the group to stop.
+	var is_unsticking := _unstick_timer > 0.0
+	if _was_unsticking and not is_unsticking:
+		_catchup_timer = CATCHUP_DURATION
+	_was_unsticking = is_unsticking
+	_catchup_timer  = max(_catchup_timer - delta, 0.0)
+	var speed_mult  := CATCHUP_SPEED_MULT if _catchup_timer > 0.0 else 1.0
+
 	var next_pos:  Vector2 = nav_agent.get_next_path_position()
 	var direction: Vector2 = (next_pos - global_position).normalized()
 
 	# While sidestepping, blend the unstick direction in to escape the obstacle.
-	if _unstick_timer > 0.0:
+	if is_unsticking:
 		direction = (direction + _unstick_dir * 1.5).normalized()
 
-	var desired := direction * move_speed * _water_speed_mult()
+	var desired := direction * move_speed * _water_speed_mult() * speed_mult
 	if nav_agent.avoidance_enabled:
+		nav_agent.max_speed = move_speed * speed_mult
 		nav_agent.set_velocity(desired)
 	else:
 		velocity = desired
@@ -455,6 +476,11 @@ func _on_die_anim_finished() -> void:
 # Lets callers check whether this soldier is a revivable corpse.
 func is_downed() -> bool:
 	return _state == State.DEAD
+
+# True while this soldier is sprinting toward a bomb target.
+# Used by SquadController to exclude them from the camera centroid.
+func is_armed_bomb() -> bool:
+	return _state == State.BOMB
 
 # =============================================================================
 # PRIVATE — ANIMATION
