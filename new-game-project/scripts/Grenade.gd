@@ -5,8 +5,8 @@ extends Node2D
 
 const SPEED            := 250.0   # pixels/sec (horizontal component)
 const ARC_HEIGHT       := 80.0    # peak height above the straight-line path (px)
-const EXPLOSION_RADIUS := 90.0    # damage radius on impact
-const DAMAGE           := 3
+const EXPLOSION_RADIUS := 110.0   # damage radius on impact
+const DAMAGE           := 12      # 4× original — compensates for one throw vs one-per-soldier
 const SHOW_TIME        := 0.3     # seconds the explosion graphic stays visible
 
 var _start_pos:   Vector2

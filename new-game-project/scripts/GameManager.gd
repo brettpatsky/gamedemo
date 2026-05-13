@@ -28,8 +28,13 @@ var current_level: int = 1            # persists across scene reloads (1–3)
 # Each mission starts with this many revive potions. The HUD shows the count
 # in the formation grid's "?" slot; clicking it brings the last downed soldier
 # back to full health.
-const REVIVES_PER_MISSION := 1
+const REVIVES_PER_MISSION  := 1
 var revive_potions: int = REVIVES_PER_MISSION
+
+# Shared rifle ammo pool — all soldiers draw from this so smaller groups
+# aren't penalised with less ammo after a split.
+const RIFLE_AMMO_POOL_MAX := 300
+var rifle_ammo_pool: int = RIFLE_AMMO_POOL_MAX
 
 # Per-soldier accuracy stats (indexed by spawn slot 0..squad_size-1).
 # Persisted in GameManager so dead soldiers' final totals survive after queue_free.
@@ -45,7 +50,8 @@ func reset_squad_stats(size: int) -> void:
 		soldier_shots[i] = 0
 		soldier_hits[i]  = 0
 		soldier_alive[i] = true
-	revive_potions = REVIVES_PER_MISSION
+	revive_potions  = REVIVES_PER_MISSION
+	rifle_ammo_pool = RIFLE_AMMO_POOL_MAX
 	emit_signal("revives_changed", revive_potions)
 
 func record_shot(slot: int) -> void:

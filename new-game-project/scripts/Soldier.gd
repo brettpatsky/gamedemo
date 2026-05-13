@@ -43,10 +43,9 @@ const _GRENADE_SCRIPT = preload("res://scripts/Grenade.gd")
 
 var _weapon: WeaponType = WeaponType.PISTOL
 
-# Ammo limits — pistol has unlimited ammo, sacrifice is limited by squad size
-const RIFLE_AMMO_MAX   := 90
+# Rifle ammo is a shared squad pool in GameManager — see GameManager.rifle_ammo_pool.
+# Grenade ammo is still per-soldier since only one soldier throws per order.
 const GRENADE_AMMO_MAX := 5
-var _rifle_ammo:   int = RIFLE_AMMO_MAX
 var _grenade_ammo: int = GRENADE_AMMO_MAX
 
 func cycle_weapon() -> void:
@@ -60,7 +59,7 @@ func get_weapon() -> WeaponType:
 	return _weapon
 
 func get_rifle_ammo() -> int:
-	return _rifle_ammo
+	return GameManager.rifle_ammo_pool
 
 func get_grenade_ammo() -> int:
 	return _grenade_ammo
@@ -373,12 +372,12 @@ func _do_shoot() -> void:
 
 	match _weapon:
 		WeaponType.AUTO:
-			if _rifle_ammo <= 0:
-				# Out of rifle ammo — fall back to pistol
+			if GameManager.rifle_ammo_pool <= 0:
+				# Shared pool exhausted — fall back to pistol
 				_weapon = WeaponType.PISTOL
 				return
-			_rifle_ammo      -= 1
-			_shoot_cooldown   = SHOOT_COOLDOWN_AUTO
+			GameManager.rifle_ammo_pool -= 1
+			_shoot_cooldown = SHOOT_COOLDOWN_AUTO
 		WeaponType.PISTOL:
 			_shoot_cooldown   = SHOOT_COOLDOWN_PISTOL
 		_:

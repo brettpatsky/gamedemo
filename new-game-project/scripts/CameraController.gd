@@ -9,7 +9,7 @@ extends Camera2D
 # zoom_min is now computed dynamically — see _get_min_zoom().
 # This exported value acts as a floor only if the map rect isn't known yet.
 @export var zoom_min:     float = 0.5
-@export var zoom_max:     float = 2.5
+@export var zoom_max:     float = 3.0
 @export var zoom_step:    float = 0.15
 @export var zoom_speed:   float = 8.0
 
@@ -39,6 +39,11 @@ func _ready() -> void:
 		position = map_gen.get_map_centre()
 	else:
 		position = _map_rect.get_center()
+
+	# Start halfway between min and max zoom so the map isn't claustrophobically
+	# close. Apply directly to zoom (not just _target_zoom) to skip the lerp snap.
+	_target_zoom = (_get_min_zoom() + zoom_max) * 0.5
+	zoom = Vector2(_target_zoom, _target_zoom)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:

@@ -282,10 +282,17 @@ func _issue_fire_order(target: Vector2) -> void:
 			bomber.arm_as_bomb(target)
 		return
 
-	# Every soldier aims directly at the click point. Previously the squad
-	# fired toward a single extended convergence point past the click, which
-	# meant off-centre soldiers' bullet lines didn't actually pass through the
-	# click — they missed.
+	# GRENADE: one throw per fire order — the closest soldier is the thrower.
+	# Firing one-per-soldier was redundant and wasted 5 ammo per click.
+	if _active_weapon() == 2:  # WeaponType.GRENADE
+		var thrower: Node2D = _closest_to(group, target)
+		if thrower != null:
+			thrower.fire_at(target, target)
+		_update_ammo_hud()
+		_update_weapon_hud()
+		return
+
+	# Every soldier aims directly at the click point.
 	for soldier in group:
 		soldier.fire_at(target, target)
 	_update_ammo_hud()
