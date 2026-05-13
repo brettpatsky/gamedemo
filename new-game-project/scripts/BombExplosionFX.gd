@@ -10,6 +10,9 @@ var _elapsed:  float = 0.0
 func start(radius: float, duration: float) -> void:
 	_radius   = radius
 	_duration = duration
+	# Explicitly enable _process — required when the script is attached via
+	# set_script() before the node enters the scene tree.
+	set_process(true)
 	queue_redraw()
 
 func _process(delta: float) -> void:

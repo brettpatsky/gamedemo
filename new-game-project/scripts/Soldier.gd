@@ -328,9 +328,11 @@ func _explode() -> void:
 				target.take_damage(BOMB_DAMAGE)
 
 	# Visual explosion: spawn a temporary Node2D that draws the blast circle.
+	# Added to the viewport directly, matching how grenades are spawned, so the
+	# node is always parented correctly regardless of scene structure.
 	var fx := Node2D.new()
 	fx.set_script(preload("res://scripts/BombExplosionFX.gd"))
-	get_tree().current_scene.add_child(fx)
+	get_viewport().add_child(fx)
 	fx.global_position = origin
 	fx.start(BOMB_RADIUS, BOMB_FX_TIME)
 
@@ -412,6 +414,9 @@ func _die() -> void:
 	_state = State.DEAD
 	velocity = Vector2.ZERO
 	_play_anim("die")
+	# Freeze on the last frame once the die animation finishes — prevents looping
+	# even if the SpriteFrames loop flag is inadvertently set.
+	sprite.animation_finished.connect(_on_die_anim_finished, CONNECT_ONE_SHOT)
 	footstep.stop()
 
 	# set_deferred prevents "can't change state while flushing queries"
@@ -437,6 +442,10 @@ func revive() -> void:
 	_state = State.IDLE
 	_play_anim("idle")
 	GameManager.on_soldier_revived(self)
+
+func _on_die_anim_finished() -> void:
+	if _state == State.DEAD:
+		sprite.stop()
 
 # Lets callers check whether this soldier is a revivable corpse.
 func is_downed() -> bool:
