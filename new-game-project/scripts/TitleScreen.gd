@@ -78,4 +78,5 @@ func _on_mission_3_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 func _on_mission_4_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/platformer.tscn")
+	GameManager.current_level = 4
+	get_tree().change_scene_to_file("res://scenes/main.tscn")

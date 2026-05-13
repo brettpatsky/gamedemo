@@ -1,0 +1,322 @@
+[gd_scene format=3 uid="uid://dmzlv3z1aaaaa"]
+
+[ext_resource type="Script" path="res://scripts/MazeLevel.gd" id="1_maze"]
+[ext_resource type="Script" path="res://scripts/MazeExit.gd" id="2_exit"]
+[ext_resource type="PackedScene" uid="uid://dmzhdgz1aaaaa" path="res://scenes/mazes/maze_hedge.tscn" id="3_hedge"]
+[ext_resource type="PackedScene" uid="uid://dmzrckz1aaaaa" path="res://scenes/mazes/maze_rock.tscn" id="4_rock"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_exit"]
+radius = 40.0
+
+[node name="Maze3" type="Node2D"]
+script = ExtResource("1_maze")
+
+[node name="Background" type="ColorRect" parent="."]
+offset_right = 960.0
+offset_bottom = 704.0
+color = Color(0.36, 0.55, 0.27, 1)
+
+[node name="NavigationRegion2D" type="NavigationRegion2D" parent="."]
+
+[node name="SpawnPoint" type="Node2D" parent="."]
+position = Vector2(96, 96)
+
+[node name="Exit" type="Area2D" parent="."]
+script = ExtResource("2_exit")
+collision_layer = 0
+collision_mask = 4294967295
+position = Vector2(928, 608)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Exit"]
+shape = SubResource("CircleShape2D_exit")
+
+[node name="H_r0_c0" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(32, 32)
+
+[node name="H_r0_c1" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(96, 32)
+
+[node name="H_r0_c2" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(160, 32)
+
+[node name="H_r0_c3" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(224, 32)
+
+[node name="H_r0_c4" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(288, 32)
+
+[node name="H_r0_c5" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(352, 32)
+
+[node name="H_r0_c6" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(416, 32)
+
+[node name="H_r0_c7" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(480, 32)
+
+[node name="H_r0_c8" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(544, 32)
+
+[node name="H_r0_c9" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(608, 32)
+
+[node name="H_r0_c10" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(672, 32)
+
+[node name="H_r0_c11" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(736, 32)
+
+[node name="H_r0_c12" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(800, 32)
+
+[node name="H_r0_c13" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(864, 32)
+
+[node name="H_r0_c14" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(928, 32)
+
+[node name="H_r1_c0" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(32, 96)
+
+[node name="H_r1_c14" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(928, 96)
+
+[node name="H_r2_c0" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(32, 160)
+
+[node name="H_r2_c2" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(160, 160)
+
+[node name="H_r2_c3" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(224, 160)
+
+[node name="H_r2_c5" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(352, 160)
+
+[node name="H_r2_c6" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(416, 160)
+
+[node name="H_r2_c7" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(480, 160)
+
+[node name="H_r2_c9" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(608, 160)
+
+[node name="H_r2_c10" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(672, 160)
+
+[node name="H_r2_c11" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(736, 160)
+
+[node name="H_r2_c14" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(928, 160)
+
+[node name="H_r3_c0" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(32, 224)
+
+[node name="H_r3_c2" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(160, 224)
+
+[node name="H_r3_c3" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(224, 224)
+
+[node name="H_r3_c7" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(480, 224)
+
+[node name="H_r3_c11" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(736, 224)
+
+[node name="H_r3_c14" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(928, 224)
+
+[node name="H_r4_c0" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(32, 288)
+
+[node name="H_r4_c5" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(352, 288)
+
+[node name="H_r4_c7" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(480, 288)
+
+[node name="H_r4_c8" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(544, 288)
+
+[node name="H_r4_c9" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(608, 288)
+
+[node name="H_r4_c10" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(672, 288)
+
+[node name="H_r4_c11" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(736, 288)
+
+[node name="H_r4_c14" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(928, 288)
+
+[node name="H_r5_c0" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(32, 352)
+
+[node name="H_r5_c2" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(160, 352)
+
+[node name="H_r5_c3" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(224, 352)
+
+[node name="H_r5_c4" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(288, 352)
+
+[node name="H_r5_c11" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(736, 352)
+
+[node name="H_r5_c14" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(928, 352)
+
+[node name="H_r6_c0" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(32, 416)
+
+[node name="H_r6_c2" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(160, 416)
+
+[node name="H_r6_c6" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(416, 416)
+
+[node name="H_r6_c7" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(480, 416)
+
+[node name="H_r6_c8" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(544, 416)
+
+[node name="H_r6_c9" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(608, 416)
+
+[node name="H_r6_c10" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(672, 416)
+
+[node name="H_r6_c14" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(928, 416)
+
+[node name="H_r7_c0" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(32, 480)
+
+[node name="H_r7_c2" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(160, 480)
+
+[node name="H_r7_c4" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(288, 480)
+
+[node name="H_r7_c5" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(352, 480)
+
+[node name="H_r7_c6" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(416, 480)
+
+[node name="H_r7_c10" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(672, 480)
+
+[node name="H_r7_c11" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(736, 480)
+
+[node name="H_r7_c12" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(800, 480)
+
+[node name="H_r7_c13" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(864, 480)
+
+[node name="H_r7_c14" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(928, 480)
+
+[node name="H_r8_c0" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(32, 544)
+
+[node name="H_r8_c6" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(416, 544)
+
+[node name="H_r8_c10" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(672, 544)
+
+[node name="H_r8_c14" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(928, 544)
+
+[node name="H_r9_c0" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(32, 608)
+
+[node name="H_r9_c2" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(160, 608)
+
+[node name="H_r9_c3" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(224, 608)
+
+[node name="H_r9_c4" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(288, 608)
+
+[node name="H_r9_c6" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(416, 608)
+
+[node name="H_r9_c8" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(544, 608)
+
+[node name="H_r9_c9" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(608, 608)
+
+[node name="H_r9_c10" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(672, 608)
+
+[node name="H_r9_c12" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(800, 608)
+
+[node name="H_r10_c0" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(32, 672)
+
+[node name="H_r10_c1" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(96, 672)
+
+[node name="H_r10_c2" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(160, 672)
+
+[node name="H_r10_c3" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(224, 672)
+
+[node name="H_r10_c4" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(288, 672)
+
+[node name="H_r10_c5" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(352, 672)
+
+[node name="H_r10_c6" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(416, 672)
+
+[node name="H_r10_c7" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(480, 672)
+
+[node name="H_r10_c8" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(544, 672)
+
+[node name="H_r10_c9" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(608, 672)
+
+[node name="H_r10_c10" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(672, 672)
+
+[node name="H_r10_c11" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(736, 672)
+
+[node name="H_r10_c12" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(800, 672)
+
+[node name="H_r10_c13" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(864, 672)
+
+[node name="H_r10_c14" parent="." instance=ExtResource("3_hedge")]
+position = Vector2(928, 672)
+
+[node name="R_r3_c5" parent="." instance=ExtResource("4_rock")]
+position = Vector2(352, 224)
+
+[node name="R_r3_c9" parent="." instance=ExtResource("4_rock")]
+position = Vector2(608, 224)
+
+[node name="R_r5_c6" parent="." instance=ExtResource("4_rock")]
+position = Vector2(416, 352)
+
+[node name="R_r7_c8" parent="." instance=ExtResource("4_rock")]
+position = Vector2(544, 480)

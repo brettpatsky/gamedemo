@@ -24,7 +24,16 @@ extends Node2D
 # bullet colour, etc. Falls back to wrapping if fewer scenes than squad_size.
 @export var soldier_scenes: Array[PackedScene]
 
-@onready var map_gen:    Node2D      = $GameViewport/SubViewport/MapGenerator
+# Level 4 hand-authored maze pool — the game picks one at random on level start.
+const MAZE_SCENES: Array[String] = [
+	"res://scenes/mazes/maze_1.tscn",
+	"res://scenes/mazes/maze_2.tscn",
+	"res://scenes/mazes/maze_3.tscn",
+	"res://scenes/mazes/maze_4.tscn",
+	"res://scenes/mazes/maze_5.tscn",
+]
+
+@onready var map_gen:    Node        = $GameViewport/SubViewport/MapGenerator
 @onready var squad_ctrl: Node2D      = $GameViewport/SubViewport/SquadController
 @onready var hud:        CanvasLayer = $HUD
 @onready var _subviewport: SubViewport = $GameViewport/SubViewport
@@ -43,31 +52,63 @@ func _ready() -> void:
 	$GameViewport.set_position(Vector2.ZERO)
 	$GameViewport.set_size(Vector2(vp_size.x, vp_size.y - HUD_HEIGHT))
 
+	# Level 4 swaps the procedural MapGenerator for a hand-authored maze scene
+	# and runs with a single soldier.
+	var effective_squad_size: int = squad_size
+	if GameManager.current_level == 4:
+		var old: Node = map_gen
+		map_gen = _spawn_random_maze_level()
+		old.remove_from_group("map_generator")
+		old.queue_free()
+		effective_squad_size = 1
+		# Camera snapshotted the old map's bounds in its own _ready (which ran
+		# before Main._ready) — re-read from the maze now.
+		var camera: Node = get_tree().get_first_node_in_group("main_camera")
+		if camera and camera.has_method("refresh_map_bounds"):
+			camera.refresh_map_bounds()
+
 	var seed_to_use: int = map_seed if map_seed != 0 else randi()
 	map_gen.generate(seed_to_use)
 
 	GameManager.soldiers_alive = 0
-	GameManager.reset_squad_stats(squad_size)
+	GameManager.reset_squad_stats(effective_squad_size)
 	_mission_ended = false
 
-	_spawn_squad()
-	squad_ctrl.snap_to_formation()
+	_spawn_squad(effective_squad_size)
+	if GameManager.current_level != 4:
+		squad_ctrl.snap_to_formation()
 
 	GameManager.soldier_died.connect(_on_soldier_died)
 	GameManager.all_soldiers_dead.connect(_on_mission_fail)
 
 	_setup_objective()
 
-	hud.update_soldier_count(squad_size)
+	hud.update_soldier_count(effective_squad_size)
 	hud.show_objective(GameManager.current_level)
 
 # ---------------------------------------------------------------------------
-func _spawn_squad() -> void:
+# Level 4 — instance a random maze under SubViewport in the slot the default
+# MapGenerator occupied. Returns the new node so the caller can reassign
+# `map_gen`. The maze scene's root script implements the MapGenerator
+# interface (generate / get_map_rect / get_map_centre / get_spawn_positions),
+# so CameraController and the rest of Main treat it identically.
+func _spawn_random_maze_level() -> Node:
+	var path: String = MAZE_SCENES[randi() % MAZE_SCENES.size()]
+	var scene: PackedScene = load(path)
+	if scene == null:
+		push_error("[Main] Failed to load maze scene: %s" % path)
+		return null
+	var node: Node = scene.instantiate()
+	_subviewport.add_child(node)
+	return node
+
+# ---------------------------------------------------------------------------
+func _spawn_squad(count: int) -> void:
 	if soldier_scenes.is_empty():
 		push_error("[Main] soldier_scenes is empty — assign at least one PackedScene in the Inspector!")
 		return
-	var positions: Array[Vector2] = map_gen.get_spawn_positions(squad_size)
-	for i in squad_size:
+	var positions: Array[Vector2] = map_gen.get_spawn_positions(count)
+	for i in count:
 		var scene: PackedScene = soldier_scenes[i % soldier_scenes.size()]
 		var soldier: Node2D = scene.instantiate()
 		soldier.slot_index = i
@@ -123,6 +164,13 @@ func _setup_objective() -> void:
 							if is_instance_valid(other):
 								other.queue_free()
 					)
+		4:
+			# Hedge-maze escape — reaching the exit Area2D wins the mission.
+			if map_gen and map_gen.has_signal("escaped"):
+				map_gen.escaped.connect(_on_mission_win)
+			var exit_zone: Node = map_gen.get_objective_node("maze_exit")
+			if exit_zone and hud.has_method("set_maze_exit"):
+				hud.set_maze_exit(exit_zone)
 
 # ---------------------------------------------------------------------------
 func _spawn_enemies_at(world_pos: Vector2, count: int) -> void:
@@ -150,7 +198,7 @@ func _on_mission_win() -> void:
 	if _mission_ended:
 		return
 	_mission_ended = true
-	if GameManager.current_level >= 3:
+	if GameManager.current_level >= 4:
 		hud.show_mission_result("YOU WIN! ALL LEVELS COMPLETE!", Color.YELLOW, false)
 	else:
 		hud.show_mission_result("MISSION COMPLETE!", Color.GREEN, true)

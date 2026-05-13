@@ -1,0 +1,23 @@
+[gd_scene format=3 uid="uid://dm0rck01aaaaa"]
+
+[ext_resource type="Texture2D" uid="uid://bls6mk50c2lay" path="res://resources/tdstilepack/Spritesheet/spritesheet_tiles.png" id="1_tiles"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rock"]
+atlas = ExtResource("1_tiles")
+region = Rect2(1480, 592, 64, 64)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_rock"]
+size = Vector2(56, 56)
+
+[node name="MazeRock" type="StaticBody2D" unique_id=1560309118]
+collision_mask = 0
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=806722931]
+texture = SubResource("AtlasTexture_rock")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1923609081]
+shape = SubResource("RectangleShape2D_rock")
+
+[node name="NavigationObstacle2D" type="NavigationObstacle2D" parent="." unique_id=1103083302]
+radius = 30.0
+avoidance_enabled = false

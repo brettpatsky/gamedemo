@@ -31,7 +31,12 @@ var _map_rect:     Rect2   = Rect2(Vector2.ZERO, Vector2(7680.0, 6400.0))
 func _ready() -> void:
 	add_to_group("main_camera")
 	_target_zoom = zoom.x
+	refresh_map_bounds()
 
+# Re-read map_rect / centre from the current "map_generator" node and reset
+# zoom + position. Called by Main.gd after it swaps the procedural MapGenerator
+# for a hand-authored maze on level 4.
+func refresh_map_bounds() -> void:
 	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
 	if map_gen and map_gen.has_method("get_map_rect"):
 		_map_rect = map_gen.get_map_rect()

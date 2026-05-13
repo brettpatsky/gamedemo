@@ -69,7 +69,7 @@ theme_override_constants/separation = 16
 layout_mode = 2
 theme_override_colors/font_color = Color(0.116, 0.571, 0.855, 1)
 theme_override_font_sizes/font_size = 48
-text = "Lua & The Lost Six"
+text = "Little Lua & The Lost Six"
 horizontal_alignment = 1
 
 [node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1899086445]
@@ -741,7 +741,7 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Misison 2 - Destroy Structure"
+text = "Misison 2 - Destroy Structures"
 
 [node name="Button3" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=882175669]
 layout_mode = 2

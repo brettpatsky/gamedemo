@@ -82,6 +82,9 @@ var _escort_npc: Node2D = null
 var _extraction_zone: Node2D = null
 var _escort_joined: bool = false
 
+# Level-4 arrow target — points at the maze exit zone.
+var _maze_exit: Node2D = null
+
 # Caches for current state — used to render highlights & ammo
 var _current_weapon:    int = 0
 var _current_formation: int = 1   # 3×2 on mission start (matches SquadController)
@@ -249,12 +252,16 @@ func show_objective(level: int) -> void:
 		1: "OBJECTIVE: Eliminate all enemies",
 		2: "OBJECTIVE: Destroy the fortified structure",
 		3: "OBJECTIVE: Escort the NPC to extraction",
+		4: "OBJECTIVE: Escape the maze",
 	}
 	_objective_label.text = texts.get(level, "")
 	if level == 3:
 		_escort_label.show()
 	else:
 		_escort_label.hide()
+	# Maze level has no enemies — hide the counter so it doesn't read "ENEMIES: 0".
+	if _enemy_label:
+		_enemy_label.visible = level != 4
 
 func update_escort_health(current: int, max_hp: int) -> void:
 	_escort_label.text = "ESCORT HEALTH: %d / %d" % [current, max_hp]
@@ -269,6 +276,11 @@ func set_escort_targets(npc: Node2D, zone: Node2D) -> void:
 
 func on_escort_joined() -> void:
 	_escort_joined = true
+
+# Main.gd calls this on level 4 so the red arrow points at the exit Area2D
+# spawned by MazeLevel.
+func set_maze_exit(exit_zone: Node2D) -> void:
+	_maze_exit = exit_zone
 
 func show_mission_result(message: String, colour: Color, show_next: bool = false) -> void:
 	mission_label.text = message
@@ -414,6 +426,9 @@ func _draw_enemy_arrow() -> void:
 			target = _extraction_zone if is_instance_valid(_extraction_zone) else null
 		else:
 			target = _escort_npc if is_instance_valid(_escort_npc) else null
+	elif GameManager.current_level == 4:
+		# Maze escape — always point to the exit.
+		target = _maze_exit if is_instance_valid(_maze_exit) else null
 	else:
 		# Original behaviour — surface the arrow once the map is nearly clear
 		# so it acts as a closest-enemy finder rather than constant clutter.

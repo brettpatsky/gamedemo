@@ -63,7 +63,7 @@ func record_hit(slot: int) -> void:
 		soldier_hits[slot] += 1
 
 func advance_level() -> void:
-	current_level = min(current_level + 1, 3)
+	current_level = min(current_level + 1, 4)
 
 # ---------------------------------------------------------------------------
 # Called once at startup
