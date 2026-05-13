@@ -72,7 +72,23 @@ func is_continuous_fire() -> bool:
 # ---------------------------------------------------------------------------
 # Squad group membership (set by SquadController)
 # ---------------------------------------------------------------------------
-var group_id: int = 0
+var group_id:  int  = 0
+var is_active: bool = true   # false when this soldier belongs to an inactive group
+
+# Color per group — must match HUD.GROUP_COLORS so labels match buttons.
+const GROUP_LABEL_COLORS: Array[Color] = [
+	Color(1.0, 0.95, 0.0),   # group 1 — yellow
+	Color(0.3,  0.9, 1.0),   # group 2 — cyan
+	Color(0.5,  1.0, 0.4),   # group 3 — green
+]
+var _group_label: Label = null
+
+# Auto-defend — soldiers in idle (non-active) groups fire their pistol
+# automatically when an enemy comes within range.
+const AUTODEFEND_RANGE    := 280.0   # pixels — matches enemy attack_range
+const AUTODEFEND_COOLDOWN := 1.5     # seconds between shots (3× slower than normal pistol)
+const AUTODEFEND_JITTER   := 0.35    # radians of random spread — noticeably inaccurate
+var _autodefend_cooldown: float = 0.0
 
 # Spawn-order slot (0..squad_size-1). Set by Main; used to index per-soldier
 # accuracy stats stored in GameManager.
@@ -161,11 +177,21 @@ func _ready() -> void:
 	collision_layer = 2
 	collision_mask  = 1
 
+	# Floating group-number label — shown above the health bar when the squad
+	# is split. Hidden by default; SquadController calls show_group_label().
+	_group_label = Label.new()
+	_group_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_group_label.position = Vector2(-12, -82)
+	_group_label.add_theme_font_size_override("font_size", 14)
+	_group_label.hide()
+	add_child(_group_label)
+
 	await get_tree().physics_frame
 
 func _physics_process(delta: float) -> void:
 	_shoot_cooldown    = max(_shoot_cooldown    - delta, 0.0)
 	_shoot_flash_timer = max(_shoot_flash_timer - delta, 0.0)
+	_try_autodefend(delta)
 
 	match _state:
 		State.MOVING:
@@ -438,6 +464,7 @@ func _die() -> void:
 	# not called here.
 	_state = State.DEAD
 	velocity = Vector2.ZERO
+	hide_group_label()
 	_play_anim("die")
 	# Freeze on the last frame once the die animation finishes — prevents looping
 	# even if the SpriteFrames loop flag is inadvertently set.
@@ -480,6 +507,55 @@ func is_downed() -> bool:
 # Used by SquadController to exclude them from the camera centroid.
 func is_armed_bomb() -> bool:
 	return _state == State.BOMB
+
+# Show a colour-coded group number above this soldier's health bar.
+func show_group_label(num: int) -> void:
+	if _group_label == null:
+		return
+	_group_label.text = str(num)
+	var col := GROUP_LABEL_COLORS[(num - 1) % GROUP_LABEL_COLORS.size()]
+	_group_label.add_theme_color_override("font_color", col)
+	_group_label.show()
+
+func hide_group_label() -> void:
+	if _group_label != null:
+		_group_label.hide()
+
+# Autonomous pistol fire for soldiers whose group is not currently commanded.
+# Fires at reduced rate and accuracy so they have a fighting chance but still
+# feel "unattended" compared to the player-directed group.
+func _try_autodefend(delta: float) -> void:
+	if is_active or _state == State.DEAD or _state == State.BOMB:
+		_autodefend_cooldown = 0.0
+		return
+	_autodefend_cooldown = max(_autodefend_cooldown - delta, 0.0)
+	if _autodefend_cooldown > 0.0:
+		return
+	var closest: Node2D = null
+	var closest_d := AUTODEFEND_RANGE
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e):
+			continue
+		var d: float = (e as Node2D).global_position.distance_to(global_position)
+		if d < closest_d:
+			closest_d = d
+			closest   = e
+	if closest == null:
+		return
+	var dir := (closest.global_position - global_position).normalized()
+	dir = dir.rotated(randf_range(-AUTODEFEND_JITTER, AUTODEFEND_JITTER))
+	if dir.x != 0:
+		sprite.flip_h = dir.x < 0
+	if bullet_scene:
+		var bullet: Node2D = bullet_scene.instantiate()
+		get_viewport().add_child(bullet)
+		bullet.global_position = global_position
+		bullet.initialise(dir, self)
+		bullet.set_stats(pistol_damage, pistol_speed, pistol_distance, bullet_color)
+	_autodefend_cooldown = AUTODEFEND_COOLDOWN
+	var hud := get_tree().get_first_node_in_group("hud")
+	if hud and hud.has_method("show_under_attack"):
+		hud.show_under_attack(group_id + 1)
 
 # =============================================================================
 # PRIVATE — ANIMATION

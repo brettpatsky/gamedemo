@@ -38,6 +38,14 @@ const WEAPON_ICONS := [
 
 const FORMATION_NAMES := ["2×3", "3×2", "1×6", "6×1", "★"]
 
+# Colors shared by group buttons and the per-soldier group-number labels so the
+# player can instantly match a number on screen to the correct HUD button.
+const GROUP_COLORS: Array[Color] = [
+	Color(1.0, 0.95, 0.0),   # group 1 — yellow
+	Color(0.3,  0.9, 1.0),   # group 2 — cyan
+	Color(0.5,  1.0, 0.4),   # group 3 — green
+]
+
 # ---------------------------------------------------------------------------
 # Onready node refs (paths match the scene tree above)
 # ---------------------------------------------------------------------------
@@ -59,6 +67,10 @@ const FORMATION_NAMES := ["2×3", "3×2", "1×6", "6×1", "★"]
 
 var _soldier_stat_labels: Array[Label] = []
 var _group_buttons: Array[Button] = []
+
+# "Group X is under attack" notification — shown at top-centre, auto-hides after a few seconds.
+var _under_attack_label: Label = null
+var _under_attack_timer: float = 0.0
 
 # Revive UI — references resolved during _wire_formation_buttons().
 var _revive_button:        Button = null
@@ -92,6 +104,23 @@ func _ready() -> void:
 	_next_level_button.pressed.connect(_on_next_level_pressed)
 	_menu_button.pressed.connect(_on_menu_pressed)
 	_arrow_node.draw.connect(_draw_enemy_arrow)
+
+	# "Group X is under attack" notification — created in code so it doesn't
+	# need a scene node. Sits at the top-centre, hidden until triggered.
+	_under_attack_label = Label.new()
+	_under_attack_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_under_attack_label.anchor_left   = 0.5
+	_under_attack_label.anchor_right  = 0.5
+	_under_attack_label.anchor_top    = 0.0
+	_under_attack_label.anchor_bottom = 0.0
+	_under_attack_label.offset_left   = -200.0
+	_under_attack_label.offset_right  =  200.0
+	_under_attack_label.offset_top    =  12.0
+	_under_attack_label.offset_bottom =  40.0
+	_under_attack_label.add_theme_font_size_override("font_size", 16)
+	_under_attack_label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2))
+	_under_attack_label.hide()
+	add_child(_under_attack_label)
 
 	GameManager.enemies_changed.connect(update_enemy_count)
 	update_enemy_count(GameManager.enemies_alive)
@@ -255,6 +284,13 @@ func update_enemy_count(count: int) -> void:
 	if _enemy_label:
 		_enemy_label.text = "ENEMIES: %d" % count
 
+func show_under_attack(group_num: int) -> void:
+	if _under_attack_label == null:
+		return
+	_under_attack_label.text = "GROUP %d IS UNDER ATTACK!" % group_num
+	_under_attack_label.show()
+	_under_attack_timer = 3.0
+
 # =============================================================================
 # INTERNAL — refresh visual state
 # =============================================================================
@@ -295,12 +331,16 @@ func _rebuild_group_buttons(num_groups: int, active: int, alive_groups: Array = 
 		btn.custom_minimum_size = Vector2(28, 28)
 		# Empty groups (whole squad wiped) are not selectable — grey them out so
 		# the player can see at a glance which groups still have soldiers.
+		# Color matches the per-soldier label so the player can instantly map
+		# the HUD number to soldiers on the field.
+		btn.add_theme_color_override("font_color", GROUP_COLORS[i % GROUP_COLORS.size()])
+		# Toggle-mode lets button_pressed show the currently commanded group.
+		btn.toggle_mode   = true
+		btn.button_pressed = (i == active)
 		var is_alive: bool = alive_groups.is_empty() or alive_groups.has(i)
 		if not is_alive:
 			btn.disabled = true
 			btn.modulate = Color(0.5, 0.5, 0.5, 0.6)
-		if i == active:
-			btn.add_theme_color_override("font_color", Color.YELLOW)
 		var idx := i
 		btn.pressed.connect(func() -> void:
 			if squad_ctrl and squad_ctrl.has_method("_select_group"):
@@ -335,7 +375,11 @@ func _on_group_cycle_pressed() -> void:
 # =============================================================================
 # OFF-SCREEN ENEMY ARROW
 # =============================================================================
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _under_attack_timer > 0.0:
+		_under_attack_timer -= delta
+		if _under_attack_timer <= 0.0 and _under_attack_label != null:
+			_under_attack_label.hide()
 	if _arrow_node:
 		_arrow_node.queue_redraw()
 	_refresh_soldier_stats()

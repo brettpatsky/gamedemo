@@ -125,6 +125,7 @@ func add_soldier(soldier: Node2D) -> void:
 	soldier.group_id = 0   # all soldiers start in group 0
 	soldiers.append(soldier)
 	GameManager.soldiers_alive += 1
+	_refresh_group_state()
 	_update_weapon_hud()
 	_update_ammo_hud()
 	_update_formation_hud()
@@ -140,6 +141,7 @@ func remove_soldier(soldier: Node2D) -> void:
 	# If the active group is now empty, switch to the first non-empty group.
 	if _active_group_soldiers().is_empty() and not soldiers.is_empty():
 		_active_group = soldiers[0].group_id
+	_refresh_group_state()
 	# SACRIFICE refuses to fire when only one soldier remains (it would empty
 	# the squad). Force any survivor still holding SACRIFICE onto the pistol so
 	# they can actually shoot.
@@ -175,6 +177,7 @@ func try_revive() -> bool:
 	# they died — the player may have switched weapons since then.
 	if target.has_method("set_weapon"):
 		target.set_weapon(grp_weapon)
+	_refresh_group_state()
 	_update_group_hud()
 	_update_ammo_hud()
 	return true
@@ -211,7 +214,7 @@ func _cycle_group_count() -> void:
 		# is immediately obvious at a glance.
 		for g in _num_groups:
 			var angle := (TAU / _num_groups) * g - PI / 2.0
-			var spread := Vector2(cos(angle), sin(angle)) * 64.0
+			var spread := Vector2(cos(angle), sin(angle)) * 160.0
 			var grp := _soldiers_in_group(g)
 			for i in grp.size():
 				grp[i].move_to(center + spread + _formation_offset(i, grp.size()))
@@ -219,6 +222,7 @@ func _cycle_group_count() -> void:
 		# Collapsing back to one group — automatically reform into formation so
 		# soldiers regroup without the player having to issue a manual move.
 		_issue_move_order(center)
+	_refresh_group_state()
 	_update_group_hud()
 
 func _select_group(group: int) -> void:
@@ -234,6 +238,7 @@ func _select_group(group: int) -> void:
 	for s in soldiers:
 		if s.group_id != _active_group:
 			s.halt()
+	_refresh_group_state()
 	_update_group_hud()
 
 # Returns soldiers in any specific group (0-indexed group id).
@@ -247,6 +252,19 @@ func _soldiers_in_group(g: int) -> Array:
 # Returns only the soldiers that belong to the currently active group.
 func _active_group_soldiers() -> Array:
 	return _soldiers_in_group(_active_group)
+
+# Syncs per-soldier active flag and group-number label in one pass.
+# Call whenever group membership, active group, or group count changes.
+func _refresh_group_state() -> void:
+	for s in soldiers:
+		if "is_active" in s:
+			s.is_active = (s.group_id == _active_group)
+		if _num_groups > 1:
+			if s.has_method("show_group_label"):
+				s.show_group_label(s.group_id + 1)
+		else:
+			if s.has_method("hide_group_label"):
+				s.hide_group_label()
 
 # Returns the set of group_ids that still contain at least one alive soldier.
 # Used by the HUD to grey-out buttons for groups that have been wiped.
