@@ -144,6 +144,7 @@ const CATCHUP_SPEED_MULT := 1.75
 const CATCHUP_DURATION   := 2.0
 var _catchup_timer:   float = 0.0
 var _was_unsticking:  bool  = false
+var _was_in_water:    bool  = false
 
 func _ready() -> void:
 	_health = max_health
@@ -229,6 +230,7 @@ func halt() -> void:
 	velocity = Vector2.ZERO
 	_catchup_timer  = 0.0
 	_was_unsticking = false
+	_was_in_water   = false
 	_state = State.IDLE
 
 func fire_at(target: Vector2, bullet_aim: Vector2 = Vector2.ZERO) -> void:
@@ -280,6 +282,7 @@ func _do_move(delta: float) -> void:
 		footstep.stop()
 		_catchup_timer  = 0.0
 		_was_unsticking = false
+		_was_in_water   = false
 		return
 
 	_unstick_timer = max(_unstick_timer - delta, 0.0)
@@ -293,12 +296,17 @@ func _do_move(delta: float) -> void:
 			_try_unstick()
 		_stuck_check_pos = global_position
 
-	# Catch-up sprint: when the unstick sidestepping finishes, sprint briefly
-	# so the soldier rejoins the group without forcing the group to stop.
+	# Catch-up sprint: triggers when the unstick sidestepping finishes, OR when
+	# the soldier exits water after being slowed — both cases leave them lagging
+	# behind the group and warrant a brief speed boost to rejoin formation.
 	var is_unsticking := _unstick_timer > 0.0
-	if _was_unsticking and not is_unsticking:
+	var in_water      := _water_speed_mult() < 1.0
+	var water_exit_lag := _was_in_water and not in_water \
+		and global_position.distance_to(_move_target) > 96.0
+	if (_was_unsticking and not is_unsticking) or water_exit_lag:
 		_catchup_timer = CATCHUP_DURATION
 	_was_unsticking = is_unsticking
+	_was_in_water   = in_water
 	_catchup_timer  = max(_catchup_timer - delta, 0.0)
 	var speed_mult  := CATCHUP_SPEED_MULT if _catchup_timer > 0.0 else 1.0
 

@@ -191,7 +191,7 @@ radius = 45.0
 height = 90.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_ipns3"]
-radius = 201.02238
+radius = 661.43555
 
 [node name="Enemy" type="CharacterBody2D" unique_id=1280486674]
 script = ExtResource("1_5uy6h")
