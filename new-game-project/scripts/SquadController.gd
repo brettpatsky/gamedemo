@@ -167,6 +167,9 @@ func try_revive() -> bool:
 	var grp_weapon := _active_weapon()
 	if grp_weapon < 0:
 		grp_weapon = 0  # default to pistol if the whole group was wiped
+	# Snapshot the centroid before re-adding the soldier so the corpse's
+	# position doesn't skew the rally point.
+	var rally := get_centroid()
 	var target: Node2D = _downed.pop_front()
 	if target.has_method("revive"):
 		target.revive()
@@ -180,6 +183,10 @@ func try_revive() -> bool:
 	_refresh_group_state()
 	_update_group_hud()
 	_update_ammo_hud()
+	# Auto-move the revived soldier toward the group so they rejoin without the
+	# player having to issue a manual move order.
+	if rally != Vector2.ZERO and target.has_method("move_to"):
+		target.move_to(rally)
 	return true
 
 # Returns true iff a revive potion + at least one downed soldier are available.
