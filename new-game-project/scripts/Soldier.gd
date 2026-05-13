@@ -31,6 +31,7 @@ extends CharacterBody2D
 @onready var sprite:     AnimatedSprite2D     = $AnimatedSprite2D
 @onready var health_bar: ProgressBar          = $HealthBar
 @onready var footstep:   AudioStreamPlayer2D  = $FootstepAudio
+@onready var gunshot:    AudioStreamPlayer2D  = $GunShotAudio
 
 # ---------------------------------------------------------------------------
 # Weapon system
@@ -423,6 +424,7 @@ func _do_shoot() -> void:
 
 	_play_anim("shoot")
 	_shoot_flash_timer = SHOOT_FLASH_DURATION
+	gunshot.play()
 
 	if bullet_scene:
 		var bullet: Node2D = bullet_scene.instantiate()
@@ -554,6 +556,7 @@ func _try_autodefend(delta: float) -> void:
 	dir = dir.rotated(randf_range(-AUTODEFEND_JITTER, AUTODEFEND_JITTER))
 	if dir.x != 0:
 		sprite.flip_h = dir.x < 0
+	gunshot.play()
 	if bullet_scene:
 		var bullet: Node2D = bullet_scene.instantiate()
 		get_viewport().add_child(bullet)
