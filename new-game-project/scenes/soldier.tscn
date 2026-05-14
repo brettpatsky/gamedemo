@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://bpv0sikg44clu" path="res://scripts/Soldier.gd" id="1_hpa1h"]
 [ext_resource type="PackedScene" uid="uid://dtclgpudk4ih3" path="res://scenes/bullet.tscn" id="2_ajv6t"]
 [ext_resource type="Texture2D" uid="uid://dviifl51nn46l" path="res://resources/tdstilepack/Spritesheet/luatilesheet.png" id="3_ajv6t"]
-[ext_resource type="AudioStream" uid="uid://iod06ujohu74" path="res://resources/audio/laser1.ogg" id="4_x21nm"]
+[ext_resource type="AudioStream" uid="uid://bdtnakvt0wv0s" path="res://resources/audio/sfx/laser2.ogg" id="4_x21nm"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_50ktg"]
 atlas = ExtResource("3_ajv6t")
@@ -260,4 +260,6 @@ offset_bottom = 27.0
 [node name="GunShotAudio" type="AudioStreamPlayer2D" parent="." unique_id=1385984911]
 stream = ExtResource("4_x21nm")
 max_distance = 600.0
-area_mask = 3
+max_polyphony = 4
+bus = &"sfx"
+area_mask = 7

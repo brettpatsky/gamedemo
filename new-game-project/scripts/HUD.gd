@@ -60,6 +60,7 @@ const GROUP_COLORS: Array[Color] = [
 
 @onready var _next_level_button: Button  = $NextLevelButton
 @onready var _menu_button:       Button  = $MainMenuButton
+@onready var _god_button:        Button  = $GodButton
 @onready var _objective_label:   Label   = $ObjectiveLabel
 @onready var _escort_label:      Label   = $EscortLabel
 @onready var _enemy_label:       Label   = $EnemyLabel
@@ -106,6 +107,9 @@ func _ready() -> void:
 	retry_button.pressed.connect(_on_retry_pressed)
 	_next_level_button.pressed.connect(_on_next_level_pressed)
 	_menu_button.pressed.connect(_on_menu_pressed)
+	_god_button.button_pressed = GameManager.god_mode
+	_god_button.toggled.connect(_on_god_toggled)
+	_refresh_god_button_visual()
 	_arrow_node.draw.connect(_draw_enemy_arrow)
 
 	# "Group X is under attack" notification — created in code so it doesn't
@@ -477,6 +481,23 @@ func _on_next_level_pressed() -> void:
 
 func _on_menu_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+
+# GOD mode — toggles squad-wide invulnerability via GameManager.god_mode.
+# Soldier.take_damage() early-returns when the flag is on. The button stays
+# pressed-in while active so the player can see the cheat is engaged.
+func _on_god_toggled(pressed: bool) -> void:
+	GameManager.god_mode = pressed
+	_refresh_god_button_visual()
+
+func _refresh_god_button_visual() -> void:
+	if _god_button == null:
+		return
+	if GameManager.god_mode:
+		_god_button.add_theme_color_override("font_color", Color(1.0, 0.85, 0.1))
+		_god_button.text = "GOD ✓"
+	else:
+		_god_button.remove_theme_color_override("font_color")
+		_god_button.text = "GOD"
 
 # =============================================================================
 # REVIVE BUTTON

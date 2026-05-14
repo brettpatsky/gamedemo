@@ -24,14 +24,8 @@ extends Node2D
 # bullet colour, etc. Falls back to wrapping if fewer scenes than squad_size.
 @export var soldier_scenes: Array[PackedScene]
 
-# Level 4 hand-authored maze pool — the game picks one at random on level start.
-const MAZE_SCENES: Array[String] = [
-	"res://scenes/mazes/maze_1.tscn",
-	"res://scenes/mazes/maze_2.tscn",
-	"res://scenes/mazes/maze_3.tscn",
-	"res://scenes/mazes/maze_4.tscn",
-	"res://scenes/mazes/maze_5.tscn",
-]
+# Level 4 — single hand-authored maze. Edit the scene in the Godot editor.
+const MAZE_SCENE_PATH := "res://scenes/mazes/maze_1.tscn"
 
 @onready var map_gen:    Node        = $GameViewport/SubViewport/MapGenerator
 @onready var squad_ctrl: Node2D      = $GameViewport/SubViewport/SquadController
@@ -57,7 +51,7 @@ func _ready() -> void:
 	var effective_squad_size: int = squad_size
 	if GameManager.current_level == 4:
 		var old: Node = map_gen
-		map_gen = _spawn_random_maze_level()
+		map_gen = _spawn_maze_level()
 		old.remove_from_group("map_generator")
 		old.queue_free()
 		effective_squad_size = 1
@@ -87,16 +81,35 @@ func _ready() -> void:
 	hud.show_objective(GameManager.current_level)
 
 # ---------------------------------------------------------------------------
-# Level 4 — instance a random maze under SubViewport in the slot the default
-# MapGenerator occupied. Returns the new node so the caller can reassign
-# `map_gen`. The maze scene's root script implements the MapGenerator
+# Level 4 click handler: SubViewportContainer._gui_input consumes mouse events
+# before _unhandled_input fires, so we intercept in _input (which runs first).
+func _input(event: InputEvent) -> void:
+	if GameManager.current_level != 4:
+		return
+	if not (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
+		return
+	# Ignore clicks in the bottom HUD panel so formation/weapon buttons still work.
+	var vp_size := get_viewport().get_visible_rect().size
+	if event.position.y > vp_size.y - HUD_HEIGHT:
+		return
+	var cam := get_tree().get_first_node_in_group("main_camera") as Camera2D
+	if cam == null:
+		return
+	var world_pos: Vector2 = cam.get_canvas_transform().affine_inverse() * event.position
+	for s in get_tree().get_nodes_in_group("soldiers"):
+		if s.has_method("move_to"):
+			s.move_to(world_pos)
+
+# ---------------------------------------------------------------------------
+# Level 4 — instance the hand-authored maze under SubViewport in the slot the
+# default MapGenerator occupied. Returns the new node so the caller can
+# reassign `map_gen`. The maze scene's root script implements the MapGenerator
 # interface (generate / get_map_rect / get_map_centre / get_spawn_positions),
 # so CameraController and the rest of Main treat it identically.
-func _spawn_random_maze_level() -> Node:
-	var path: String = MAZE_SCENES[randi() % MAZE_SCENES.size()]
-	var scene: PackedScene = load(path)
+func _spawn_maze_level() -> Node:
+	var scene: PackedScene = load(MAZE_SCENE_PATH)
 	if scene == null:
-		push_error("[Main] Failed to load maze scene: %s" % path)
+		push_error("[Main] Failed to load maze scene: %s" % MAZE_SCENE_PATH)
 		return null
 	var node: Node = scene.instantiate()
 	_subviewport.add_child(node)

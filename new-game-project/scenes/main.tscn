@@ -1,18 +1,19 @@
 [gd_scene format=3 uid="uid://155xx7s6y6ta"]
 
 [ext_resource type="Script" uid="uid://cujsbc075rh5g" path="res://scripts/Main.gd" id="1_jyhfs"]
-[ext_resource type="Script" uid="uid://7vsifkfg5eeu" path="res://scripts/MapGenerator.gd" id="2_tbgi4"]
 [ext_resource type="PackedScene" uid="uid://cjkdodr0kgm4g" path="res://scenes/soldier_1.tscn" id="2_sold1"]
 [ext_resource type="PackedScene" uid="uid://bqvjduiqhnscl" path="res://scenes/soldier_2.tscn" id="2_sold2"]
 [ext_resource type="PackedScene" uid="uid://x7o2c8heuxjq" path="res://scenes/soldier_3.tscn" id="2_sold3"]
 [ext_resource type="PackedScene" uid="uid://d1xqcvvgvayin" path="res://scenes/soldier_4.tscn" id="2_sold4"]
 [ext_resource type="PackedScene" uid="uid://daav1el6sh4ps" path="res://scenes/soldier_5.tscn" id="2_sold5"]
 [ext_resource type="PackedScene" uid="uid://chl2pvcwppawx" path="res://scenes/soldier_6.tscn" id="2_sold6"]
+[ext_resource type="Script" uid="uid://7vsifkfg5eeu" path="res://scripts/MapGenerator.gd" id="2_tbgi4"]
 [ext_resource type="Script" uid="uid://26cpjs3hddgx" path="res://scripts/SquadController.gd" id="3_tefeu"]
 [ext_resource type="Texture2D" uid="uid://bls6mk50c2lay" path="res://resources/tdstilepack/Spritesheet/spritesheet_tiles.png" id="4_o6xl0"]
 [ext_resource type="Resource" uid="uid://dreypr0e4y7ma" path="res://resources/tile_config_default.tres" id="4_ya4ey"]
 [ext_resource type="PackedScene" uid="uid://eo30kruldshw" path="res://scenes/hud.tscn" id="6_hud"]
 [ext_resource type="Script" uid="uid://dqa11ydochvwm" path="res://scripts/CameraController.gd" id="7_tefeu"]
+[ext_resource type="AudioStream" uid="uid://o76ver82i0os" path="res://resources/audio/music/Cozy Puzzle Clear (Loop)_BPM85.mp3" id="14_a8y0u"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_ya4ey"]
 texture = ExtResource("4_o6xl0")
@@ -593,4 +594,10 @@ script = ExtResource("3_tefeu")
 [node name="Camera2D" type="Camera2D" parent="GameViewport/SubViewport" unique_id=718995731 groups=["main_camera"]]
 script = ExtResource("7_tefeu")
 
-[node name="HUD" parent="." instance=ExtResource("6_hud")]
+[node name="HUD" parent="." unique_id=1178686485 instance=ExtResource("6_hud")]
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=1662533004]
+stream = ExtResource("14_a8y0u")
+autoplay = true
+bus = &"music"
+parameters/looping = true

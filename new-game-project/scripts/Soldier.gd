@@ -263,6 +263,8 @@ func arm_as_bomb(target: Vector2) -> void:
 func take_damage(amount: int) -> void:
 	if _state == State.DEAD:
 		return
+	if GameManager.god_mode:
+		return
 	_health -= amount
 	health_bar.value = _health
 	if _health <= 0:

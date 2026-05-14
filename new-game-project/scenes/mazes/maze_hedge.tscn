@@ -9,7 +9,7 @@ region = Rect2(370, 518, 64, 64)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hedge"]
 size = Vector2(60, 60)
 
-[node name="MazeHedge" type="StaticBody2D" unique_id=278050057]
+[node name="MazeHedge" type="StaticBody2D" unique_id=278050057 groups=["maze_walls"]]
 collision_mask = 0
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1166364327]

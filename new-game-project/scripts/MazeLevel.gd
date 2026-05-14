@@ -1,27 +1,25 @@
 # =============================================================================
 # MazeLevel.gd
-# Root script for hand-authored maze scenes (scenes/mazes/maze_*.tscn).
+# Root script for the hand-authored maze scene (scenes/mazes/maze_1.tscn).
 # Acts as a drop-in replacement for MapGenerator on level 4.
 #
-# Scene tree:
+# Scene layout (edit in the Godot editor):
 #   MazeLevel (Node2D, this script)
-#   ├── Background          (ColorRect — defines map extents via its size)
-#   ├── NavigationRegion2D  (baked at runtime from wall children)
-#   ├── SpawnPoint          (Node2D — soldier starts here)
-#   ├── Exit                (Area2D with MazeExit.gd + CollisionShape2D child)
-#   ├── HedgeWall_*         (maze_hedge.tscn instances — move freely in editor)
-#   └── RockWall_*          (maze_rock.tscn instances — move freely in editor)
+#   ├── Background          (ColorRect — map extents derived from its size)
+#   ├── NavigationRegion2D  (receives the baked polygon at startup)
+#   ├── SpawnPoint          (Node2D — soldier spawns here)
+#   ├── Exit                (Area2D + MazeExit.gd + CollisionShape2D)
+#   └── maze_rock / maze_hedge instances  (drag freely in the editor)
 #
-# Edit the scene in the Godot editor: drag walls, swap scenes, add new types.
+# Drop any maze_rock.tscn or maze_hedge.tscn instance anywhere as a direct
+# child of this node. The navmesh re-bakes from their collision shapes on play.
 # =============================================================================
 extends Node2D
 
 signal escaped
 
-@export var cell_size: int = 64
-
-@onready var background:  ColorRect          = $Background
-@onready var nav_region:  NavigationRegion2D = $NavigationRegion2D
+@onready var background: ColorRect          = $Background
+@onready var nav_region: NavigationRegion2D = $NavigationRegion2D
 
 var _map_w_px: float = 0.0
 var _map_h_px: float = 0.0
@@ -30,11 +28,11 @@ func _ready() -> void:
 	add_to_group("map_generator")
 	add_to_group("maze_level")
 	_compute_map_bounds()
-	_bake_navigation()
+	_bake_nav()
 	_connect_exit()
 
 # ---------------------------------------------------------------------------
-# MapGenerator-compatible interface
+# MapGenerator-compatible interface (same API as MapGenerator.gd)
 # ---------------------------------------------------------------------------
 func get_map_centre() -> Vector2:
 	return to_global(Vector2(_map_w_px * 0.5, _map_h_px * 0.5))
@@ -49,7 +47,7 @@ func get_spawn_position() -> Vector2:
 	var sp: Node = find_child("SpawnPoint", false, false)
 	if sp is Node2D:
 		return (sp as Node2D).global_position
-	return to_global(Vector2(cell_size * 1.5, cell_size * 1.5))
+	return to_global(Vector2(96, 96))
 
 func get_spawn_positions(_count: int) -> Array[Vector2]:
 	var out: Array[Vector2] = []
@@ -76,38 +74,60 @@ func _compute_map_bounds() -> void:
 		_map_w_px = background.size.x
 		_map_h_px = background.size.y
 
-func _connect_exit() -> void:
-	var exit: Node = get_exit_zone()
-	if exit and exit.has_signal("escaped"):
-		exit.escaped.connect(func() -> void: escaped.emit())
-
-func _bake_navigation() -> void:
+# Builds the navmesh at startup from the wall collision shapes.
+#
+# Why manual outlines instead of bake_navigation_polygon()?
+#   bake_navigation_polygon() uses the source-geometry group pipeline which
+#   requires groups to propagate through packed-scene instances reliably.
+#   The manual approach reads CollisionShape2D data directly — zero ambiguity.
+#
+# Why the original outline-per-wall code broke:
+#   The old floor outline used a 16 px inset, so perimeter-wall outlines
+#   (which start at x/y ≈ 2) crossed the floor boundary — that triggered the
+#   "outlines can not overlap" convex-partition error.
+#
+# This version uses the full background as the floor outline so every wall
+# outline is strictly inside it. Rock shapes (56×56) at 64 px grid spacing
+# leave an 8 px gap between adjacent outlines — no shared edges, no error.
+func _bake_nav() -> void:
 	if nav_region == null:
 		return
+
 	var nav_poly := NavigationPolygon.new()
 
-	var inset: float = float(cell_size) * 0.25
-	var tl := nav_region.to_local(to_global(Vector2(inset, inset)))
-	var br := nav_region.to_local(to_global(Vector2(_map_w_px - inset, _map_h_px - inset)))
+	# Outer walkable boundary = full background.
 	nav_poly.add_outline(PackedVector2Array([
-		tl, Vector2(br.x, tl.y), br, Vector2(tl.x, br.y),
+		Vector2(0,         0),
+		Vector2(_map_w_px, 0),
+		Vector2(_map_w_px, _map_h_px),
+		Vector2(0,         _map_h_px),
 	]))
 
-	var margin := 2.0
+	# One rectangular hole per StaticBody2D wall child, sized from its
+	# CollisionShape2D so the method works for any shape size without needing
+	# a hardcoded cell_size constant.
 	for child in get_children():
 		if not (child is StaticBody2D):
 			continue
-		var p: Vector2 = (child as Node2D).position
-		var half: float = cell_size * 0.5
-		var x: float = p.x - half + margin
-		var y: float = p.y - half + margin
-		var w: float = cell_size - margin * 2.0
-		var h: float = cell_size - margin * 2.0
-		var ctl := nav_region.to_local(to_global(Vector2(x, y)))
-		var cbr := nav_region.to_local(to_global(Vector2(x + w, y + h)))
+		var cs := child.get_node_or_null("CollisionShape2D") as CollisionShape2D
+		if cs == null or not (cs.shape is RectangleShape2D):
+			continue
+		var half: Vector2 = (cs.shape as RectangleShape2D).size * 0.5
+		var c: Vector2 = (child as Node2D).position + cs.position
 		nav_poly.add_outline(PackedVector2Array([
-			ctl, Vector2(cbr.x, ctl.y), cbr, Vector2(ctl.x, cbr.y),
+			c + Vector2(-half.x, -half.y),
+			c + Vector2( half.x, -half.y),
+			c + Vector2( half.x,  half.y),
+			c + Vector2(-half.x,  half.y),
 		]))
 
 	nav_poly.make_polygons_from_outlines()
 	nav_region.navigation_polygon = nav_poly
+	print("[MazeLevel] Nav bake done — polygons: %d  vertices: %d  outlines_added: %d" % [
+		nav_poly.get_polygon_count(), nav_poly.vertices.size(), nav_poly.get_outline_count()
+	])
+
+func _connect_exit() -> void:
+	var exit: Node = get_exit_zone()
+	if exit and exit.has_signal("escaped"):
+		exit.escaped.connect(func() -> void: escaped.emit())

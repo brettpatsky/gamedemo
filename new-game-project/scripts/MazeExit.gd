@@ -22,8 +22,14 @@ func _on_body_entered(body: Node2D) -> void:
 		escaped.emit()
 
 func _draw() -> void:
-	draw_circle(Vector2.ZERO, 40.0, Color(0.1, 0.9, 0.1, 0.25))
-	draw_arc(Vector2.ZERO, 40.0, 0.0, TAU, 48, Color(0.0, 0.8, 0.0), 3.0)
+	# Visual radius follows the CollisionShape2D so the user can resize the
+	# trigger in the editor and the marker stays in sync.
+	var r: float = 40.0
+	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
+	if shape_node and shape_node.shape is CircleShape2D:
+		r = (shape_node.shape as CircleShape2D).radius
+	draw_circle(Vector2.ZERO, r, Color(0.1, 0.9, 0.1, 0.25))
+	draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, Color(0.0, 0.8, 0.0), 3.0)
 	var pts := PackedVector2Array([
 		Vector2(-14,  6), Vector2(0, -14), Vector2(14,  6),
 		Vector2( 10,  6), Vector2(0,  -6), Vector2(-10, 6)

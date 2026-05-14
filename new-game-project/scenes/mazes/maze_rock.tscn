@@ -9,7 +9,7 @@ region = Rect2(1480, 592, 64, 64)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_rock"]
 size = Vector2(56, 56)
 
-[node name="MazeRock" type="StaticBody2D" unique_id=1560309118]
+[node name="MazeRock" type="StaticBody2D" unique_id=1560309118 groups=["maze_walls"]]
 collision_mask = 0
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=806722931]

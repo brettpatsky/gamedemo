@@ -15,3 +15,6 @@ bullet_color = Color(1, 0.95, 0.2, 1)
 
 [node name="AnimatedSprite2D" parent="." index="1" unique_id=2107077424]
 animation = &"die"
+
+[node name="GunShotAudio" parent="." index="5" unique_id=1385984911]
+area_mask = 7

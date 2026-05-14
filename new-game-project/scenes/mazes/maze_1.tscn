@@ -2,309 +2,170 @@
 
 [ext_resource type="Script" uid="uid://dnh5a07bxts6c" path="res://scripts/MazeLevel.gd" id="1_maze"]
 [ext_resource type="Script" uid="uid://drao1egw6uy68" path="res://scripts/MazeExit.gd" id="2_exit"]
-[ext_resource type="PackedScene" uid="uid://dm0hdg01aaaaa" path="res://scenes/mazes/maze_hedge.tscn" id="3_hedge"]
-[ext_resource type="PackedScene" uid="uid://dm0rck01aaaaa" path="res://scenes/mazes/maze_rock.tscn" id="4_rock"]
+[ext_resource type="PackedScene" uid="uid://dm0rck01aaaaa" path="res://scenes/mazes/maze_rock.tscn" id="3_rock"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_exit"]
-radius = 40.0
+radius = 32.0
 
-[node name="Maze1" type="Node2D" unique_id=1979475467]
+[node name="Maze" type="Node2D" unique_id=1373512873]
 script = ExtResource("1_maze")
 
-[node name="Background" type="ColorRect" parent="." unique_id=82907771]
+[node name="Background" type="ColorRect" parent="." unique_id=903978260]
 offset_right = 960.0
 offset_bottom = 704.0
 color = Color(0.36, 0.55, 0.27, 1)
 
-[node name="NavigationRegion2D" type="NavigationRegion2D" parent="." unique_id=2142584179]
+[node name="NavigationRegion2D" type="NavigationRegion2D" parent="." unique_id=222426019]
 
-[node name="SpawnPoint" type="Node2D" parent="." unique_id=1388704423]
-position = Vector2(96, 96)
+[node name="SpawnPoint" type="Node2D" parent="." unique_id=2001147768]
+position = Vector2(104, 104)
 
-[node name="Exit" type="Area2D" parent="." unique_id=412390420]
+[node name="Exit" type="Area2D" parent="." unique_id=969110725]
 position = Vector2(928, 608)
 collision_layer = 0
 collision_mask = 4294967295
 script = ExtResource("2_exit")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Exit" unique_id=557864403]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Exit" unique_id=1513735141]
 shape = SubResource("CircleShape2D_exit")
 
-[node name="H_r0_c0" parent="." unique_id=145135872 instance=ExtResource("3_hedge")]
+[node name="Wall_T0" parent="." unique_id=350419321 instance=ExtResource("3_rock")]
 position = Vector2(32, 32)
 
-[node name="H_r0_c1" parent="." unique_id=206931391 instance=ExtResource("3_hedge")]
+[node name="Wall_T1" parent="." unique_id=1421737169 instance=ExtResource("3_rock")]
 position = Vector2(96, 32)
 
-[node name="H_r0_c2" parent="." unique_id=1773239714 instance=ExtResource("3_hedge")]
+[node name="Wall_T2" parent="." unique_id=2144594875 instance=ExtResource("3_rock")]
 position = Vector2(160, 32)
 
-[node name="H_r0_c3" parent="." unique_id=1817197212 instance=ExtResource("3_hedge")]
+[node name="Wall_T3" parent="." unique_id=1054996711 instance=ExtResource("3_rock")]
 position = Vector2(224, 32)
 
-[node name="H_r0_c4" parent="." unique_id=833229793 instance=ExtResource("3_hedge")]
+[node name="Wall_T4" parent="." unique_id=560693566 instance=ExtResource("3_rock")]
 position = Vector2(288, 32)
 
-[node name="H_r0_c5" parent="." unique_id=136936708 instance=ExtResource("3_hedge")]
+[node name="Wall_T5" parent="." unique_id=1027817890 instance=ExtResource("3_rock")]
 position = Vector2(352, 32)
 
-[node name="H_r0_c6" parent="." unique_id=1113795722 instance=ExtResource("3_hedge")]
+[node name="Wall_T6" parent="." unique_id=1829284320 instance=ExtResource("3_rock")]
 position = Vector2(416, 32)
 
-[node name="H_r0_c7" parent="." unique_id=1638520971 instance=ExtResource("3_hedge")]
+[node name="Wall_T7" parent="." unique_id=1957663779 instance=ExtResource("3_rock")]
 position = Vector2(480, 32)
 
-[node name="H_r0_c8" parent="." unique_id=1879983657 instance=ExtResource("3_hedge")]
+[node name="Wall_T8" parent="." unique_id=166175275 instance=ExtResource("3_rock")]
 position = Vector2(544, 32)
 
-[node name="H_r0_c9" parent="." unique_id=133850927 instance=ExtResource("3_hedge")]
+[node name="Wall_T9" parent="." unique_id=914033877 instance=ExtResource("3_rock")]
 position = Vector2(608, 32)
 
-[node name="H_r0_c10" parent="." unique_id=320233037 instance=ExtResource("3_hedge")]
+[node name="Wall_T10" parent="." unique_id=1981919584 instance=ExtResource("3_rock")]
 position = Vector2(672, 32)
 
-[node name="H_r0_c11" parent="." unique_id=1884417979 instance=ExtResource("3_hedge")]
+[node name="Wall_T11" parent="." unique_id=24102422 instance=ExtResource("3_rock")]
 position = Vector2(736, 32)
 
-[node name="H_r0_c12" parent="." unique_id=1829967572 instance=ExtResource("3_hedge")]
+[node name="Wall_T12" parent="." unique_id=370271146 instance=ExtResource("3_rock")]
 position = Vector2(800, 32)
 
-[node name="H_r0_c13" parent="." unique_id=827135790 instance=ExtResource("3_hedge")]
+[node name="Wall_T13" parent="." unique_id=1202462986 instance=ExtResource("3_rock")]
 position = Vector2(864, 32)
 
-[node name="H_r0_c14" parent="." unique_id=591931815 instance=ExtResource("3_hedge")]
+[node name="Wall_T14" parent="." unique_id=664696040 instance=ExtResource("3_rock")]
 position = Vector2(928, 32)
 
-[node name="H_r1_c0" parent="." unique_id=1212840226 instance=ExtResource("3_hedge")]
-position = Vector2(32, 96)
-
-[node name="H_r1_c14" parent="." unique_id=1378203698 instance=ExtResource("3_hedge")]
-position = Vector2(928, 96)
-
-[node name="H_r2_c0" parent="." unique_id=1516378374 instance=ExtResource("3_hedge")]
-position = Vector2(32, 160)
-
-[node name="H_r2_c2" parent="." unique_id=386260242 instance=ExtResource("3_hedge")]
-position = Vector2(160, 160)
-
-[node name="H_r2_c3" parent="." unique_id=2030203489 instance=ExtResource("3_hedge")]
-position = Vector2(224, 160)
-
-[node name="H_r2_c5" parent="." unique_id=396554907 instance=ExtResource("3_hedge")]
-position = Vector2(352, 160)
-
-[node name="H_r2_c6" parent="." unique_id=606613445 instance=ExtResource("3_hedge")]
-position = Vector2(416, 160)
-
-[node name="H_r2_c7" parent="." unique_id=1452132173 instance=ExtResource("3_hedge")]
-position = Vector2(480, 160)
-
-[node name="H_r2_c9" parent="." unique_id=1997839014 instance=ExtResource("3_hedge")]
-position = Vector2(608, 160)
-
-[node name="H_r2_c10" parent="." unique_id=1415320011 instance=ExtResource("3_hedge")]
-position = Vector2(672, 160)
-
-[node name="H_r2_c11" parent="." unique_id=1585386602 instance=ExtResource("3_hedge")]
-position = Vector2(736, 160)
-
-[node name="H_r2_c14" parent="." unique_id=1040863685 instance=ExtResource("3_hedge")]
-position = Vector2(928, 160)
-
-[node name="H_r3_c0" parent="." unique_id=956694637 instance=ExtResource("3_hedge")]
-position = Vector2(32, 224)
-
-[node name="H_r3_c2" parent="." unique_id=1976004697 instance=ExtResource("3_hedge")]
-position = Vector2(160, 224)
-
-[node name="H_r3_c3" parent="." unique_id=423904916 instance=ExtResource("3_hedge")]
-position = Vector2(224, 224)
-
-[node name="H_r3_c7" parent="." unique_id=68880265 instance=ExtResource("3_hedge")]
-position = Vector2(480, 224)
-
-[node name="H_r3_c11" parent="." unique_id=1505401815 instance=ExtResource("3_hedge")]
-position = Vector2(736, 224)
-
-[node name="H_r3_c14" parent="." unique_id=639020512 instance=ExtResource("3_hedge")]
-position = Vector2(928, 224)
-
-[node name="H_r4_c0" parent="." unique_id=1922526089 instance=ExtResource("3_hedge")]
-position = Vector2(32, 288)
-
-[node name="H_r4_c5" parent="." unique_id=1836379809 instance=ExtResource("3_hedge")]
-position = Vector2(352, 288)
-
-[node name="H_r4_c7" parent="." unique_id=1188815811 instance=ExtResource("3_hedge")]
-position = Vector2(480, 288)
-
-[node name="H_r4_c8" parent="." unique_id=568153411 instance=ExtResource("3_hedge")]
-position = Vector2(544, 288)
-
-[node name="H_r4_c9" parent="." unique_id=169419312 instance=ExtResource("3_hedge")]
-position = Vector2(608, 288)
-
-[node name="H_r4_c10" parent="." unique_id=1691364807 instance=ExtResource("3_hedge")]
-position = Vector2(672, 288)
-
-[node name="H_r4_c11" parent="." unique_id=659304956 instance=ExtResource("3_hedge")]
-position = Vector2(736, 288)
-
-[node name="H_r4_c14" parent="." unique_id=1278576931 instance=ExtResource("3_hedge")]
-position = Vector2(928, 288)
-
-[node name="H_r5_c0" parent="." unique_id=717276014 instance=ExtResource("3_hedge")]
-position = Vector2(32, 352)
-
-[node name="H_r5_c2" parent="." unique_id=931543159 instance=ExtResource("3_hedge")]
-position = Vector2(160, 352)
-
-[node name="H_r5_c3" parent="." unique_id=1469850167 instance=ExtResource("3_hedge")]
-position = Vector2(224, 352)
-
-[node name="H_r5_c4" parent="." unique_id=1608309471 instance=ExtResource("3_hedge")]
-position = Vector2(288, 352)
-
-[node name="H_r5_c11" parent="." unique_id=1373447339 instance=ExtResource("3_hedge")]
-position = Vector2(736, 352)
-
-[node name="H_r5_c14" parent="." unique_id=2098903879 instance=ExtResource("3_hedge")]
-position = Vector2(928, 352)
-
-[node name="H_r6_c0" parent="." unique_id=416958080 instance=ExtResource("3_hedge")]
-position = Vector2(32, 416)
-
-[node name="H_r6_c2" parent="." unique_id=1858665912 instance=ExtResource("3_hedge")]
-position = Vector2(160, 416)
-
-[node name="H_r6_c6" parent="." unique_id=1378734276 instance=ExtResource("3_hedge")]
-position = Vector2(416, 416)
-
-[node name="H_r6_c7" parent="." unique_id=1698689468 instance=ExtResource("3_hedge")]
-position = Vector2(480, 416)
-
-[node name="H_r6_c8" parent="." unique_id=304392022 instance=ExtResource("3_hedge")]
-position = Vector2(544, 416)
-
-[node name="H_r6_c9" parent="." unique_id=1533480670 instance=ExtResource("3_hedge")]
-position = Vector2(608, 416)
-
-[node name="H_r6_c14" parent="." unique_id=494420260 instance=ExtResource("3_hedge")]
-position = Vector2(928, 416)
-
-[node name="H_r7_c0" parent="." unique_id=1119891639 instance=ExtResource("3_hedge")]
-position = Vector2(32, 480)
-
-[node name="H_r7_c2" parent="." unique_id=1053326810 instance=ExtResource("3_hedge")]
-position = Vector2(160, 480)
-
-[node name="H_r7_c4" parent="." unique_id=19622119 instance=ExtResource("3_hedge")]
-position = Vector2(288, 480)
-
-[node name="H_r7_c5" parent="." unique_id=1856940201 instance=ExtResource("3_hedge")]
-position = Vector2(352, 480)
-
-[node name="H_r7_c6" parent="." unique_id=1109809829 instance=ExtResource("3_hedge")]
-position = Vector2(416, 480)
-
-[node name="H_r7_c10" parent="." unique_id=284235121 instance=ExtResource("3_hedge")]
-position = Vector2(672, 480)
-
-[node name="H_r7_c11" parent="." unique_id=984659150 instance=ExtResource("3_hedge")]
-position = Vector2(736, 480)
-
-[node name="H_r7_c12" parent="." unique_id=928406918 instance=ExtResource("3_hedge")]
-position = Vector2(800, 480)
-
-[node name="H_r7_c13" parent="." unique_id=1516920579 instance=ExtResource("3_hedge")]
-position = Vector2(864, 480)
-
-[node name="H_r7_c14" parent="." unique_id=1003555212 instance=ExtResource("3_hedge")]
-position = Vector2(928, 480)
-
-[node name="H_r8_c0" parent="." unique_id=1138748300 instance=ExtResource("3_hedge")]
-position = Vector2(32, 544)
-
-[node name="H_r8_c6" parent="." unique_id=446876148 instance=ExtResource("3_hedge")]
-position = Vector2(416, 544)
-
-[node name="H_r8_c14" parent="." unique_id=419081199 instance=ExtResource("3_hedge")]
-position = Vector2(928, 544)
-
-[node name="H_r9_c0" parent="." unique_id=1565907150 instance=ExtResource("3_hedge")]
-position = Vector2(32, 608)
-
-[node name="H_r9_c2" parent="." unique_id=618013844 instance=ExtResource("3_hedge")]
-position = Vector2(160, 608)
-
-[node name="H_r9_c3" parent="." unique_id=339606125 instance=ExtResource("3_hedge")]
-position = Vector2(224, 608)
-
-[node name="H_r9_c4" parent="." unique_id=1615228106 instance=ExtResource("3_hedge")]
-position = Vector2(288, 608)
-
-[node name="H_r9_c8" parent="." unique_id=1155185762 instance=ExtResource("3_hedge")]
-position = Vector2(544, 608)
-
-[node name="H_r9_c9" parent="." unique_id=332608417 instance=ExtResource("3_hedge")]
-position = Vector2(608, 608)
-
-[node name="H_r9_c10" parent="." unique_id=1848232493 instance=ExtResource("3_hedge")]
-position = Vector2(672, 608)
-
-[node name="H_r9_c12" parent="." unique_id=609879187 instance=ExtResource("3_hedge")]
-position = Vector2(800, 608)
-
-[node name="H_r10_c0" parent="." unique_id=335721274 instance=ExtResource("3_hedge")]
+[node name="Wall_B0" parent="." unique_id=1098009451 instance=ExtResource("3_rock")]
 position = Vector2(32, 672)
 
-[node name="H_r10_c1" parent="." unique_id=292435661 instance=ExtResource("3_hedge")]
+[node name="Wall_B1" parent="." unique_id=1704786393 instance=ExtResource("3_rock")]
 position = Vector2(96, 672)
 
-[node name="H_r10_c2" parent="." unique_id=1914488862 instance=ExtResource("3_hedge")]
+[node name="Wall_B2" parent="." unique_id=1994430371 instance=ExtResource("3_rock")]
 position = Vector2(160, 672)
 
-[node name="H_r10_c3" parent="." unique_id=1426520247 instance=ExtResource("3_hedge")]
+[node name="Wall_B3" parent="." unique_id=119974046 instance=ExtResource("3_rock")]
 position = Vector2(224, 672)
 
-[node name="H_r10_c4" parent="." unique_id=937411770 instance=ExtResource("3_hedge")]
+[node name="Wall_B4" parent="." unique_id=280513848 instance=ExtResource("3_rock")]
 position = Vector2(288, 672)
 
-[node name="H_r10_c5" parent="." unique_id=663154980 instance=ExtResource("3_hedge")]
+[node name="Wall_B5" parent="." unique_id=350695864 instance=ExtResource("3_rock")]
 position = Vector2(352, 672)
 
-[node name="H_r10_c6" parent="." unique_id=2040572980 instance=ExtResource("3_hedge")]
+[node name="Wall_B6" parent="." unique_id=891696394 instance=ExtResource("3_rock")]
 position = Vector2(416, 672)
 
-[node name="H_r10_c7" parent="." unique_id=1511325571 instance=ExtResource("3_hedge")]
+[node name="Wall_B7" parent="." unique_id=1982404265 instance=ExtResource("3_rock")]
 position = Vector2(480, 672)
 
-[node name="H_r10_c8" parent="." unique_id=1456004714 instance=ExtResource("3_hedge")]
+[node name="Wall_B8" parent="." unique_id=1362338585 instance=ExtResource("3_rock")]
 position = Vector2(544, 672)
 
-[node name="H_r10_c9" parent="." unique_id=1838831823 instance=ExtResource("3_hedge")]
+[node name="Wall_B9" parent="." unique_id=588746930 instance=ExtResource("3_rock")]
 position = Vector2(608, 672)
 
-[node name="H_r10_c10" parent="." unique_id=2105758872 instance=ExtResource("3_hedge")]
+[node name="Wall_B10" parent="." unique_id=1500885031 instance=ExtResource("3_rock")]
 position = Vector2(672, 672)
 
-[node name="H_r10_c11" parent="." unique_id=703029527 instance=ExtResource("3_hedge")]
+[node name="Wall_B11" parent="." unique_id=721302309 instance=ExtResource("3_rock")]
 position = Vector2(736, 672)
 
-[node name="H_r10_c12" parent="." unique_id=84151640 instance=ExtResource("3_hedge")]
+[node name="Wall_B12" parent="." unique_id=717291593 instance=ExtResource("3_rock")]
 position = Vector2(800, 672)
 
-[node name="H_r10_c13" parent="." unique_id=530175015 instance=ExtResource("3_hedge")]
+[node name="Wall_B13" parent="." unique_id=979879907 instance=ExtResource("3_rock")]
 position = Vector2(864, 672)
 
-[node name="H_r10_c14" parent="." unique_id=1471345402 instance=ExtResource("3_hedge")]
+[node name="Wall_B14" parent="." unique_id=612645823 instance=ExtResource("3_rock")]
 position = Vector2(928, 672)
 
-[node name="R_r3_c5" parent="." unique_id=478586574 instance=ExtResource("4_rock")]
-position = Vector2(352, 224)
+[node name="Wall_L1" parent="." unique_id=1588504979 instance=ExtResource("3_rock")]
+position = Vector2(32, 96)
 
-[node name="R_r3_c9" parent="." unique_id=1557270973 instance=ExtResource("4_rock")]
-position = Vector2(608, 224)
+[node name="Wall_L2" parent="." unique_id=532410900 instance=ExtResource("3_rock")]
+position = Vector2(32, 160)
 
-[node name="R_r7_c8" parent="." unique_id=1430695936 instance=ExtResource("4_rock")]
-position = Vector2(544, 480)
+[node name="Wall_L3" parent="." unique_id=1599715766 instance=ExtResource("3_rock")]
+position = Vector2(32, 224)
+
+[node name="Wall_L4" parent="." unique_id=1776746158 instance=ExtResource("3_rock")]
+position = Vector2(32, 288)
+
+[node name="Wall_L5" parent="." unique_id=1115578031 instance=ExtResource("3_rock")]
+position = Vector2(32, 352)
+
+[node name="Wall_L6" parent="." unique_id=697845215 instance=ExtResource("3_rock")]
+position = Vector2(32, 416)
+
+[node name="Wall_L7" parent="." unique_id=1941776623 instance=ExtResource("3_rock")]
+position = Vector2(32, 480)
+
+[node name="Wall_L8" parent="." unique_id=551590910 instance=ExtResource("3_rock")]
+position = Vector2(32, 544)
+
+[node name="Wall_L9" parent="." unique_id=640081815 instance=ExtResource("3_rock")]
+position = Vector2(32, 608)
+
+[node name="Wall_R1" parent="." unique_id=787937417 instance=ExtResource("3_rock")]
+position = Vector2(928, 96)
+
+[node name="Wall_R2" parent="." unique_id=85332003 instance=ExtResource("3_rock")]
+position = Vector2(928, 160)
+
+[node name="Wall_R3" parent="." unique_id=1336338962 instance=ExtResource("3_rock")]
+position = Vector2(928, 224)
+
+[node name="Wall_R4" parent="." unique_id=11528146 instance=ExtResource("3_rock")]
+position = Vector2(928, 288)
+
+[node name="Wall_R5" parent="." unique_id=375691911 instance=ExtResource("3_rock")]
+position = Vector2(928, 352)
+
+[node name="Wall_R6" parent="." unique_id=131076299 instance=ExtResource("3_rock")]
+position = Vector2(928, 416)
+
+[node name="Wall_R7" parent="." unique_id=2134792164 instance=ExtResource("3_rock")]
+position = Vector2(928, 480)
+
+[node name="Wall_R8" parent="." unique_id=1787540917 instance=ExtResource("3_rock")]
+position = Vector2(928, 544)

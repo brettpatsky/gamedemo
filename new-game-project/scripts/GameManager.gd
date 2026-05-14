@@ -25,6 +25,10 @@ var score: int = 0
 var soldiers_alive: int = 0           # decremented by Soldier.die()
 var enemies_alive: int = 0            # decremented by Enemy.die()
 var current_level: int = 1            # persists across scene reloads (1–3)
+# Cheat: when true, Soldier.take_damage() is a no-op for the entire squad.
+# Toggled by the GOD button next to MAIN MENU on the HUD. Persists across
+# retries / next-level transitions so it stays on once enabled.
+var god_mode: bool = false
 # Each mission starts with this many revive potions. The HUD shows the count
 # in the formation grid's "?" slot; clicking it brings the last downed soldier
 # back to full health.
