@@ -576,6 +576,7 @@ stretch = true
 
 [node name="SubViewport" type="SubViewport" parent="GameViewport" unique_id=900000002]
 handle_input_locally = false
+audio_listener_enable_2d = true
 size = Vector2i(2, 2)
 render_target_update_mode = 4
 

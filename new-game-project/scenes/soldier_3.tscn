@@ -1,9 +1,9 @@
 [gd_scene format=3 uid="uid://x7o2c8heuxjq"]
 
 [ext_resource type="PackedScene" uid="uid://dtcbbmugibghc" path="res://scenes/soldier.tscn" id="1_base"]
+[ext_resource type="AudioStream" uid="uid://iod06ujohu74" path="res://resources/audio/sfx/laser1.ogg" id="2_e45jo"]
 
-[node name="Soldier3" instance=ExtResource("1_base")]
-is_female = false
+[node name="Soldier3" unique_id=1345304078 instance=ExtResource("1_base")]
 max_health = 2
 pistol_damage = 2
 pistol_speed = 800.0
@@ -12,3 +12,6 @@ rifle_damage = 2
 rifle_speed = 950.0
 rifle_distance = 1600.0
 bullet_color = Color(0.3, 0.9, 1, 1)
+
+[node name="GunShotAudio" parent="." index="5" unique_id=1385984911]
+stream = ExtResource("2_e45jo")
