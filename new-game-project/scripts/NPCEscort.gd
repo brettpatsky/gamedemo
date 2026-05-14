@@ -12,8 +12,11 @@ signal escort_killed
 signal joined_squad
 
 const MAX_HEALTH: int   = 5
-const MOVE_SPEED: float = 80.0
-const FOLLOW_DIST: float = 55.0
+const MOVE_SPEED: float = 130.0
+# Stop this far from the nearest squad member rather than diving into the
+# centroid — pushing into the middle of the formation knocked soldiers around
+# and made the NPC physically jam against squad capsules.
+const FOLLOW_DIST: float = 70.0
 
 var _health: int = MAX_HEALTH
 var _dead:   bool = false
@@ -40,12 +43,13 @@ func _physics_process(_delta: float) -> void:
 		velocity = Vector2.ZERO
 		move_and_slide()
 		return
-	var squad_ctrl: Node = get_tree().get_first_node_in_group("squad_controller")
-	if squad_ctrl and squad_ctrl.has_method("get_centroid"):
-		var centroid: Vector2 = squad_ctrl.get_centroid()
-		var dist: float = global_position.distance_to(centroid)
+	# Track the nearest live squad member rather than the centroid so the NPC
+	# trails on the edge of the formation instead of jamming into it.
+	var nearest: Node2D = _nearest_soldier()
+	if nearest != null:
+		var dist: float = global_position.distance_to(nearest.global_position)
 		if dist > FOLLOW_DIST:
-			nav_agent.target_position = centroid
+			nav_agent.target_position = nearest.global_position
 		elif not _joined:
 			_joined = true
 			joined_squad.emit()
@@ -56,8 +60,26 @@ func _physics_process(_delta: float) -> void:
 		velocity = Vector2.ZERO
 	move_and_slide()
 
+func _nearest_soldier() -> Node2D:
+	var best: Node2D = null
+	var best_d: float = INF
+	for s in get_tree().get_nodes_in_group("soldiers"):
+		if s == self or not is_instance_valid(s):
+			continue
+		# Skip downed soldiers — the NPC chasing a corpse looks broken.
+		if s.has_method("is_downed") and s.is_downed():
+			continue
+		var d: float = (s as Node2D).global_position.distance_to(global_position)
+		if d < best_d:
+			best_d = d
+			best   = s
+	return best
+
 func release() -> void:
 	_freed = true
+
+func is_freed() -> bool:
+	return _freed
 
 func has_joined_squad() -> bool:
 	return _joined

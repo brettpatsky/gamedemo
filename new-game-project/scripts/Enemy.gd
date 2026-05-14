@@ -25,6 +25,7 @@ extends CharacterBody2D
 @onready var sprite:     AnimatedSprite2D    = $AnimatedSprite2D
 @onready var health_bar: ProgressBar         = $HealthBar
 @onready var detection:  Area2D              = $DetectionArea
+@onready var gunshot:    AudioStreamPlayer2D = $GunShotAudio
 
 enum State { PATROL, ALERT, ATTACK, DEAD }
 var _state: State = State.PATROL
@@ -142,10 +143,15 @@ func _acquire_target() -> void:
 
 # Downed soldiers are still in the "soldiers" group (they remain on the field
 # so they can be revived), but enemies must not target them.
+# The level-3 escort NPC is also in "soldiers" (so the HUD/extraction logic
+# picks it up), but enemies must ignore it while it's sheltered behind walls —
+# otherwise they shoot the barricade down before the squad arrives.
 func _is_soldier_engageable(s: Node) -> bool:
 	if not is_instance_valid(s):
 		return false
 	if s.has_method("is_downed") and s.is_downed():
+		return false
+	if s.has_method("is_freed") and not s.is_freed():
 		return false
 	return true
 
@@ -199,6 +205,7 @@ func _fire(direction: Vector2) -> void:
 	# Cap travel distance so enemy weapons are strictly out-ranged by the squad.
 	if b.has_method("set_stats"):
 		b.set_stats(bullet_damage, bullet_speed, bullet_distance, Color.ORANGE_RED)
+	gunshot.play()
 
 func _play_anim(anim_name: String) -> void:
 	if sprite.animation != anim_name:

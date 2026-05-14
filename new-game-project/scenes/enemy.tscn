@@ -221,5 +221,6 @@ shape = SubResource("CircleShape2D_ipns3")
 
 [node name="GunShotAudio" type="AudioStreamPlayer2D" parent="." unique_id=55735806]
 stream = ExtResource("4_5uy6h")
+max_distance = 1000.0
 max_polyphony = 4
 bus = &"sfx"
