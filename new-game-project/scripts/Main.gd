@@ -125,6 +125,8 @@ func _spawn_squad(count: int) -> void:
 		var scene: PackedScene = soldier_scenes[i % soldier_scenes.size()]
 		var soldier: Node2D = scene.instantiate()
 		soldier.slot_index = i
+		if GameManager.current_level == 4:
+			soldier.maze_mode = true
 		soldier.add_to_group("soldiers")
 		_subviewport.add_child(soldier)
 		soldier.global_position = positions[i] if i < positions.size() \

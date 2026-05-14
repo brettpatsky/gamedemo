@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" uid="uid://dnh5a07bxts6c" path="res://scripts/MazeLevel.gd" id="1_maze"]
 [ext_resource type="Script" uid="uid://drao1egw6uy68" path="res://scripts/MazeExit.gd" id="2_exit"]
-[ext_resource type="PackedScene" uid="uid://dm0rck01aaaaa" path="res://scenes/mazes/maze_rock.tscn" id="3_rock"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_exit"]
 radius = 32.0
@@ -11,161 +10,20 @@ radius = 32.0
 script = ExtResource("1_maze")
 
 [node name="Background" type="ColorRect" parent="." unique_id=903978260]
-offset_right = 960.0
-offset_bottom = 704.0
+offset_right = 1408.0
+offset_bottom = 960.0
 color = Color(0.36, 0.55, 0.27, 1)
 
 [node name="NavigationRegion2D" type="NavigationRegion2D" parent="." unique_id=222426019]
 
 [node name="SpawnPoint" type="Node2D" parent="." unique_id=2001147768]
-position = Vector2(104, 104)
+position = Vector2(96, 96)
 
 [node name="Exit" type="Area2D" parent="." unique_id=969110725]
-position = Vector2(928, 608)
+position = Vector2(1312, 864)
 collision_layer = 0
 collision_mask = 4294967295
 script = ExtResource("2_exit")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Exit" unique_id=1513735141]
 shape = SubResource("CircleShape2D_exit")
-
-[node name="Wall_T0" parent="." unique_id=350419321 instance=ExtResource("3_rock")]
-position = Vector2(32, 32)
-
-[node name="Wall_T1" parent="." unique_id=1421737169 instance=ExtResource("3_rock")]
-position = Vector2(96, 32)
-
-[node name="Wall_T2" parent="." unique_id=2144594875 instance=ExtResource("3_rock")]
-position = Vector2(160, 32)
-
-[node name="Wall_T3" parent="." unique_id=1054996711 instance=ExtResource("3_rock")]
-position = Vector2(224, 32)
-
-[node name="Wall_T4" parent="." unique_id=560693566 instance=ExtResource("3_rock")]
-position = Vector2(288, 32)
-
-[node name="Wall_T5" parent="." unique_id=1027817890 instance=ExtResource("3_rock")]
-position = Vector2(352, 32)
-
-[node name="Wall_T6" parent="." unique_id=1829284320 instance=ExtResource("3_rock")]
-position = Vector2(416, 32)
-
-[node name="Wall_T7" parent="." unique_id=1957663779 instance=ExtResource("3_rock")]
-position = Vector2(480, 32)
-
-[node name="Wall_T8" parent="." unique_id=166175275 instance=ExtResource("3_rock")]
-position = Vector2(544, 32)
-
-[node name="Wall_T9" parent="." unique_id=914033877 instance=ExtResource("3_rock")]
-position = Vector2(608, 32)
-
-[node name="Wall_T10" parent="." unique_id=1981919584 instance=ExtResource("3_rock")]
-position = Vector2(672, 32)
-
-[node name="Wall_T11" parent="." unique_id=24102422 instance=ExtResource("3_rock")]
-position = Vector2(736, 32)
-
-[node name="Wall_T12" parent="." unique_id=370271146 instance=ExtResource("3_rock")]
-position = Vector2(800, 32)
-
-[node name="Wall_T13" parent="." unique_id=1202462986 instance=ExtResource("3_rock")]
-position = Vector2(864, 32)
-
-[node name="Wall_T14" parent="." unique_id=664696040 instance=ExtResource("3_rock")]
-position = Vector2(928, 32)
-
-[node name="Wall_B0" parent="." unique_id=1098009451 instance=ExtResource("3_rock")]
-position = Vector2(32, 672)
-
-[node name="Wall_B1" parent="." unique_id=1704786393 instance=ExtResource("3_rock")]
-position = Vector2(96, 672)
-
-[node name="Wall_B2" parent="." unique_id=1994430371 instance=ExtResource("3_rock")]
-position = Vector2(160, 672)
-
-[node name="Wall_B3" parent="." unique_id=119974046 instance=ExtResource("3_rock")]
-position = Vector2(224, 672)
-
-[node name="Wall_B4" parent="." unique_id=280513848 instance=ExtResource("3_rock")]
-position = Vector2(288, 672)
-
-[node name="Wall_B5" parent="." unique_id=350695864 instance=ExtResource("3_rock")]
-position = Vector2(352, 672)
-
-[node name="Wall_B6" parent="." unique_id=891696394 instance=ExtResource("3_rock")]
-position = Vector2(416, 672)
-
-[node name="Wall_B7" parent="." unique_id=1982404265 instance=ExtResource("3_rock")]
-position = Vector2(480, 672)
-
-[node name="Wall_B8" parent="." unique_id=1362338585 instance=ExtResource("3_rock")]
-position = Vector2(544, 672)
-
-[node name="Wall_B9" parent="." unique_id=588746930 instance=ExtResource("3_rock")]
-position = Vector2(608, 672)
-
-[node name="Wall_B10" parent="." unique_id=1500885031 instance=ExtResource("3_rock")]
-position = Vector2(672, 672)
-
-[node name="Wall_B11" parent="." unique_id=721302309 instance=ExtResource("3_rock")]
-position = Vector2(736, 672)
-
-[node name="Wall_B12" parent="." unique_id=717291593 instance=ExtResource("3_rock")]
-position = Vector2(800, 672)
-
-[node name="Wall_B13" parent="." unique_id=979879907 instance=ExtResource("3_rock")]
-position = Vector2(864, 672)
-
-[node name="Wall_B14" parent="." unique_id=612645823 instance=ExtResource("3_rock")]
-position = Vector2(928, 672)
-
-[node name="Wall_L1" parent="." unique_id=1588504979 instance=ExtResource("3_rock")]
-position = Vector2(32, 96)
-
-[node name="Wall_L2" parent="." unique_id=532410900 instance=ExtResource("3_rock")]
-position = Vector2(32, 160)
-
-[node name="Wall_L3" parent="." unique_id=1599715766 instance=ExtResource("3_rock")]
-position = Vector2(32, 224)
-
-[node name="Wall_L4" parent="." unique_id=1776746158 instance=ExtResource("3_rock")]
-position = Vector2(32, 288)
-
-[node name="Wall_L5" parent="." unique_id=1115578031 instance=ExtResource("3_rock")]
-position = Vector2(32, 352)
-
-[node name="Wall_L6" parent="." unique_id=697845215 instance=ExtResource("3_rock")]
-position = Vector2(32, 416)
-
-[node name="Wall_L7" parent="." unique_id=1941776623 instance=ExtResource("3_rock")]
-position = Vector2(32, 480)
-
-[node name="Wall_L8" parent="." unique_id=551590910 instance=ExtResource("3_rock")]
-position = Vector2(32, 544)
-
-[node name="Wall_L9" parent="." unique_id=640081815 instance=ExtResource("3_rock")]
-position = Vector2(32, 608)
-
-[node name="Wall_R1" parent="." unique_id=787937417 instance=ExtResource("3_rock")]
-position = Vector2(928, 96)
-
-[node name="Wall_R2" parent="." unique_id=85332003 instance=ExtResource("3_rock")]
-position = Vector2(928, 160)
-
-[node name="Wall_R3" parent="." unique_id=1336338962 instance=ExtResource("3_rock")]
-position = Vector2(928, 224)
-
-[node name="Wall_R4" parent="." unique_id=11528146 instance=ExtResource("3_rock")]
-position = Vector2(928, 288)
-
-[node name="Wall_R5" parent="." unique_id=375691911 instance=ExtResource("3_rock")]
-position = Vector2(928, 352)
-
-[node name="Wall_R6" parent="." unique_id=131076299 instance=ExtResource("3_rock")]
-position = Vector2(928, 416)
-
-[node name="Wall_R7" parent="." unique_id=2134792164 instance=ExtResource("3_rock")]
-position = Vector2(928, 480)
-
-[node name="Wall_R8" parent="." unique_id=1787540917 instance=ExtResource("3_rock")]
-position = Vector2(928, 544)

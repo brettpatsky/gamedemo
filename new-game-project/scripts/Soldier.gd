@@ -4,6 +4,10 @@ extends CharacterBody2D
 @export var move_speed: float = 215.0
 @export var max_health: int = 3
 
+# Maze mode swaps _do_move for SoldierMazeMover.tick — see SoldierMazeMover.gd
+# for the rationale. Set by Main.gd on level 4 soldiers.
+@export var maze_mode: bool = false
+
 @export var male_frames:   SpriteFrames
 @export var female_frames: SpriteFrames
 
@@ -41,6 +45,7 @@ const WEAPON_NAMES := ["Pistol", "Auto", "Grenade", "Sacrifice"]
 const WEAPON_COUNT := 4
 
 const _GRENADE_SCRIPT = preload("res://scripts/Grenade.gd")
+const _MAZE_MOVER_SCRIPT = preload("res://scripts/SoldierMazeMover.gd")
 
 var _weapon: WeaponType = WeaponType.PISTOL
 
@@ -173,6 +178,11 @@ func _ready() -> void:
 	if not nav_agent.velocity_computed.is_connected(_on_safe_velocity):
 		nav_agent.velocity_computed.connect(_on_safe_velocity)
 
+	# Maze movement bypasses RVO entirely — corridors are 1 tile wide so
+	# avoidance offers nothing but steers the soldier into walls.
+	if maze_mode:
+		nav_agent.avoidance_enabled = false
+
 	# Soldiers live on layer 2; their mask only covers layer 1 (environment/tilemap).
 	# This lets soldiers pass through each other instead of physically blocking,
 	# which was causing groups to lock up when they occupied the same space.
@@ -279,6 +289,12 @@ func take_damage(amount: int) -> void:
 # =============================================================================
 
 func _do_move(delta: float) -> void:
+	if maze_mode:
+		if _MAZE_MOVER_SCRIPT.tick(self):
+			_state = State.IDLE
+			_play_anim("idle")
+		return
+
 	if nav_agent.is_navigation_finished():
 		_state = State.IDLE
 		_play_anim("idle")

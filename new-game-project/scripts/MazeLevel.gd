@@ -18,6 +18,33 @@ extends Node2D
 
 signal escaped
 
+# Maze grid: '#' = wall, '.' = open. 22 cols × 15 rows at CELL_SIZE px each.
+# Spawn is at (col=1, row=1); exit sits at (col=20, row=13). Verified solvable:
+# (1,1)→ down the left wall → right at row 5 → through the middle corridor →
+# up via col 13 → across the top row 1 → down the right side → (13,20).
+const CELL_SIZE := 64
+@warning_ignore("integer_division")
+const _HALF_CELL := CELL_SIZE / 2
+const MAZE_LAYOUT: Array[String] = [
+	"######################",
+	"#.....#..............#",
+	"#.###.#.####.#.#####.#",
+	"#.#...#....#...#.....#",
+	"#.#.#####.###.###.####",
+	"#...#...#.....#.#....#",
+	"###.#.#.#####.#.#.##.#",
+	"#...#.#.....#.#...#..#",
+	"#.###.#####.#.#####.##",
+	"#.#...#.....#.....#..#",
+	"#.#.#.#.#########.#.##",
+	"#.#.#...........#.#..#",
+	"#.#.###########.#.##.#",
+	"#....########........#",
+	"######################",
+]
+
+const _ROCK_SCENE: PackedScene = preload("res://scenes/mazes/maze_rock.tscn")
+
 @onready var background: ColorRect          = $Background
 @onready var nav_region: NavigationRegion2D = $NavigationRegion2D
 
@@ -27,6 +54,8 @@ var _map_h_px: float = 0.0
 func _ready() -> void:
 	add_to_group("map_generator")
 	add_to_group("maze_level")
+	_spawn_walls_from_layout()
+	_resize_background_to_layout()
 	_compute_map_bounds()
 	_bake_nav()
 	_connect_exit()
@@ -69,6 +98,29 @@ func generate(_seed_value: int = 0) -> void:
 # ---------------------------------------------------------------------------
 # PRIVATE
 # ---------------------------------------------------------------------------
+func _spawn_walls_from_layout() -> void:
+	for row_idx in MAZE_LAYOUT.size():
+		var row: String = MAZE_LAYOUT[row_idx]
+		for col_idx in row.length():
+			if row[col_idx] != "#":
+				continue
+			var rock: Node2D = _ROCK_SCENE.instantiate()
+			rock.position = Vector2(
+				col_idx * CELL_SIZE + _HALF_CELL,
+				row_idx * CELL_SIZE + _HALF_CELL,
+			)
+			add_child(rock)
+
+func _resize_background_to_layout() -> void:
+	if background == null or MAZE_LAYOUT.is_empty():
+		return
+	var w: int = MAZE_LAYOUT[0].length() * CELL_SIZE
+	var h: int = MAZE_LAYOUT.size() * CELL_SIZE
+	background.offset_left   = 0
+	background.offset_top    = 0
+	background.offset_right  = w
+	background.offset_bottom = h
+
 func _compute_map_bounds() -> void:
 	if background:
 		_map_w_px = background.size.x
