@@ -46,11 +46,12 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _emit_mouse_click(button_index: MouseButton, pressed: bool) -> void:
+	var win_pos := _cursor_pos * Vector2(DisplayServer.window_get_size()) / get_viewport().get_visible_rect().size
 	var ev := InputEventMouseButton.new()
 	ev.button_index = button_index
 	ev.pressed = pressed
-	ev.position = get_viewport().get_mouse_position()
-	ev.global_position = ev.position
+	ev.position = win_pos
+	ev.global_position = win_pos + Vector2(DisplayServer.window_get_position())
 	Input.parse_input_event(ev)
 
 func _process(delta: float) -> void:
@@ -64,7 +65,8 @@ func _process(delta: float) -> void:
 		var rect := get_viewport().get_visible_rect()
 		_cursor_pos.x = clamp(_cursor_pos.x, rect.position.x, rect.end.x)
 		_cursor_pos.y = clamp(_cursor_pos.y, rect.position.y, rect.end.y)
-		Input.warp_mouse(_cursor_pos)
+		var win_scale := Vector2(DisplayServer.window_get_size()) / rect.size
+		Input.warp_mouse(_cursor_pos * win_scale)
 	else:
 		# When stick is idle, stay in sync with the physical mouse.
 		_cursor_pos = get_viewport().get_mouse_position()
