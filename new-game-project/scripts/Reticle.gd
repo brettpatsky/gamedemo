@@ -21,13 +21,15 @@ const JOY_BTN_A := 0
 const JOY_BTN_X := 2
 
 var _cursor: Node2D
+var _cursor_pos: Vector2
 
 func _ready() -> void:
 	layer = 100
 	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 	_cursor = _Cursor.new()
 	add_child(_cursor)
-	_cursor.position = get_viewport().get_mouse_position()
+	_cursor_pos = get_viewport().get_visible_rect().get_center()
+	_cursor.position = _cursor_pos
 
 # Gamepad A / X → synthetic mouse left / right click at the cursor.
 # We consume the joypad event so it doesn't ALSO fire ui_accept (which would
@@ -58,12 +60,15 @@ func _process(delta: float) -> void:
 	if stick.length() > DEADZONE:
 		# Rescale past the deadzone so the cursor doesn't crawl at low deflection.
 		var mag := (stick.length() - DEADZONE) / (1.0 - DEADZONE)
-		var pos := get_viewport().get_mouse_position() + stick.normalized() * mag * CURSOR_SPEED * delta
+		_cursor_pos += stick.normalized() * mag * CURSOR_SPEED * minf(delta, 0.05)
 		var rect := get_viewport().get_visible_rect()
-		pos.x = clamp(pos.x, 0.0, rect.size.x)
-		pos.y = clamp(pos.y, 0.0, rect.size.y)
-		Input.warp_mouse(pos)
-	_cursor.position = get_viewport().get_mouse_position()
+		_cursor_pos.x = clamp(_cursor_pos.x, rect.position.x, rect.end.x)
+		_cursor_pos.y = clamp(_cursor_pos.y, rect.position.y, rect.end.y)
+		Input.warp_mouse(_cursor_pos)
+	else:
+		# When stick is idle, stay in sync with the physical mouse.
+		_cursor_pos = get_viewport().get_mouse_position()
+	_cursor.position = _cursor_pos
 
 # Inner Node2D class — kept in this file so the whole reticle is one unit.
 class _Cursor extends Node2D:
