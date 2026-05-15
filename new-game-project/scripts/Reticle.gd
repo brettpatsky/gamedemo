@@ -1,14 +1,24 @@
 # =============================================================================
 # Reticle.gd
-# Replaces the OS mouse cursor with an in-world crosshair, and lets the
-# gamepad right stick steer that cursor by warping the OS mouse position.
-# Attach to a CanvasLayer in main.tscn — it owns a Node2D child (created in
-# _ready) whose _draw paints the crosshair at the current mouse position.
+# Autoload (singleton) — present in EVERY scene. Replaces the OS cursor with
+# an in-world crosshair, lets the gamepad LEFT stick steer that cursor by
+# warping the OS mouse, and translates gamepad face-button presses (A / X)
+# into synthetic mouse clicks at the current cursor position.
+#
+# Synthesising mouse events (rather than binding A/X directly to game actions)
+# means every Button under the reticle — title-screen mission buttons, the
+# help popup's Close button, HUD weapon / formation / revive buttons — fires
+# its `pressed` signal via the same path a real mouse click takes. The result:
+# the controller drives the same UI as the mouse, no per-screen focus wiring.
 # =============================================================================
 extends CanvasLayer
 
 const CURSOR_SPEED := 1200.0   # pixels/sec at full stick deflection
 const DEADZONE     := 0.20
+
+# Xbox/SDL face-button indices in Godot's JoyButton enum.
+const JOY_BTN_A := 0
+const JOY_BTN_X := 2
 
 var _cursor: Node2D
 
@@ -19,15 +29,32 @@ func _ready() -> void:
 	add_child(_cursor)
 	_cursor.position = get_viewport().get_mouse_position()
 
-# Restore the OS cursor on scene change so the title screen / other scenes
-# don't inherit our hidden state.
-func _exit_tree() -> void:
-	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+# Gamepad A / X → synthetic mouse left / right click at the cursor.
+# We consume the joypad event so it doesn't ALSO fire ui_accept (which would
+# double-click any focused button).
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventJoypadButton):
+		return
+	var jbe := event as InputEventJoypadButton
+	if jbe.button_index == JOY_BTN_A:
+		_emit_mouse_click(MOUSE_BUTTON_LEFT, jbe.pressed)
+		get_viewport().set_input_as_handled()
+	elif jbe.button_index == JOY_BTN_X:
+		_emit_mouse_click(MOUSE_BUTTON_RIGHT, jbe.pressed)
+		get_viewport().set_input_as_handled()
+
+func _emit_mouse_click(button_index: MouseButton, pressed: bool) -> void:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = button_index
+	ev.pressed = pressed
+	ev.position = get_viewport().get_mouse_position()
+	ev.global_position = ev.position
+	Input.parse_input_event(ev)
 
 func _process(delta: float) -> void:
 	var stick := Vector2(
-		Input.get_joy_axis(0, JOY_AXIS_RIGHT_X),
-		Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
+		Input.get_joy_axis(0, JOY_AXIS_LEFT_X),
+		Input.get_joy_axis(0, JOY_AXIS_LEFT_Y))
 	if stick.length() > DEADZONE:
 		# Rescale past the deadzone so the cursor doesn't crawl at low deflection.
 		var mag := (stick.length() - DEADZONE) / (1.0 - DEADZONE)

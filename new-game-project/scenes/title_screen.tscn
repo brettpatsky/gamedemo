@@ -827,9 +827,9 @@ text = "MOUSE & KEYBOARD
   1 / 2 / 3 — Select which group receives orders
 
 GAMEPAD
-  Right Stick — Aim the reticle
-  Left Stick — Pan camera
-  A — Move    |    X — Fire (hold for auto-fire)
+  Left Stick — Aim the reticle (moves the cursor)
+  Right Stick — Pan camera
+  A — Click / Move    |    X — Fire (hold for auto-fire)
   Y — Cycle weapon    |    B — Cycle formation
   Start — Split squad    |    D-Pad ← ↑ → — Select group 1 / 2 / 3"
 
