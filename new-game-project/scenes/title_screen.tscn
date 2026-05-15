@@ -762,7 +762,22 @@ layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -130.0
+offset_left = -230.0
+offset_top = 30.0
+offset_right = -140.0
+offset_bottom = 74.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
+theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
+text = "Help"
+
+[node name="ExitButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -135.0
 offset_top = 30.0
 offset_right = -40.0
 offset_bottom = 74.0
@@ -770,7 +785,7 @@ grow_horizontal = 0
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Help"
+text = "Exit"
 
 [node name="HelpPopup" type="ColorRect" parent="."]
 visible = false
@@ -846,4 +861,5 @@ text = "  Close  "
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button3" to="." method="_on_mission_3_pressed"]
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button4" to="." method="_on_mission_4_pressed"]
 [connection signal="pressed" from="HelpButton" to="." method="_on_help_pressed"]
+[connection signal="pressed" from="ExitButton" to="." method="_on_exit_pressed"]
 [connection signal="pressed" from="HelpPopup/CenterContainer/Card/Margin/VBox/CloseButton" to="." method="_on_help_close_pressed"]

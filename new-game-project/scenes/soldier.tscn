@@ -259,7 +259,7 @@ offset_bottom = 27.0
 
 [node name="GunShotAudio" type="AudioStreamPlayer2D" parent="." unique_id=1385984911]
 stream = ExtResource("4_x21nm")
-max_distance = 600.0
+max_distance = 2000.0
 max_polyphony = 4
 bus = &"sfx"
 area_mask = 7

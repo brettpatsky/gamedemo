@@ -87,3 +87,6 @@ func _on_help_pressed() -> void:
 
 func _on_help_close_pressed() -> void:
 	_help_popup.visible = false
+
+func _on_exit_pressed() -> void:
+	get_tree().quit()

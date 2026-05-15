@@ -442,6 +442,7 @@ func _do_shoot() -> void:
 
 	_play_anim("shoot")
 	_shoot_flash_timer = SHOOT_FLASH_DURATION
+	gunshot.pitch_scale = randf_range(0.9, 1.1)
 	gunshot.play()
 
 	if bullet_scene:
@@ -574,6 +575,7 @@ func _try_autodefend(delta: float) -> void:
 	dir = dir.rotated(randf_range(-AUTODEFEND_JITTER, AUTODEFEND_JITTER))
 	if dir.x != 0:
 		sprite.flip_h = dir.x < 0
+	gunshot.pitch_scale = randf_range(0.9, 1.1)
 	gunshot.play()
 	if bullet_scene:
 		var bullet: Node2D = bullet_scene.instantiate()
