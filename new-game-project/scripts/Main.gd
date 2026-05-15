@@ -83,19 +83,24 @@ func _ready() -> void:
 # ---------------------------------------------------------------------------
 # Level 4 click handler: SubViewportContainer._gui_input consumes mouse events
 # before _unhandled_input fires, so we intercept in _input (which runs first).
+# Action-based so the gamepad "A" button also triggers a move order.
 func _input(event: InputEvent) -> void:
 	if GameManager.current_level != 4:
 		return
-	if not (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
+	if not event.is_action_pressed("squad_move"):
 		return
+	# Mouse events carry their position; gamepad events don't — fall back to
+	# the current cursor position (kept current by Reticle).
+	var screen_pos: Vector2 = (event as InputEventMouse).position if event is InputEventMouse \
+			else get_viewport().get_mouse_position()
 	# Ignore clicks in the bottom HUD panel so formation/weapon buttons still work.
 	var vp_size := get_viewport().get_visible_rect().size
-	if event.position.y > vp_size.y - HUD_HEIGHT:
+	if screen_pos.y > vp_size.y - HUD_HEIGHT:
 		return
 	var cam := get_tree().get_first_node_in_group("main_camera") as Camera2D
 	if cam == null:
 		return
-	var world_pos: Vector2 = cam.get_canvas_transform().affine_inverse() * event.position
+	var world_pos: Vector2 = cam.get_canvas_transform().affine_inverse() * screen_pos
 	for s in get_tree().get_nodes_in_group("soldiers"):
 		if s.has_method("move_to"):
 			s.move_to(world_pos)

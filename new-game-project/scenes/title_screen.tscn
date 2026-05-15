@@ -757,7 +757,93 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
 text = "Mission 4 - Escape"
 
+[node name="HelpButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -130.0
+offset_top = 30.0
+offset_right = -40.0
+offset_bottom = 74.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
+theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
+text = "Help"
+
+[node name="HelpPopup" type="ColorRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0, 0, 0, 0.7)
+
+[node name="CenterContainer" type="CenterContainer" parent="HelpPopup"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Card" type="PanelContainer" parent="HelpPopup/CenterContainer"]
+custom_minimum_size = Vector2(620, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_fgkus")
+
+[node name="Margin" type="MarginContainer" parent="HelpPopup/CenterContainer/Card"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="VBox" type="VBoxContainer" parent="HelpPopup/CenterContainer/Card/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="HelpPopup/CenterContainer/Card/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.116, 0.571, 0.855, 1)
+theme_override_font_sizes/font_size = 32
+text = "Controls"
+horizontal_alignment = 1
+
+[node name="Body" type="Label" parent="HelpPopup/CenterContainer/Card/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.9, 0.95, 1)
+theme_override_font_sizes/font_size = 18
+theme_override_constants/line_spacing = 6
+text = "MOUSE & KEYBOARD
+  Left Click — Move active squad to clicked point
+  Right Click — Fire weapon (hold for auto-fire)
+  WASD / Arrow Keys — Pan camera
+  Q — Cycle weapon (Pistol → Rifle → Grenade → Sacrifice)
+  F — Cycle formation (2×3, 3×2, line, column, pentagram)
+  G — Split squad into 1 / 2 / 3 groups
+  1 / 2 / 3 — Select which group receives orders
+
+GAMEPAD
+  Right Stick — Aim the reticle
+  Left Stick — Pan camera
+  A — Move    |    X — Fire (hold for auto-fire)
+  Y — Cycle weapon    |    B — Cycle formation
+  Start — Split squad    |    D-Pad ← ↑ → — Select group 1 / 2 / 3"
+
+[node name="CloseButton" type="Button" parent="HelpPopup/CenterContainer/Card/Margin/VBox"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
+theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
+text = "  Close  "
+
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button" to="." method="_on_mission_1_pressed"]
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button2" to="." method="_on_mission_2_pressed"]
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button3" to="." method="_on_mission_3_pressed"]
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button4" to="." method="_on_mission_4_pressed"]
+[connection signal="pressed" from="HelpButton" to="." method="_on_help_pressed"]
+[connection signal="pressed" from="HelpPopup/CenterContainer/Card/Margin/VBox/CloseButton" to="." method="_on_help_close_pressed"]

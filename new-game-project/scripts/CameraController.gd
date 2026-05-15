@@ -71,13 +71,12 @@ func _process(delta: float) -> void:
 	_clamp_to_map()
 
 func _handle_keyboard_pan(delta: float) -> void:
-	var dir := Vector2.ZERO
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):    dir.y -= 1
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):  dir.y += 1
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):  dir.x -= 1
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT): dir.x += 1
+	# Action-based — covers WASD, arrow keys, AND gamepad left stick
+	# (bindings in project.godot). get_vector returns analog magnitude so the
+	# left stick gives gradient pan speed, while keys still pan at full tilt.
+	var dir := Input.get_vector("cam_left", "cam_right", "cam_up", "cam_down")
 	if dir != Vector2.ZERO:
-		position += dir.normalized() * pan_speed * delta / zoom.x
+		position += dir * pan_speed * delta / zoom.x
 
 func _get_min_zoom() -> float:
 	var vp := get_viewport_rect().size

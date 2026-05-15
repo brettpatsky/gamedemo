@@ -15,6 +15,7 @@ const SPD_MAX: float = 1200.0
 const RNG_MAX: float = 1500.0
 
 @onready var _bios_grid: GridContainer = $MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid
+@onready var _help_popup: ColorRect = $HelpPopup
 
 func _ready() -> void:
 	GameManager.score = 0
@@ -80,3 +81,9 @@ func _on_mission_3_pressed() -> void:
 func _on_mission_4_pressed() -> void:
 	GameManager.current_level = 4
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
+
+func _on_help_pressed() -> void:
+	_help_popup.visible = true
+
+func _on_help_close_pressed() -> void:
+	_help_popup.visible = false

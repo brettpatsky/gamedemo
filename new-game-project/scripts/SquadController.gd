@@ -52,48 +52,50 @@ func _ready() -> void:
 	GameManager.soldier_died.connect(_on_soldier_died)
 
 # ---------------------------------------------------------------------------
-# Input — runs after UI consumes its events
+# Input — runs after UI consumes its events.
+# Action-based so the same handler responds to mouse/keyboard AND gamepad.
+# Bindings live in project.godot under [input].
 # ---------------------------------------------------------------------------
 func _unhandled_input(event: InputEvent) -> void:
 	if soldiers.is_empty():
 		return
 
-	if event is InputEventMouseButton:
-		match event.button_index:
-			MOUSE_BUTTON_LEFT:
-				if event.pressed:
-					_issue_move_order(_screen_to_world(event.position))
-					get_viewport().set_input_as_handled()
+	if event.is_action_pressed("squad_move"):
+		_issue_move_order(_screen_to_world(_event_cursor_pos(event)))
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("squad_fire"):
+		_issue_fire_order(_screen_to_world(_event_cursor_pos(event)))
+		_right_held = true
+		_auto_timer = _current_auto_interval()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_released("squad_fire"):
+		_right_held = false
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("cycle_weapon"):
+		_cycle_weapons()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("cycle_formation"):
+		_cycle_formation()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("cycle_groups"):
+		_cycle_group_count()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("select_group_1"):
+		_select_group(0)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("select_group_2"):
+		_select_group(1)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("select_group_3"):
+		_select_group(2)
+		get_viewport().set_input_as_handled()
 
-			MOUSE_BUTTON_RIGHT:
-				if event.pressed:
-					_issue_fire_order(_screen_to_world(event.position))
-					_right_held = true
-					_auto_timer = _current_auto_interval()
-				else:
-					_right_held = false
-				get_viewport().set_input_as_handled()
-
-	elif event is InputEventKey and event.pressed and not event.echo:
-		match event.keycode:
-			KEY_Q:
-				_cycle_weapons()
-				get_viewport().set_input_as_handled()
-			KEY_F:
-				_cycle_formation()
-				get_viewport().set_input_as_handled()
-			KEY_G:
-				_cycle_group_count()
-				get_viewport().set_input_as_handled()
-			KEY_1:
-				_select_group(0)
-				get_viewport().set_input_as_handled()
-			KEY_2:
-				_select_group(1)
-				get_viewport().set_input_as_handled()
-			KEY_3:
-				_select_group(2)
-				get_viewport().set_input_as_handled()
+# Mouse events carry their click position; gamepad events do not. Fall back to
+# the current cursor (kept current by Reticle's right-stick warp).
+func _event_cursor_pos(event: InputEvent) -> Vector2:
+	if event is InputEventMouse:
+		return (event as InputEventMouse).position
+	return get_viewport().get_mouse_position()
 
 # ---------------------------------------------------------------------------
 # Process — drives continuous AUTO fire while right mouse is held

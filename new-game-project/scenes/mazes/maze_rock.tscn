@@ -7,15 +7,18 @@ atlas = ExtResource("1_tiles")
 region = Rect2(1480, 592, 64, 64)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_rock"]
-size = Vector2(56, 56)
+size = Vector2(48, 43)
 
 [node name="MazeRock" type="StaticBody2D" unique_id=1560309118 groups=["maze_walls"]]
 collision_mask = 0
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=806722931]
+position = Vector2(-1, -1.5)
+scale = Vector2(0.96875, 0.953125)
 texture = SubResource("AtlasTexture_rock")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1923609081]
+position = Vector2(-1, -0.5)
 shape = SubResource("RectangleShape2D_rock")
 
 [node name="NavigationObstacle2D" type="NavigationObstacle2D" parent="." unique_id=1103083302]
