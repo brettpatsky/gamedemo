@@ -265,7 +265,7 @@ func show_objective(level: int) -> void:
 		2: "OBJECTIVE: Destroy the fortified structure",
 		3: "OBJECTIVE: Escort the NPC to extraction",
 		4: "OBJECTIVE: Escape the maze",
-		5: "OBJECTIVE: Shatter the Weeping Heartstone",
+		5: "OBJECTIVE: Shatter the Weeping Heart",
 	}
 	_objective_label.text = texts.get(level, "")
 	if level == 3:
@@ -338,7 +338,7 @@ func _build_boss_overlay() -> void:
 	_boss_phase_label.offset_bottom =  68.0
 	_boss_phase_label.add_theme_font_size_override("font_size", 18)
 	_boss_phase_label.add_theme_color_override("font_color", Color(1.0, 0.85, 1.0))
-	_boss_phase_label.text = "THE WEEPING HEARTSTONE  —  PHASE 1"
+	_boss_phase_label.text = "THE WEEPING HEART  —  PHASE 1"
 	add_child(_boss_phase_label)
 
 	# Void Embrace channel bar — hidden until the boss starts channelling. Big,
@@ -380,10 +380,10 @@ func _on_boss_phase_changed(phase: int) -> void:
 		return
 	var phase_names := {
 		1: "PHASE 1 — LEYLINE GRID",
-		2: "PHASE 2 — THE PARENT'S MIRAGE  (BREAK THE TOTEMS)",
-		3: "PHASE 3 — ELDRITCH MELTDOWN",
+		2: "PHASE 2 — THE MIRAGE  (BREAK THE TOTEMS)",
+		3: "PHASE 3 — MELTDOWN",
 	}
-	_boss_phase_label.text = "THE WEEPING HEARTSTONE  —  %s" % phase_names.get(phase, "")
+	_boss_phase_label.text = "THE WEEPING HEART  —  %s" % phase_names.get(phase, "")
 
 func _on_void_embrace_started() -> void:
 	if _void_embrace_bar:
