@@ -30,6 +30,16 @@ const ObstacleClass = preload("res://scripts/Obstacle.gd")
 @export var enemy_density:   int   = 30
 @export var tile_config:     TileConfig
 
+# Elevation thresholds: any tile with elevation noise above HILL_THRESHOLD is
+# "high ground" (range bonus); below VALLEY_THRESHOLD is "low ground" (range
+# penalty). Kept here so Bullet.gd and the visual overlay agree on which tiles
+# count. Update both these AND the duplicates in _make_topography_script() if
+# you tune them.
+const HILL_THRESHOLD:    float = 0.18
+const VALLEY_THRESHOLD:  float = -0.18
+const HILL_RANGE_MULT:   float = 1.35
+const VALLEY_RANGE_MULT: float = 0.70
+
 @onready var tile_map:   TileMapLayer       = $TileMapLayer
 @onready var nav_region: NavigationRegion2D = $NavigationRegion2D
 
@@ -83,6 +93,41 @@ func is_water_at(world_pos: Vector2) -> bool:
 	var local_pos := tile_map.to_local(world_pos)
 	var tile_pos  := tile_map.local_to_map(local_pos)
 	return tile_map.get_cell_atlas_coords(tile_pos) == tile_config.water
+
+# Raw elevation noise value (-1..1) at the given world position. Sampled at
+# tile granularity so the visual overlay and gameplay agree on terrain class.
+func get_elevation_at(world_pos: Vector2) -> float:
+	var local_pos := tile_map.to_local(world_pos)
+	var tile_pos  := tile_map.local_to_map(local_pos)
+	return _elevation_noise.get_noise_2d(float(tile_pos.x), float(tile_pos.y))
+
+# Projectile range multiplier based on the shooter's footing.
+#   Hill   → HILL_RANGE_MULT   (bullets travel further)
+#   Valley → VALLEY_RANGE_MULT (bullets travel less)
+#   Flat   → 1.0
+func get_range_modifier_at(world_pos: Vector2) -> float:
+	var e := get_elevation_at(world_pos)
+	if e > HILL_THRESHOLD:
+		return HILL_RANGE_MULT
+	if e < VALLEY_THRESHOLD:
+		return VALLEY_RANGE_MULT
+	return 1.0
+
+# Movement-speed multiplier from terrain slope. Samples the elevation noise
+# directly ahead of the mover and compares with its current footing; uphill
+# steps slow the mover, downhill steps speed it up. Clamped to a ±25 % swing
+# so it tweaks pacing without making any tile a no-go zone.
+func get_slope_speed_mult(world_pos: Vector2, direction: Vector2) -> float:
+	if direction.length_squared() < 0.01:
+		return 1.0
+	var dir := direction.normalized()
+	# Sample roughly one tile ahead — far enough to register a real slope but
+	# close enough to track the actual path the mover is on.
+	var here  := get_elevation_at(world_pos)
+	var ahead := get_elevation_at(world_pos + dir * float(tile_size))
+	var slope := ahead - here   # >0 = uphill, <0 = downhill
+	# Noise deltas across one tile are typically within ±0.2; scale to ±0.25.
+	return clampf(1.0 - slope * 1.25, 0.75, 1.25)
 
 func get_spawn_positions(count: int) -> Array[Vector2]:
 	var result: Array[Vector2] = []
@@ -164,7 +209,11 @@ func _fill_tiles() -> void:
 func _spawn_topography() -> void:
 	var overlay := Node2D.new()
 	overlay.name = "TopographyOverlay"
-	overlay.z_index = -10   # behind sprites, above tilemap
+	# Sit ON TOP of the tilemap (tilemap z_index = 0). Soldiers/enemies live
+	# under the sibling SquadController and render after MapGenerator's whole
+	# subtree, so they remain on top of this overlay regardless.
+	overlay.z_index = 0
+	overlay.show_behind_parent = false
 	overlay.set_script(_make_topography_script())
 	overlay.set("tile_size",  tile_size)
 	overlay.set("map_width",  map_width)
@@ -173,15 +222,32 @@ func _spawn_topography() -> void:
 	# touch the FastNoiseLite each frame.
 	var samples := PackedFloat32Array()
 	samples.resize(map_width * map_height)
+	# Water mask — overlay must not paint hillshade on water tiles (they're
+	# obvious from the blue colour and stippling them with light/shadow looks
+	# like a bad photo filter).
+	var water_bytes := PackedByteArray()
+	water_bytes.resize(map_width * map_height)
 	for x in map_width:
 		for y in map_height:
-			samples[x * map_height + y] = _elevation_noise.get_noise_2d(float(x), float(y))
-	overlay.set("elevation", samples)
+			var idx := x * map_height + y
+			samples[idx] = _elevation_noise.get_noise_2d(float(x), float(y))
+			var atlas := tile_map.get_cell_atlas_coords(Vector2i(x, y))
+			water_bytes[idx] = 1 if atlas == tile_config.water else 0
+	overlay.set("elevation",  samples)
+	overlay.set("water_mask", water_bytes)
 	overlay.position = tile_map.position
 	add_child(overlay)
 
-# Inline script for the overlay node — drawn as a single batched mesh of
-# tile-sized quads tinted by elevation.
+# Inline script for the overlay node — proper hillshade rendering.
+#
+# Each tile is tinted by the dot product of its surface normal (derived from
+# elevation gradient) with a virtual light direction coming from the NW. The
+# eye naturally reads bright-NW-edge / dark-SE-edge tiles as raised ground
+# and inverted shading as depressions — the same trick paper topo maps use.
+#
+# Water tiles are skipped (water_mask = 1) so the shading doesn't muddy up
+# the blue. Subtle contour lines mark the gameplay thresholds so players can
+# tell where the projectile / movement bonuses kick in.
 func _make_topography_script() -> GDScript:
 	var src := """
 extends Node2D
@@ -190,29 +256,107 @@ var tile_size:  int   = 64
 var map_width:  int   = 0
 var map_height: int   = 0
 var elevation:  PackedFloat32Array
+var water_mask: PackedByteArray
 
 const HILL_THRESHOLD   := 0.18
 const VALLEY_THRESHOLD := -0.18
-const HILL_TINT   := Color(1.0, 0.92, 0.65, 0.16)   # warm highlight
-const VALLEY_TINT := Color(0.10, 0.18, 0.32, 0.22)  # cool shadow
+
+# Hillshade — light coming from the NW (negative x and y). Adjusting these
+# changes the apparent sun direction; intensity scales gradient magnitude
+# into the [-1, 1] brightness band.
+const LIGHT_X         := -0.6
+const LIGHT_Y         := -0.6
+const SHADE_INTENSITY := 5.0
+const HIGHLIGHT_ALPHA := 0.55
+const SHADOW_ALPHA    := 0.65
+
+const HIGHLIGHT := Color(1.00, 0.96, 0.78)   # warm sun-lit cream
+const SHADOW    := Color(0.02, 0.06, 0.14)   # deep cool shadow
+
+# Threshold contour — kept subtle so the hillshade is the dominant visual.
+const CONTOUR_HILL   := Color(1.00, 0.92, 0.40, 0.50)
+const CONTOUR_VALLEY := Color(0.40, 0.85, 1.00, 0.50)
+const CONTOUR_THICK  := 1.5
+
+func _elev(x: int, y: int) -> float:
+	if x < 0: x = 0
+	elif x >= map_width: x = map_width - 1
+	if y < 0: y = 0
+	elif y >= map_height: y = map_height - 1
+	return elevation[x * map_height + y]
+
+func _is_water(x: int, y: int) -> bool:
+	if x < 0 or x >= map_width or y < 0 or y >= map_height:
+		return false
+	if water_mask.size() == 0:
+		return false
+	return water_mask[x * map_height + y] != 0
+
+func _classify(e: float) -> int:
+	if e > HILL_THRESHOLD:   return 1
+	if e < VALLEY_THRESHOLD: return -1
+	return 0
 
 func _draw() -> void:
 	if map_width == 0 or map_height == 0:
 		return
 	var ts: float = float(tile_size)
+	# TileMapLayer.map_to_local() returns the CENTRE of each tile; offset by
+	# half a tile so our rects align with what the player sees underneath.
+	var half: float = ts * 0.5
+
+	# Pass 1 — hillshade. Per-tile brightness from the elevation gradient.
 	for x in map_width:
 		for y in map_height:
-			var e: float = elevation[x * map_height + y]
-			if e > HILL_THRESHOLD:
-				var t: float = clampf((e - HILL_THRESHOLD) / (1.0 - HILL_THRESHOLD), 0.0, 1.0)
-				var col: Color = HILL_TINT
-				col.a = HILL_TINT.a * t
-				draw_rect(Rect2(x * ts, y * ts, ts, ts), col)
-			elif e < VALLEY_THRESHOLD:
-				var t: float = clampf((VALLEY_THRESHOLD - e) / (1.0 + VALLEY_THRESHOLD), 0.0, 1.0)
-				var col: Color = VALLEY_TINT
-				col.a = VALLEY_TINT.a * t
-				draw_rect(Rect2(x * ts, y * ts, ts, ts), col)
+			if _is_water(x, y):
+				continue
+			var dx: float = _elev(x + 1, y) - _elev(x - 1, y)
+			var dy: float = _elev(x, y + 1) - _elev(x, y - 1)
+			# Surface facing the light → bright; facing away → dark.
+			# Negate so an uphill-toward-light slope reads as bright.
+			var s: float = -(dx * LIGHT_X + dy * LIGHT_Y) * SHADE_INTENSITY
+			s = clampf(s, -1.0, 1.0)
+			if absf(s) < 0.04:
+				continue   # essentially flat — leave the tile alone
+			var rect := Rect2(x * ts - half, y * ts - half, ts, ts)
+			if s > 0.0:
+				var col: Color = HIGHLIGHT
+				col.a = s * HIGHLIGHT_ALPHA
+				draw_rect(rect, col, true)
+			else:
+				var col2: Color = SHADOW
+				col2.a = -s * SHADOW_ALPHA
+				draw_rect(rect, col2, true)
+
+	# Pass 2 — thin contour lines along the gameplay threshold so players can
+	# tell where the projectile / movement modifier turns on. Drawn after the
+	# hillshade so they stay crisp.
+	for x in map_width:
+		for y in map_height:
+			if _is_water(x, y):
+				continue
+			var cls: int = _classify(elevation[x * map_height + y])
+			if cls == 0:
+				continue
+			var line_col: Color = CONTOUR_HILL if cls == 1 else CONTOUR_VALLEY
+			var tx: float = x * ts - half
+			var ty: float = y * ts - half
+			# Right edge.
+			var ncls: int = 0
+			if x + 1 < map_width:
+				ncls = _classify(elevation[(x + 1) * map_height + y])
+			if ncls != cls:
+				draw_line(Vector2(tx + ts, ty), Vector2(tx + ts, ty + ts), line_col, CONTOUR_THICK)
+			# Bottom edge.
+			ncls = 0
+			if y + 1 < map_height:
+				ncls = _classify(elevation[x * map_height + (y + 1)])
+			if ncls != cls:
+				draw_line(Vector2(tx, ty + ts), Vector2(tx + ts, ty + ts), line_col, CONTOUR_THICK)
+			if x == 0:
+				draw_line(Vector2(tx, ty), Vector2(tx, ty + ts), line_col, CONTOUR_THICK)
+			if y == 0:
+				draw_line(Vector2(tx, ty), Vector2(tx + ts, ty), line_col, CONTOUR_THICK)
 """
 	var gs := GDScript.new()
 	gs.source_code = src

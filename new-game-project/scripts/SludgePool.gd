@@ -1,0 +1,62 @@
+# =============================================================================
+# SludgePool.gd  (Boss Mission — Phase 2 floor hazard)
+# Patches of corrupted purple sludge spawned by the Heartstone. Any soldier
+# standing inside drains the shared rifle-ammo pool at a steady rate — the
+# "Mana Drain" debuff. Forces the player to keep the active group moving or
+# swap to a different squad before the rifle pool runs dry.
+# =============================================================================
+extends Area2D
+
+const RADIUS:       float = 90.0
+const DRAIN_RATE:   float = 14.0  # rifle ammo siphoned per second per soldier inside
+
+var _accumulator: float = 0.0
+var _anim_phase:  float = 0.0
+
+func _ready() -> void:
+	add_to_group("sludge_pools")
+	collision_layer = 0
+	collision_mask  = 2   # detect soldiers
+	# monitoring defaults to true (we need it); monitorable defaults to true
+	# (harmless — no Area2D in the game masks our layer-0 sludge anyway). We
+	# intentionally do NOT assign these in code because property writes are
+	# blocked when the node is added during a physics-query flush.
+	# Build the collision shape in code so the scene file isn't needed.
+	var shape := CircleShape2D.new()
+	shape.radius = RADIUS
+	var cs := CollisionShape2D.new()
+	cs.shape = shape
+	add_child(cs)
+	queue_redraw()
+
+func _process(delta: float) -> void:
+	_anim_phase += delta
+	queue_redraw()
+	var bodies: Array = get_overlapping_bodies()
+	var count_inside: int = 0
+	for b in bodies:
+		if b.is_in_group("soldiers"):
+			# Downed soldiers don't drain ammo.
+			if b.has_method("is_downed") and b.is_downed():
+				continue
+			count_inside += 1
+	if count_inside <= 0:
+		return
+	_accumulator += DRAIN_RATE * delta * float(count_inside)
+	var whole: int = int(_accumulator)
+	if whole > 0:
+		_accumulator -= float(whole)
+		GameManager.rifle_ammo_pool = maxi(GameManager.rifle_ammo_pool - whole, 0)
+
+func _draw() -> void:
+	# Layered violet pools — outer halo + main body + writhing inner rim.
+	draw_circle(Vector2.ZERO, RADIUS,        Color(0.30, 0.05, 0.45, 0.35))
+	draw_circle(Vector2.ZERO, RADIUS * 0.85, Color(0.45, 0.10, 0.65, 0.55))
+	draw_circle(Vector2.ZERO, RADIUS * 0.55, Color(0.65, 0.20, 0.85, 0.65))
+	# Three slowly drifting bubbles to sell the "alive" feel.
+	for i in 3:
+		var phase: float = _anim_phase * 0.8 + float(i) * (TAU / 3.0)
+		var r: float = RADIUS * (0.35 + 0.10 * sin(phase * 1.7))
+		var pos := Vector2(cos(phase), sin(phase)) * (RADIUS * 0.45)
+		draw_circle(pos, r * 0.20, Color(0.9, 0.6, 1.0, 0.55))
+	draw_arc(Vector2.ZERO, RADIUS, 0.0, TAU, 48, Color(0.85, 0.50, 1.0, 0.75), 2.5)

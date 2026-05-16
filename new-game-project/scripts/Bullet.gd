@@ -44,12 +44,24 @@ func initialise(direction: Vector2, shooter: Node2D) -> void:
 
 # Per-shot stat override. Called by Soldier so each squad member's pistol and
 # rifle can have independent damage / speed / range / color values.
+#
+# Applies the shooter's terrain-elevation range modifier here so high-ground
+# bullets fly further and valley-fired bullets fly shorter — _shooter is set
+# in initialise() which Soldier/Enemy always call before set_stats().
 func set_stats(p_damage: int, p_speed: float, p_distance: float, p_color: Color) -> void:
 	damage       = p_damage
 	speed        = p_speed
-	max_distance = p_distance
+	max_distance = p_distance * _elevation_range_mult()
 	color        = p_color
 	queue_redraw()
+
+func _elevation_range_mult() -> float:
+	if _shooter == null:
+		return 1.0
+	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	if map_gen == null or not map_gen.has_method("get_range_modifier_at"):
+		return 1.0
+	return map_gen.get_range_modifier_at(_shooter.global_position)
 
 # ---------------------------------------------------------------------------
 # _ready — connect screen-exit signal for auto-cleanup

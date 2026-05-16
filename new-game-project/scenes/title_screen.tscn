@@ -757,6 +757,13 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
 text = "Mission 4 - Escape"
 
+[node name="Button5" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=1287536006]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
+theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
+text = "Mission 5 - The Weeping Heartstone"
+
 [node name="HelpButton" type="Button" parent="."]
 layout_mode = 1
 anchors_preset = 1
@@ -860,6 +867,7 @@ text = "  Close  "
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button2" to="." method="_on_mission_2_pressed"]
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button3" to="." method="_on_mission_3_pressed"]
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button4" to="." method="_on_mission_4_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button5" to="." method="_on_mission_5_pressed"]
 [connection signal="pressed" from="HelpButton" to="." method="_on_help_pressed"]
 [connection signal="pressed" from="ExitButton" to="." method="_on_exit_pressed"]
 [connection signal="pressed" from="HelpPopup/CenterContainer/Card/Margin/VBox/CloseButton" to="." method="_on_help_close_pressed"]

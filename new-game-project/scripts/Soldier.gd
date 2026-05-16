@@ -144,13 +144,15 @@ var _stuck_check_pos: Vector2 = Vector2.ZERO
 var _unstick_timer:   float   = 0.0
 var _unstick_dir:     Vector2 = Vector2.ZERO
 
-# Catch-up sprint — triggered when the unstick manoeuvre finishes so the
-# soldier can rejoin the group without the group having to stop.
-const CATCHUP_SPEED_MULT := 1.75
-const CATCHUP_DURATION   := 2.0
-var _catchup_timer:   float = 0.0
-var _was_unsticking:  bool  = false
-var _was_in_water:    bool  = false
+# Catch-up sprint — continuous bonus based on how far this soldier has fallen
+# behind the squad centroid. Within CATCHUP_NEAR the bonus is zero (we're in
+# formation, no reason to sprint), ramping linearly to CATCHUP_SPEED_MULT at
+# CATCHUP_FAR. Replaces the previous binary timer which fired indiscriminately
+# every time a soldier left water or finished an unstick, even when already in
+# formation with the rest of the squad.
+const CATCHUP_SPEED_MULT := 1.5
+const CATCHUP_NEAR       := 110.0   # px from centroid — no bonus inside this
+const CATCHUP_FAR        := 320.0   # px — full bonus at or beyond this
 
 func _ready() -> void:
 	_health = max_health
@@ -239,9 +241,6 @@ func halt() -> void:
 		return
 	nav_agent.target_position = global_position
 	velocity = Vector2.ZERO
-	_catchup_timer  = 0.0
-	_was_unsticking = false
-	_was_in_water   = false
 	_state = State.IDLE
 
 func fire_at(target: Vector2, bullet_aim: Vector2 = Vector2.ZERO) -> void:
@@ -299,9 +298,6 @@ func _do_move(delta: float) -> void:
 		_state = State.IDLE
 		_play_anim("idle")
 		footstep.stop()
-		_catchup_timer  = 0.0
-		_was_unsticking = false
-		_was_in_water   = false
 		return
 
 	_unstick_timer = max(_unstick_timer - delta, 0.0)
@@ -315,19 +311,8 @@ func _do_move(delta: float) -> void:
 			_try_unstick()
 		_stuck_check_pos = global_position
 
-	# Catch-up sprint: triggers when the unstick sidestepping finishes, OR when
-	# the soldier exits water after being slowed — both cases leave them lagging
-	# behind the group and warrant a brief speed boost to rejoin formation.
 	var is_unsticking := _unstick_timer > 0.0
-	var in_water      := _water_speed_mult() < 1.0
-	var water_exit_lag := _was_in_water and not in_water \
-		and global_position.distance_to(_move_target) > 96.0
-	if (_was_unsticking and not is_unsticking) or water_exit_lag:
-		_catchup_timer = CATCHUP_DURATION
-	_was_unsticking = is_unsticking
-	_was_in_water   = in_water
-	_catchup_timer  = max(_catchup_timer - delta, 0.0)
-	var speed_mult  := CATCHUP_SPEED_MULT if _catchup_timer > 0.0 else 1.0
+	var speed_mult    := _catchup_speed_mult()
 
 	var next_pos:  Vector2 = nav_agent.get_next_path_position()
 	var direction: Vector2 = (next_pos - global_position).normalized()
@@ -336,7 +321,8 @@ func _do_move(delta: float) -> void:
 	if is_unsticking:
 		direction = (direction + _unstick_dir * 1.5).normalized()
 
-	var desired := direction * move_speed * _water_speed_mult() * speed_mult
+	var slope_mult := _slope_speed_mult(direction)
+	var desired := direction * move_speed * _water_speed_mult() * slope_mult * speed_mult
 	if nav_agent.avoidance_enabled:
 		nav_agent.max_speed = move_speed * speed_mult
 		nav_agent.set_velocity(desired)
@@ -486,6 +472,31 @@ func _water_speed_mult() -> float:
 	if map_gen and map_gen.has_method("is_water_at") and map_gen.is_water_at(global_position):
 		return WATER_SPEED_MULT
 	return 1.0
+
+# Slope speed multiplier — slower going uphill, faster going downhill.
+# MapGenerator clamps the result to ±25 %.
+func _slope_speed_mult(direction: Vector2) -> float:
+	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	if map_gen and map_gen.has_method("get_slope_speed_mult"):
+		return map_gen.get_slope_speed_mult(global_position, direction)
+	return 1.0
+
+# Distance-based catch-up. Soldiers near the squad centroid run at base speed;
+# stragglers smoothly ramp up to CATCHUP_SPEED_MULT. This replaces the old
+# binary timer that sprinted indiscriminately after water exits / unstick
+# events, even when the soldier was already in formation.
+func _catchup_speed_mult() -> float:
+	var squad: Node = get_tree().get_first_node_in_group("squad_controller")
+	if squad == null or not squad.has_method("get_centroid"):
+		return 1.0
+	var centroid: Vector2 = squad.get_centroid()
+	if centroid == Vector2.ZERO:
+		return 1.0
+	var d: float = global_position.distance_to(centroid)
+	if d <= CATCHUP_NEAR:
+		return 1.0
+	var t: float = clampf((d - CATCHUP_NEAR) / (CATCHUP_FAR - CATCHUP_NEAR), 0.0, 1.0)
+	return lerpf(1.0, CATCHUP_SPEED_MULT, t)
 
 func _die() -> void:
 	# Soldiers are not removed from the field — they remain as a "downed" body

@@ -167,7 +167,7 @@ func _move_toward_nav_target() -> void:
 		return
 	var next: Vector2 = nav_agent.get_next_path_position()
 	var dir:  Vector2 = (next - global_position).normalized()
-	velocity = dir * move_speed * _water_speed_mult()
+	velocity = dir * move_speed * _water_speed_mult() * _slope_speed_mult(dir)
 	move_and_slide()
 	_play_walk_anim(dir)
 
@@ -183,6 +183,14 @@ func _water_speed_mult() -> float:
 	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
 	if map_gen and map_gen.has_method("is_water_at") and map_gen.is_water_at(global_position):
 		return WATER_SPEED_MULT
+	return 1.0
+
+# Slope speed multiplier — slower going uphill, faster going downhill.
+# MapGenerator clamps the result to ±25 %.
+func _slope_speed_mult(direction: Vector2) -> float:
+	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	if map_gen and map_gen.has_method("get_slope_speed_mult"):
+		return map_gen.get_slope_speed_mult(global_position, direction)
 	return 1.0
 
 func _set_new_patrol_dest() -> void:

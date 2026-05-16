@@ -86,6 +86,14 @@ var _escort_joined: bool = false
 # Level-4 arrow target — points at the maze exit zone.
 var _maze_exit: Node2D = null
 
+# Level-5 boss reference. Drives the boss-health bar, phase banner, and the
+# Void Embrace channel bar at the top of the screen.
+var _boss: Node2D = null
+var _boss_health_bar: ProgressBar = null
+var _boss_phase_label: Label = null
+var _void_embrace_bar: ProgressBar = null
+var _void_embrace_label: Label = null
+
 # Caches for current state — used to render highlights & ammo
 var _current_weapon:    int = 0
 var _current_formation: int = 1   # 3×2 on mission start (matches SquadController)
@@ -257,15 +265,17 @@ func show_objective(level: int) -> void:
 		2: "OBJECTIVE: Destroy the fortified structure",
 		3: "OBJECTIVE: Escort the NPC to extraction",
 		4: "OBJECTIVE: Escape the maze",
+		5: "OBJECTIVE: Shatter the Weeping Heartstone",
 	}
 	_objective_label.text = texts.get(level, "")
 	if level == 3:
 		_escort_label.show()
 	else:
 		_escort_label.hide()
-	# Maze level has no enemies — hide the counter so it doesn't read "ENEMIES: 0".
+	# Maze level has no enemies; boss level has its own health bar — hide the
+	# generic ENEMIES counter on both so the UI doesn't look redundant.
 	if _enemy_label:
-		_enemy_label.visible = level != 4
+		_enemy_label.visible = level != 4 and level != 5
 
 func update_escort_health(current: int, max_hp: int) -> void:
 	_escort_label.text = "ESCORT HEALTH: %d / %d" % [current, max_hp]
@@ -285,6 +295,108 @@ func on_escort_joined() -> void:
 # spawned by MazeLevel.
 func set_maze_exit(exit_zone: Node2D) -> void:
 	_maze_exit = exit_zone
+
+# Main.gd calls this on level 5 with the BossHeartstone instance so the HUD
+# can render the boss-health bar / phase banner / Void Embrace channel bar.
+# Created in code (rather than in the scene) so HUD.tscn stays untouched.
+func set_boss(boss: Node2D) -> void:
+	_boss = boss
+	if _boss_health_bar == null:
+		_build_boss_overlay()
+	if boss and boss.has_signal("phase_changed"):
+		boss.phase_changed.connect(_on_boss_phase_changed)
+	if boss and boss.has_signal("void_embrace_started"):
+		boss.void_embrace_started.connect(_on_void_embrace_started)
+	if boss and boss.has_signal("void_embrace_cleared"):
+		boss.void_embrace_cleared.connect(_on_void_embrace_cleared)
+
+func _build_boss_overlay() -> void:
+	# Boss-health bar — centred near the top of the screen, beneath the phase label.
+	_boss_health_bar = ProgressBar.new()
+	_boss_health_bar.anchor_left   = 0.5
+	_boss_health_bar.anchor_right  = 0.5
+	_boss_health_bar.anchor_top    = 0.0
+	_boss_health_bar.anchor_bottom = 0.0
+	_boss_health_bar.offset_left   = -260.0
+	_boss_health_bar.offset_right  =  260.0
+	_boss_health_bar.offset_top    =  68.0
+	_boss_health_bar.offset_bottom =  86.0
+	_boss_health_bar.max_value     = 360.0
+	_boss_health_bar.value         = 360.0
+	_boss_health_bar.show_percentage = false
+	add_child(_boss_health_bar)
+
+	_boss_phase_label = Label.new()
+	_boss_phase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_boss_phase_label.anchor_left   = 0.5
+	_boss_phase_label.anchor_right  = 0.5
+	_boss_phase_label.anchor_top    = 0.0
+	_boss_phase_label.anchor_bottom = 0.0
+	_boss_phase_label.offset_left   = -260.0
+	_boss_phase_label.offset_right  =  260.0
+	_boss_phase_label.offset_top    =  44.0
+	_boss_phase_label.offset_bottom =  68.0
+	_boss_phase_label.add_theme_font_size_override("font_size", 18)
+	_boss_phase_label.add_theme_color_override("font_color", Color(1.0, 0.85, 1.0))
+	_boss_phase_label.text = "THE WEEPING HEARTSTONE  —  PHASE 1"
+	add_child(_boss_phase_label)
+
+	# Void Embrace channel bar — hidden until the boss starts channelling. Big,
+	# threatening, and centred high on the screen so the player can't miss it.
+	_void_embrace_bar = ProgressBar.new()
+	_void_embrace_bar.anchor_left   = 0.5
+	_void_embrace_bar.anchor_right  = 0.5
+	_void_embrace_bar.anchor_top    = 0.0
+	_void_embrace_bar.anchor_bottom = 0.0
+	_void_embrace_bar.offset_left   = -300.0
+	_void_embrace_bar.offset_right  =  300.0
+	_void_embrace_bar.offset_top    = 110.0
+	_void_embrace_bar.offset_bottom = 140.0
+	_void_embrace_bar.max_value     = 1.0
+	_void_embrace_bar.value         = 0.0
+	_void_embrace_bar.show_percentage = false
+	_void_embrace_bar.modulate = Color(1.0, 0.3, 1.0)
+	_void_embrace_bar.hide()
+	add_child(_void_embrace_bar)
+
+	_void_embrace_label = Label.new()
+	_void_embrace_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_void_embrace_label.anchor_left   = 0.5
+	_void_embrace_label.anchor_right  = 0.5
+	_void_embrace_label.anchor_top    = 0.0
+	_void_embrace_label.anchor_bottom = 0.0
+	_void_embrace_label.offset_left   = -300.0
+	_void_embrace_label.offset_right  =  300.0
+	_void_embrace_label.offset_top    =  88.0
+	_void_embrace_label.offset_bottom = 110.0
+	_void_embrace_label.add_theme_font_size_override("font_size", 16)
+	_void_embrace_label.add_theme_color_override("font_color", Color(1.0, 0.4, 1.0))
+	_void_embrace_label.text = "VOID EMBRACE — SACRIFICE OR DIE!"
+	_void_embrace_label.hide()
+	add_child(_void_embrace_label)
+
+func _on_boss_phase_changed(phase: int) -> void:
+	if _boss_phase_label == null:
+		return
+	var phase_names := {
+		1: "PHASE 1 — LEYLINE GRID",
+		2: "PHASE 2 — THE PARENT'S MIRAGE  (BREAK THE TOTEMS)",
+		3: "PHASE 3 — ELDRITCH MELTDOWN",
+	}
+	_boss_phase_label.text = "THE WEEPING HEARTSTONE  —  %s" % phase_names.get(phase, "")
+
+func _on_void_embrace_started() -> void:
+	if _void_embrace_bar:
+		_void_embrace_bar.value = 0.0
+		_void_embrace_bar.show()
+	if _void_embrace_label:
+		_void_embrace_label.show()
+
+func _on_void_embrace_cleared() -> void:
+	if _void_embrace_bar:
+		_void_embrace_bar.hide()
+	if _void_embrace_label:
+		_void_embrace_label.hide()
 
 func show_mission_result(message: String, colour: Color, show_next: bool = false) -> void:
 	mission_label.text = message
@@ -399,6 +511,15 @@ func _process(delta: float) -> void:
 	if _arrow_node:
 		_arrow_node.queue_redraw()
 	_refresh_soldier_stats()
+	_refresh_boss_overlay()
+
+func _refresh_boss_overlay() -> void:
+	if _boss == null or not is_instance_valid(_boss):
+		return
+	if _boss_health_bar and _boss.has_method("get_health"):
+		_boss_health_bar.value = _boss.get_health()
+	if _void_embrace_bar and _void_embrace_bar.visible and _boss.has_method("get_void_progress"):
+		_void_embrace_bar.value = _boss.get_void_progress()
 
 func _refresh_soldier_stats() -> void:
 	var n: int = _soldier_stat_labels.size()
@@ -433,6 +554,9 @@ func _draw_enemy_arrow() -> void:
 	elif GameManager.current_level == 4:
 		# Maze escape — always point to the exit.
 		target = _maze_exit if is_instance_valid(_maze_exit) else null
+	elif GameManager.current_level == 5:
+		# Boss fight — entire arena fits on-screen, so no enemy arrow is needed.
+		return
 	else:
 		# Original behaviour — surface the arrow once the map is nearly clear
 		# so it acts as a closest-enemy finder rather than constant clutter.

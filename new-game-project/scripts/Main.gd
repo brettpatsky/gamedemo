@@ -26,6 +26,8 @@ extends Node2D
 
 # Level 4 — single hand-authored maze. Edit the scene in the Godot editor.
 const MAZE_SCENE_PATH := "res://scenes/mazes/maze_1.tscn"
+# Level 5 — The Weeping Heartstone boss arena.
+const BOSS_ARENA_SCENE_PATH := "res://scenes/bosses/boss_arena.tscn"
 
 @onready var map_gen:    Node        = $GameViewport/SubViewport/MapGenerator
 @onready var squad_ctrl: Node2D      = $GameViewport/SubViewport/SquadController
@@ -48,6 +50,7 @@ func _ready() -> void:
 
 	# Level 4 swaps the procedural MapGenerator for a hand-authored maze scene
 	# and runs with a single soldier.
+	# Level 5 swaps it again for the Heartstone boss arena (full squad of 6).
 	var effective_squad_size: int = squad_size
 	if GameManager.current_level == 4:
 		var old: Node = map_gen
@@ -57,6 +60,14 @@ func _ready() -> void:
 		effective_squad_size = 1
 		# Camera snapshotted the old map's bounds in its own _ready (which ran
 		# before Main._ready) — re-read from the maze now.
+		var camera: Node = get_tree().get_first_node_in_group("main_camera")
+		if camera and camera.has_method("refresh_map_bounds"):
+			camera.refresh_map_bounds()
+	elif GameManager.current_level == 5:
+		var old: Node = map_gen
+		map_gen = _spawn_alt_level(BOSS_ARENA_SCENE_PATH)
+		old.remove_from_group("map_generator")
+		old.queue_free()
 		var camera: Node = get_tree().get_first_node_in_group("main_camera")
 		if camera and camera.has_method("refresh_map_bounds"):
 			camera.refresh_map_bounds()
@@ -112,9 +123,15 @@ func _input(event: InputEvent) -> void:
 # interface (generate / get_map_rect / get_map_centre / get_spawn_positions),
 # so CameraController and the rest of Main treat it identically.
 func _spawn_maze_level() -> Node:
-	var scene: PackedScene = load(MAZE_SCENE_PATH)
+	return _spawn_alt_level(MAZE_SCENE_PATH)
+
+# Generic hand-authored level swap (used by levels 4 and 5). The loaded scene's
+# root must implement the MapGenerator interface — see MazeLevel.gd /
+# BossArenaLevel.gd for the contract.
+func _spawn_alt_level(path: String) -> Node:
+	var scene: PackedScene = load(path)
 	if scene == null:
-		push_error("[Main] Failed to load maze scene: %s" % MAZE_SCENE_PATH)
+		push_error("[Main] Failed to load alt-level scene: %s" % path)
 		return null
 	var node: Node = scene.instantiate()
 	_subviewport.add_child(node)
@@ -191,6 +208,13 @@ func _setup_objective() -> void:
 			var exit_zone: Node = map_gen.get_objective_node("maze_exit")
 			if exit_zone and hud.has_method("set_maze_exit"):
 				hud.set_maze_exit(exit_zone)
+		5:
+			# Boss arena — defeating the Heartstone wins the mission.
+			if map_gen and map_gen.has_signal("boss_defeated"):
+				map_gen.boss_defeated.connect(_on_mission_win)
+			var boss: Node = map_gen.get_objective_node("boss")
+			if boss and hud.has_method("set_boss"):
+				hud.set_boss(boss)
 
 # ---------------------------------------------------------------------------
 func _spawn_enemies_at(world_pos: Vector2, count: int) -> void:
@@ -218,7 +242,7 @@ func _on_mission_win() -> void:
 	if _mission_ended:
 		return
 	_mission_ended = true
-	if GameManager.current_level >= 4:
+	if GameManager.current_level >= 5:
 		hud.show_mission_result("YOU WIN! ALL LEVELS COMPLETE!", Color.YELLOW, false)
 	else:
 		hud.show_mission_result("MISSION COMPLETE!", Color.GREEN, true)

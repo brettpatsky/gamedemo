@@ -82,6 +82,10 @@ func _on_mission_4_pressed() -> void:
 	GameManager.current_level = 4
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
+func _on_mission_5_pressed() -> void:
+	GameManager.current_level = 5
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+
 func _on_help_pressed() -> void:
 	_help_popup.visible = true
 

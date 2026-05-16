@@ -42,7 +42,9 @@ func _explode() -> void:
 	get_tree().create_timer(SHOW_TIME).timeout.connect(queue_free)
 
 func _deal_damage() -> void:
-	for group in ["enemies", "soldiers", "structures"]:
+	# enemy_projectiles included so grenades sweep away the Heartstone's
+	# eldritch bolts during the meltdown phase (per the boss design).
+	for group in ["enemies", "soldiers", "structures", "enemy_projectiles"]:
 		for target in get_tree().get_nodes_in_group(group):
 			if target == _shooter:
 				continue

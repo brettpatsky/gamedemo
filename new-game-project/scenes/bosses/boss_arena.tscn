@@ -1,0 +1,21 @@
+[gd_scene format=3 uid="uid://b1bossarena01"]
+
+[ext_resource type="Script" path="res://scripts/BossArenaLevel.gd" id="1_arena01"]
+[ext_resource type="PackedScene" uid="uid://b1heartston0001" path="res://scenes/bosses/boss_heartstone.tscn" id="2_boss01"]
+
+[node name="BossArena" type="Node2D"]
+script = ExtResource("1_arena01")
+
+[node name="Background" type="ColorRect" parent="."]
+offset_right = 1408.0
+offset_bottom = 768.0
+color = Color(0.13, 0.09, 0.18, 1)
+mouse_filter = 2
+
+[node name="NavigationRegion2D" type="NavigationRegion2D" parent="."]
+
+[node name="SpawnPoint" type="Node2D" parent="."]
+position = Vector2(704, 620)
+
+[node name="Boss" parent="." instance=ExtResource("2_boss01")]
+position = Vector2(704, 240)
