@@ -24,9 +24,11 @@ extends Node2D
 # bullet colour, etc. Falls back to wrapping if fewer scenes than squad_size.
 @export var soldier_scenes: Array[PackedScene]
 
-# Level 4 — single hand-authored maze. Edit the scene in the Godot editor.
+# Level 4 — first hand-authored maze (the original 22×15).
 const MAZE_SCENE_PATH := "res://scenes/mazes/maze_1.tscn"
-# Level 5 — The Weeping Heartstone boss arena.
+# Level 5 — larger 44×30 maze with multiple paths to the exit.
+const MAZE_2_SCENE_PATH := "res://scenes/mazes/maze_2.tscn"
+# Level 6 — The Weeping Heart boss arena.
 const BOSS_ARENA_SCENE_PATH := "res://scenes/bosses/boss_arena.tscn"
 
 @onready var map_gen:    Node        = $GameViewport/SubViewport/MapGenerator
@@ -48,13 +50,13 @@ func _ready() -> void:
 	$GameViewport.set_position(Vector2.ZERO)
 	$GameViewport.set_size(Vector2(vp_size.x, vp_size.y - HUD_HEIGHT))
 
-	# Level 4 swaps the procedural MapGenerator for a hand-authored maze scene
-	# and runs with a single soldier.
-	# Level 5 swaps it again for the Heartstone boss arena (full squad of 6).
+	# Levels 4 and 5 swap the procedural MapGenerator for a hand-authored maze
+	# and run with a single soldier (the corridors are 1 tile wide).
+	# Level 6 swaps it for the Heart boss arena (full squad of 6).
 	var effective_squad_size: int = squad_size
 	if GameManager.current_level == 4:
 		var old: Node = map_gen
-		map_gen = _spawn_maze_level()
+		map_gen = _spawn_alt_level(MAZE_SCENE_PATH)
 		old.remove_from_group("map_generator")
 		old.queue_free()
 		effective_squad_size = 1
@@ -64,6 +66,15 @@ func _ready() -> void:
 		if camera and camera.has_method("refresh_map_bounds"):
 			camera.refresh_map_bounds()
 	elif GameManager.current_level == 5:
+		var old: Node = map_gen
+		map_gen = _spawn_alt_level(MAZE_2_SCENE_PATH)
+		old.remove_from_group("map_generator")
+		old.queue_free()
+		effective_squad_size = 1
+		var camera: Node = get_tree().get_first_node_in_group("main_camera")
+		if camera and camera.has_method("refresh_map_bounds"):
+			camera.refresh_map_bounds()
+	elif GameManager.current_level == 6:
 		var old: Node = map_gen
 		map_gen = _spawn_alt_level(BOSS_ARENA_SCENE_PATH)
 		old.remove_from_group("map_generator")
@@ -80,8 +91,13 @@ func _ready() -> void:
 	_mission_ended = false
 
 	_spawn_squad(effective_squad_size)
-	if GameManager.current_level != 4:
+	# Maze levels start with a single soldier at the entrance — no formation snap.
+	if GameManager.current_level != 4 and GameManager.current_level != 5:
 		squad_ctrl.snap_to_formation()
+	# Boss mission gets a heavier loadout: extra rifle ammo for sustained Phase 1
+	# fire and more grenades to crack the orbiting Memory Totems in Phase 2.
+	if GameManager.current_level == 6:
+		_apply_boss_loadout()
 
 	GameManager.soldier_died.connect(_on_soldier_died)
 	GameManager.all_soldiers_dead.connect(_on_mission_fail)
@@ -92,11 +108,11 @@ func _ready() -> void:
 	hud.show_objective(GameManager.current_level)
 
 # ---------------------------------------------------------------------------
-# Level 4 click handler: SubViewportContainer._gui_input consumes mouse events
-# before _unhandled_input fires, so we intercept in _input (which runs first).
-# Action-based so the gamepad "A" button also triggers a move order.
+# Maze click handler (levels 4 and 5): SubViewportContainer._gui_input consumes
+# mouse events before _unhandled_input fires, so we intercept in _input (which
+# runs first). Action-based so the gamepad "A" button also triggers a move order.
 func _input(event: InputEvent) -> void:
-	if GameManager.current_level != 4:
+	if GameManager.current_level != 4 and GameManager.current_level != 5:
 		return
 	if not event.is_action_pressed("squad_move"):
 		return
@@ -117,17 +133,26 @@ func _input(event: InputEvent) -> void:
 			s.move_to(world_pos)
 
 # ---------------------------------------------------------------------------
-# Level 4 — instance the hand-authored maze under SubViewport in the slot the
-# default MapGenerator occupied. Returns the new node so the caller can
-# reassign `map_gen`. The maze scene's root script implements the MapGenerator
-# interface (generate / get_map_rect / get_map_centre / get_spawn_positions),
-# so CameraController and the rest of Main treat it identically.
-func _spawn_maze_level() -> Node:
-	return _spawn_alt_level(MAZE_SCENE_PATH)
+# Boss-mission loadout boost. Doubles the shared rifle pool and triples each
+# soldier's grenade stockpile so the squad can sustain damage through three
+# beam-swept phases and still have potions to crack the orbiting totems.
+const BOSS_RIFLE_POOL    := 600
+const BOSS_GRENADE_AMMO  := 15
 
-# Generic hand-authored level swap (used by levels 4 and 5). The loaded scene's
-# root must implement the MapGenerator interface — see MazeLevel.gd /
-# BossArenaLevel.gd for the contract.
+func _apply_boss_loadout() -> void:
+	GameManager.rifle_ammo_pool = BOSS_RIFLE_POOL
+	for s in get_tree().get_nodes_in_group("soldiers"):
+		if s.has_method("set_grenade_ammo"):
+			s.set_grenade_ammo(BOSS_GRENADE_AMMO)
+	# Re-push the ammo readout so the HUD numbers match the new pool before the
+	# player issues their first fire order.
+	if squad_ctrl and squad_ctrl.has_method("_update_ammo_hud"):
+		squad_ctrl._update_ammo_hud()
+
+# ---------------------------------------------------------------------------
+# Generic hand-authored level swap (used by levels 4, 5, and 6). The loaded
+# scene's root must implement the MapGenerator interface — see MazeLevel.gd /
+# MazeLevel2.gd / BossArenaLevel.gd for the contract.
 func _spawn_alt_level(path: String) -> Node:
 	var scene: PackedScene = load(path)
 	if scene == null:
@@ -147,7 +172,7 @@ func _spawn_squad(count: int) -> void:
 		var scene: PackedScene = soldier_scenes[i % soldier_scenes.size()]
 		var soldier: Node2D = scene.instantiate()
 		soldier.slot_index = i
-		if GameManager.current_level == 4:
+		if GameManager.current_level == 4 or GameManager.current_level == 5:
 			soldier.maze_mode = true
 		soldier.add_to_group("soldiers")
 		_subviewport.add_child(soldier)
@@ -201,15 +226,16 @@ func _setup_objective() -> void:
 							if is_instance_valid(other):
 								other.queue_free()
 					)
-		4:
-			# Hedge-maze escape — reaching the exit Area2D wins the mission.
+		4, 5:
+			# Maze escape — reaching the exit Area2D wins the mission. Same
+			# wiring works for both maze layouts since they share the API.
 			if map_gen and map_gen.has_signal("escaped"):
 				map_gen.escaped.connect(_on_mission_win)
 			var exit_zone: Node = map_gen.get_objective_node("maze_exit")
 			if exit_zone and hud.has_method("set_maze_exit"):
 				hud.set_maze_exit(exit_zone)
-		5:
-			# Boss arena — defeating the Heartstone wins the mission.
+		6:
+			# Boss arena — defeating the Heart wins the mission.
 			if map_gen and map_gen.has_signal("boss_defeated"):
 				map_gen.boss_defeated.connect(_on_mission_win)
 			var boss: Node = map_gen.get_objective_node("boss")
@@ -242,7 +268,7 @@ func _on_mission_win() -> void:
 	if _mission_ended:
 		return
 	_mission_ended = true
-	if GameManager.current_level >= 5:
+	if GameManager.current_level >= 6:
 		hud.show_mission_result("YOU WIN! ALL LEVELS COMPLETE!", Color.YELLOW, false)
 	else:
 		hud.show_mission_result("MISSION COMPLETE!", Color.GREEN, true)

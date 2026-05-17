@@ -32,25 +32,43 @@ const PHASE_2_THRESHOLD:  int = 240     # HP at which Phase 1 → Phase 2
 const PHASE_3_THRESHOLD:  int = 120     # HP at which Phase 2 → Phase 3 (gated by totems)
 
 # ---------------------------------------------------------------------------
-# Phase 1 — leyline beams
+# Phase 1 — telegraphed AOE zones
 # ---------------------------------------------------------------------------
-const PHASE1_BEAM_COUNT:   int   = 2
-const PHASE1_BEAM_LENGTH:  float = 520.0
-const PHASE1_BEAM_SPEED:   float = 0.55
+# A pattern of 3 large danger zones flash up across the boss room, telegraph
+# for ~1.8 s, then deal damage for ~2 s before despawning and the next pattern
+# spawning. Forces the squad to keep moving rather than fire safely from a
+# corner. Offsets are boss-relative.
+const PHASE1_WARN:        float = 1.8
+const PHASE1_DAMAGE:      float = 2.0
+const PHASE1_PAUSE:       float = 0.6
+const PHASE1_CYCLE:       float = PHASE1_WARN + PHASE1_DAMAGE + PHASE1_PAUSE
+const PHASE1_PATTERNS: Array = [
+	# Pattern A — south triangle (zones at SW / SE / N). Safe spots: north
+	# corners and the gap between SW and SE.
+	[Vector2(-450,  160), Vector2( 450,  160), Vector2(   0, -220)],
+	# Pattern B — north triangle (zones at NW / NE / S). Safe spots: south
+	# centre and the east/west sides.
+	[Vector2(-450, -180), Vector2( 450, -180), Vector2(   0,  160)],
+	# Pattern C — diagonal pair plus a centre-south zone. Safe spots: NE and SW corners.
+	[Vector2(-500, -180), Vector2( 500,  140), Vector2(-200,  140)],
+	# Pattern D — opposite diagonals. Safe spots: NW and SE corners.
+	[Vector2( 500, -180), Vector2(-500,  140), Vector2( 200,  140)],
+]
 
 # ---------------------------------------------------------------------------
 # Phase 2 — totems + sludge
 # ---------------------------------------------------------------------------
 const TOTEM_COUNT:         int   = 3
-const TOTEM_RADIUS:        float = 220.0   # distance from boss
+const TOTEM_RADIUS:        float = 280.0   # distance from boss
+# Slow predictable orbit — totems drift around the boss together. ~21 sec for a
+# full rotation. Forces the squad to track moving targets and reposition.
+const TOTEM_ORBIT_SPEED:   float = 0.30    # radians/sec
 const SLUDGE_COUNT:        int   = 3
-const SLUDGE_RADIUS_RING:  float = 180.0   # ring of sludge pools
+const SLUDGE_RADIUS_RING:  float = 240.0   # ring of sludge pools
 
 # ---------------------------------------------------------------------------
 # Phase 3 — projectile spiral + void embrace
 # ---------------------------------------------------------------------------
-const PHASE3_BEAM_COUNT:   int   = 3
-const PHASE3_BEAM_SPEED:   float = 1.0
 const PROJECTILE_INTERVAL: float = 0.16
 const VOID_PRE_DELAY:      float = 5.0
 const VOID_CHANNEL_TIME:   float = 15.0
@@ -61,7 +79,7 @@ const VOID_WIPE_DAMAGE:    int   = 9999
 # ---------------------------------------------------------------------------
 # Preloads — sub-scripts spawned dynamically
 # ---------------------------------------------------------------------------
-const _LEYLINE_SCRIPT      = preload("res://scripts/LeylineBeam.gd")
+const _ZONE_SCRIPT         = preload("res://scripts/PhaseDangerZone.gd")
 const _SLUDGE_SCRIPT       = preload("res://scripts/SludgePool.gd")
 const _PROJECTILE_SCRIPT   = preload("res://scripts/EldritchProjectile.gd")
 const _TOTEM_SCENE: PackedScene = preload("res://scenes/bosses/memory_totem.tscn")
@@ -74,9 +92,17 @@ var _phase:  int = 0      # 0 = uninitialised, 1/2/3 = active phase
 var _invulnerable: bool = false
 var _destroyed:    bool = false
 
-var _beams:        Array[Node2D] = []
+var _zones:        Array[Node2D] = []   # Phase-1 active danger zones
 var _totems:       Array[Node]   = []
 var _sludge_pools: Array[Node2D] = []
+
+# Phase-1 zone cycling state.
+var _zone_pattern_idx: int   = 0
+var _zone_cycle_timer: float = 0.0
+
+# Phase-2 orbit angle — totems track this so they share a synchronised slow
+# rotation around the boss. Initialised on Phase 2 entry.
+var _totem_angle:         float = 0.0
 
 # Phase-3 timers.
 var _projectile_timer:    float = 0.0
@@ -138,17 +164,44 @@ func take_damage(amount: int) -> void:
 		call_deferred("_die")
 
 # =============================================================================
-# PHASE 1 — LEYLINE GRID
+# PHASE 1 — TELEGRAPHED FLOOR ZONES
 # =============================================================================
 func _enter_phase_1() -> void:
 	_phase = 1
 	_invulnerable = false
-	_spawn_beams(PHASE1_BEAM_COUNT, PHASE1_BEAM_LENGTH, PHASE1_BEAM_SPEED)
+	_zone_pattern_idx = 0
+	_zone_cycle_timer = 0.0
+	_spawn_zone_pattern(_zone_pattern_idx)
 	phase_changed.emit(1)
 
-func _tick_phase_1(_delta: float) -> void:
-	# Beams self-rotate and self-damage. Nothing else to do here.
-	pass
+func _tick_phase_1(delta: float) -> void:
+	_zone_cycle_timer += delta
+	if _zone_cycle_timer < PHASE1_CYCLE:
+		return
+	_zone_cycle_timer = 0.0
+	_zone_pattern_idx = (_zone_pattern_idx + 1) % PHASE1_PATTERNS.size()
+	_spawn_zone_pattern(_zone_pattern_idx)
+
+func _spawn_zone_pattern(idx: int) -> void:
+	# Defensive cleanup — the old pattern's zones free themselves after the
+	# damage window, but if the boss skipped past a cycle (phase change), drop
+	# any leftover zones now.
+	_clear_zones()
+	var pattern: Array = PHASE1_PATTERNS[idx]
+	for offset: Vector2 in pattern:
+		var zone := Area2D.new()
+		zone.set_script(_ZONE_SCRIPT)
+		get_parent().add_child(zone)
+		zone.global_position = global_position + offset
+		if zone.has_method("configure"):
+			zone.configure(PHASE1_WARN, PHASE1_DAMAGE)
+		_zones.append(zone)
+
+func _clear_zones() -> void:
+	for z in _zones:
+		if is_instance_valid(z):
+			z.queue_free()
+	_zones.clear()
 
 # =============================================================================
 # PHASE 2 — PARENT'S MIRAGE
@@ -156,30 +209,38 @@ func _tick_phase_1(_delta: float) -> void:
 func _enter_phase_2() -> void:
 	_phase = 2
 	_invulnerable = true
-	_clear_beams()
+	_totem_angle = 0.0
+	_clear_zones()
 	_spawn_totems()
 	_spawn_sludge_pools()
 	phase_changed.emit(2)
 
-func _tick_phase_2(_delta: float) -> void:
-	# Prune destroyed totems from the tracking array. queue_free runs at end of
-	# frame, so already-freed instances fail is_instance_valid here.
-	# Build a fresh typed array — Array.filter() returns a generic Array which
-	# can't be assigned back to Array[Node] directly.
-	var alive: Array[Node] = []
-	for t in _totems:
-		if is_instance_valid(t):
-			alive.append(t)
-	_totems = alive
-	if _totems.is_empty():
+func _tick_phase_2(delta: float) -> void:
+	# Drive the synchronised totem orbit — predictable so the squad can lead
+	# their shots, but it forces them to keep moving and re-aiming.
+	_totem_angle += TOTEM_ORBIT_SPEED * delta
+	var any_alive: bool = false
+	for i in _totems.size():
+		var t: Node = _totems[i]
+		if not is_instance_valid(t):
+			continue
+		any_alive = true
+		var base_angle: float = (TAU / float(TOTEM_COUNT)) * float(i) - PI * 0.5
+		var angle: float = base_angle + _totem_angle
+		(t as Node2D).global_position = global_position \
+				+ Vector2(cos(angle), sin(angle)) * TOTEM_RADIUS
+	if not any_alive:
 		_phase = 3   # claim the phase early so this tick doesn't re-fire
 		call_deferred("_enter_phase_3")
 
 func _spawn_totems() -> void:
+	# Keep _totems sized to TOTEM_COUNT so each slot keeps its base orbit angle
+	# even after the totem in that slot is destroyed (the slot becomes invalid,
+	# but the indices of surviving totems stay stable).
 	_totems.clear()
 	for i in TOTEM_COUNT:
-		var angle: float = (TAU / float(TOTEM_COUNT)) * float(i) - PI * 0.5
-		var pos := global_position + Vector2(cos(angle), sin(angle)) * TOTEM_RADIUS
+		var base_angle: float = (TAU / float(TOTEM_COUNT)) * float(i) - PI * 0.5
+		var pos := global_position + Vector2(cos(base_angle), sin(base_angle)) * TOTEM_RADIUS
 		var totem: Node = _TOTEM_SCENE.instantiate()
 		get_parent().add_child(totem)
 		(totem as Node2D).global_position = pos
@@ -216,7 +277,8 @@ func _enter_phase_3() -> void:
 	_invulnerable = false
 	# Drop any straggler sludge / cleanup from phase 2 just in case.
 	_clear_sludge_pools()
-	_spawn_beams(PHASE3_BEAM_COUNT, PHASE1_BEAM_LENGTH, PHASE3_BEAM_SPEED)
+	# Phase 3 has no rotating beams — the spiral projectile storm + Void
+	# Embrace channel + (still-orbiting) corrupted aura supply the threat.
 	_void_pre_timer     = VOID_PRE_DELAY
 	_void_active        = false
 	_void_channel_timer = 0.0
@@ -295,34 +357,13 @@ func _complete_void_embrace() -> void:
 			s.take_damage(VOID_WIPE_DAMAGE)
 
 # =============================================================================
-# BEAMS
-# =============================================================================
-func _spawn_beams(count: int, length: float, rot_speed: float) -> void:
-	_clear_beams()
-	for i in count:
-		var beam := Area2D.new()
-		beam.set_script(_LEYLINE_SCRIPT)
-		add_child(beam)   # parented to boss → beam transforms track us
-		beam.rotation = (TAU / float(count)) * float(i)
-		# Beams stagger their rotation direction to make the arena unpredictable.
-		var dir: float = rot_speed if i % 2 == 0 else -rot_speed
-		beam.configure(length, dir)
-		_beams.append(beam)
-
-func _clear_beams() -> void:
-	for b in _beams:
-		if is_instance_valid(b):
-			b.queue_free()
-	_beams.clear()
-
-# =============================================================================
 # DEATH
 # =============================================================================
 func _die() -> void:
 	_destroyed = true
 	_void_active = false
 	void_embrace_cleared.emit()
-	_clear_beams()
+	_clear_zones()
 	_clear_sludge_pools()
 	for t in _totems:
 		if is_instance_valid(t):

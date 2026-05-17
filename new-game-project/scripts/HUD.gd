@@ -265,17 +265,18 @@ func show_objective(level: int) -> void:
 		2: "OBJECTIVE: Destroy the fortified structure",
 		3: "OBJECTIVE: Escort the NPC to extraction",
 		4: "OBJECTIVE: Escape the maze",
-		5: "OBJECTIVE: Shatter the Weeping Heart",
+		5: "OBJECTIVE: Escape the ruined catacombs",
+		6: "OBJECTIVE: Shatter the Weeping Heart",
 	}
 	_objective_label.text = texts.get(level, "")
 	if level == 3:
 		_escort_label.show()
 	else:
 		_escort_label.hide()
-	# Maze level has no enemies; boss level has its own health bar — hide the
-	# generic ENEMIES counter on both so the UI doesn't look redundant.
+	# Maze levels have no enemies; boss level has its own health bar — hide the
+	# generic ENEMIES counter on all three so the UI doesn't look redundant.
 	if _enemy_label:
-		_enemy_label.visible = level != 4 and level != 5
+		_enemy_label.visible = level != 4 and level != 5 and level != 6
 
 func update_escort_health(current: int, max_hp: int) -> void:
 	_escort_label.text = "ESCORT HEALTH: %d / %d" % [current, max_hp]
@@ -551,10 +552,10 @@ func _draw_enemy_arrow() -> void:
 			target = _extraction_zone if is_instance_valid(_extraction_zone) else null
 		else:
 			target = _escort_npc if is_instance_valid(_escort_npc) else null
-	elif GameManager.current_level == 4:
+	elif GameManager.current_level == 4 or GameManager.current_level == 5:
 		# Maze escape — always point to the exit.
 		target = _maze_exit if is_instance_valid(_maze_exit) else null
-	elif GameManager.current_level == 5:
+	elif GameManager.current_level == 6:
 		# Boss fight — entire arena fits on-screen, so no enemy arrow is needed.
 		return
 	else:

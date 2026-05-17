@@ -7,6 +7,11 @@ const SPEED            := 250.0   # pixels/sec (horizontal component)
 const ARC_HEIGHT       := 80.0    # peak height above the straight-line path (px)
 const EXPLOSION_RADIUS := 110.0   # damage radius on impact
 const DAMAGE           := 12      # 4× original — compensates for one throw vs one-per-soldier
+# Memory totems regenerate 16 HP/s, which makes pistols useless against them.
+# Grenades get a heavy bonus so a single throw cracks a totem shield (80 HP →
+# 20 HP left after one grenade; ~1.25 s of regen pressure, so a follow-up
+# grenade or rifle burst finishes it).
+const TOTEM_DAMAGE     := 60
 const SHOW_TIME        := 0.3     # seconds the explosion graphic stays visible
 
 var _start_pos:   Vector2
@@ -42,7 +47,7 @@ func _explode() -> void:
 	get_tree().create_timer(SHOW_TIME).timeout.connect(queue_free)
 
 func _deal_damage() -> void:
-	# enemy_projectiles included so grenades sweep away the Heartstone's
+	# enemy_projectiles included so grenades sweep away the Heart's
 	# eldritch bolts during the meltdown phase (per the boss design).
 	for group in ["enemies", "soldiers", "structures", "enemy_projectiles"]:
 		for target in get_tree().get_nodes_in_group(group):
@@ -53,8 +58,12 @@ func _deal_damage() -> void:
 				continue
 			if not target.has_method("take_damage"):
 				continue
-			if (target as Node2D).global_position.distance_to(_end_pos) <= EXPLOSION_RADIUS:
-				target.take_damage(DAMAGE)
+			if (target as Node2D).global_position.distance_to(_end_pos) > EXPLOSION_RADIUS:
+				continue
+			# Heavy bonus damage to memory totems — required to outpace their
+			# 16 HP/s regen during the boss's Phase 2.
+			var dmg: int = TOTEM_DAMAGE if target.is_in_group("memory_totems") else DAMAGE
+			target.take_damage(dmg)
 
 func _draw() -> void:
 	if _exploded:

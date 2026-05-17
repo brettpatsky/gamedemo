@@ -70,6 +70,11 @@ func get_rifle_ammo() -> int:
 func get_grenade_ammo() -> int:
 	return _grenade_ammo
 
+# Per-mission override for grenade stockpile — used by the boss level to hand
+# the squad enough potions to break the orbiting Memory Totems.
+func set_grenade_ammo(amount: int) -> void:
+	_grenade_ammo = maxi(amount, 0)
+
 # Returns true for any weapon that fires continuously while the button is held.
 # Pistol and rifle both stream fire — the per-weapon SHOOT_COOLDOWN governs pace.
 func is_continuous_fire() -> bool:
