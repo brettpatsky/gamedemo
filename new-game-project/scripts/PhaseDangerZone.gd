@@ -9,10 +9,9 @@
 # =============================================================================
 extends Area2D
 
-const RADIUS:          float = 150.0
-const DAMAGE_TICK:     float = 0.4
-const DAMAGE_PER_TICK: int   = 1
+const Balance = preload("res://scripts/BalanceConfig.gd")
 
+# Radius and damage tuning live in BalanceConfig (ZONE_*).
 # Per-zone timing — instances overwrite these via configure() so Phase 1 and
 # Phase 3 can have different telegraph / damage windows.
 var warn_duration:   float = 1.8
@@ -33,7 +32,7 @@ func _ready() -> void:
 	# monitoring/monitorable defaults are fine; do not assign during physics
 	# flushing — the same caveat that bit SludgePool.
 	var shape := CircleShape2D.new()
-	shape.radius = RADIUS
+	shape.radius = Balance.ZONE_RADIUS
 	var cs := CollisionShape2D.new()
 	cs.shape = shape
 	add_child(cs)
@@ -52,14 +51,14 @@ func _process(delta: float) -> void:
 	_tick_timer -= delta
 	if _tick_timer > 0.0:
 		return
-	_tick_timer = DAMAGE_TICK
+	_tick_timer = Balance.ZONE_DAMAGE_TICK
 	for body in get_overlapping_bodies():
 		if not body.is_in_group("soldiers"):
 			continue
 		if body.has_method("is_downed") and body.is_downed():
 			continue
 		if body.has_method("take_damage"):
-			body.take_damage(DAMAGE_PER_TICK)
+			body.take_damage(Balance.ZONE_DAMAGE_PER_TICK)
 
 func _draw() -> void:
 	if _elapsed < warn_duration:
@@ -73,10 +72,10 @@ func _draw_telegraph() -> void:
 	var pulse: float = 0.5 + 0.5 * sin(_pulse_phase * 14.0)
 	var fill_alpha: float = 0.10 + 0.20 * pulse + 0.15 * t
 	var ring_alpha: float = 0.55 + 0.40 * pulse
-	draw_circle(Vector2.ZERO, RADIUS, Color(1.0, 0.20, 0.55, fill_alpha))
-	draw_arc(Vector2.ZERO, RADIUS, 0.0, TAU, 64, Color(1.0, 0.45, 0.95, ring_alpha), 6.0)
+	draw_circle(Vector2.ZERO, Balance.ZONE_RADIUS, Color(1.0, 0.20, 0.55, fill_alpha))
+	draw_arc(Vector2.ZERO, Balance.ZONE_RADIUS, 0.0, TAU, 64, Color(1.0, 0.45, 0.95, ring_alpha), 6.0)
 	# X mark across the centre so the player can clock the zone shape at a glance.
-	var arm: float = RADIUS * 0.38
+	var arm: float = Balance.ZONE_RADIUS * 0.38
 	var x_col := Color(1.0, 0.6, 1.0, ring_alpha * 0.9)
 	draw_line(Vector2(-arm, -arm), Vector2( arm,  arm), x_col, 5.0)
 	draw_line(Vector2( arm, -arm), Vector2(-arm,  arm), x_col, 5.0)
@@ -86,7 +85,7 @@ func _draw_active() -> void:
 	var fade: float = 1.0 - t * 0.35
 	var pulse: float = 0.5 + 0.5 * sin(_pulse_phase * 22.0)
 	# Saturated magenta fill — clear "this is hurting you" signalling.
-	draw_circle(Vector2.ZERO, RADIUS,        Color(1.00, 0.15, 0.55, 0.55 * fade))
-	draw_circle(Vector2.ZERO, RADIUS * 0.80, Color(1.00, 0.40, 0.85, 0.55 * fade))
-	draw_circle(Vector2.ZERO, RADIUS * 0.30, Color(1.00, 0.85, 1.00, 0.45 + 0.40 * pulse))
-	draw_arc(Vector2.ZERO, RADIUS, 0.0, TAU, 72, Color(1.0, 0.65, 1.0, 0.90 * fade), 6.5)
+	draw_circle(Vector2.ZERO, Balance.ZONE_RADIUS,        Color(1.00, 0.15, 0.55, 0.55 * fade))
+	draw_circle(Vector2.ZERO, Balance.ZONE_RADIUS * 0.80, Color(1.00, 0.40, 0.85, 0.55 * fade))
+	draw_circle(Vector2.ZERO, Balance.ZONE_RADIUS * 0.30, Color(1.00, 0.85, 1.00, 0.45 + 0.40 * pulse))
+	draw_arc(Vector2.ZERO, Balance.ZONE_RADIUS, 0.0, TAU, 72, Color(1.0, 0.65, 1.0, 0.90 * fade), 6.5)

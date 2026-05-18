@@ -18,6 +18,8 @@
 # =============================================================================
 extends Node2D
 
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
 @export var squad_size:    int  = 6
 @export var map_seed:      int  = 0
 # One scene per squad slot so each soldier can have a distinct sprite, stats,
@@ -135,15 +137,13 @@ func _input(event: InputEvent) -> void:
 # ---------------------------------------------------------------------------
 # Boss-mission loadout boost. Doubles the shared rifle pool and triples each
 # soldier's grenade stockpile so the squad can sustain damage through three
-# beam-swept phases and still have potions to crack the orbiting totems.
-const BOSS_RIFLE_POOL    := 600
-const BOSS_GRENADE_AMMO  := 15
-
+# phases and still have potions to crack the orbiting totems. Values live in
+# Balance.LOADOUT_BOSS_*.
 func _apply_boss_loadout() -> void:
-	GameManager.rifle_ammo_pool = BOSS_RIFLE_POOL
+	GameManager.rifle_ammo_pool = Balance.LOADOUT_BOSS_RIFLE_POOL
 	for s in get_tree().get_nodes_in_group("soldiers"):
 		if s.has_method("set_grenade_ammo"):
-			s.set_grenade_ammo(BOSS_GRENADE_AMMO)
+			s.set_grenade_ammo(Balance.LOADOUT_BOSS_GRENADE_AMMO)
 	# Re-push the ammo readout so the HUD numbers match the new pool before the
 	# player issues their first fire order.
 	if squad_ctrl and squad_ctrl.has_method("_update_ammo_hud"):

@@ -16,15 +16,18 @@
 # =============================================================================
 extends Area2D
 
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
 # ---------------------------------------------------------------------------
-# Tunables — defaults used by enemy bullets and as a fallback. Soldiers
-# override these per-shot via set_stats() so each squad member's pistol and
-# rifle behave independently.
+# Tunables — defaults pulled from BalanceConfig in _ready(). Soldiers override
+# these per-shot via set_stats() so each squad member's pistol and rifle
+# behave independently. Enemy bullets keep the BalanceConfig defaults until
+# they call set_stats() with enemy-bullet values.
 # ---------------------------------------------------------------------------
-@export var speed:        float = 600.0   # pixels per second
-@export var damage:       int   = 1       # hits dealt on impact
-@export var max_distance: float = 1500.0  # pixels of travel before auto-free
-@export var color:        Color = Color.YELLOW
+var speed:        float
+var damage:       int
+var max_distance: float
+var color:        Color = Color.YELLOW
 
 # ---------------------------------------------------------------------------
 # State
@@ -67,6 +70,9 @@ func _elevation_range_mult() -> float:
 # _ready — connect screen-exit signal for auto-cleanup
 # ---------------------------------------------------------------------------
 func _ready() -> void:
+	speed        = Balance.BULLET_SPEED
+	damage       = Balance.BULLET_DAMAGE
+	max_distance = Balance.BULLET_MAX_DISTANCE
 	area_entered.connect(_on_area_entered)
 	body_entered.connect(_on_body_entered)
 	$VisibleOnScreenNotifier2D.screen_exited.connect(queue_free)

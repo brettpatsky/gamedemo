@@ -6,18 +6,20 @@
 # =============================================================================
 extends CharacterBody2D
 
-@export var move_speed:   float = 105.0
-@export var max_health:   int   = 2
-@export var sight_range:  float = 480.0
-@export var attack_range: float = 280.0
-@export var score_value:  int   = 10
-@export var aim_jitter:   float = 0.22  # radians of random spread per shot
-@export var bullet_speed:    float = 500.0
-# Enemy bullet range is intentionally capped below every soldier weapon range
-# (smallest squad range is soldier_2's pistol at 350) so the squad always
-# out-ranges the enemy.
-@export var bullet_distance: float = 300.0
-@export var bullet_damage:   int   = 1
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
+# Stat numbers (move speed, HP, ranges, bullet stats) live in BalanceConfig.gd.
+# Held as instance vars so the rest of the script keeps reading by the same
+# names without indirection.
+var move_speed:      float
+var max_health:      int
+var sight_range:     float
+var attack_range:    float
+var score_value:     int
+var aim_jitter:      float
+var bullet_speed:    float
+var bullet_distance: float
+var bullet_damage:   int
 
 @export var bullet_scene: PackedScene
 
@@ -36,16 +38,20 @@ var _patrol_timer:     float  = 0.0
 var _shoot_cooldown:   float  = 0.0
 var _patrol_dest:      Vector2
 
-const PATROL_INTERVAL    := 3.0
-const SHOOT_COOLDOWN     := 0.45
-const TARGET_SCAN_PERIOD := 0.4   # seconds between active soldier searches
-
-const WATER_SPEED_MULT := 0.4
-
+# Patrol/shoot/scan rates and water slowdown live in BalanceConfig (ENEMY_*).
 var _scan_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("enemies")
+	move_speed      = Balance.ENEMY_MOVE_SPEED
+	max_health      = Balance.ENEMY_MAX_HEALTH
+	sight_range     = Balance.ENEMY_SIGHT_RANGE
+	attack_range    = Balance.ENEMY_ATTACK_RANGE
+	score_value     = Balance.ENEMY_SCORE_VALUE
+	aim_jitter      = Balance.ENEMY_AIM_JITTER
+	bullet_speed    = Balance.ENEMY_BULLET_SPEED
+	bullet_distance = Balance.ENEMY_BULLET_DISTANCE
+	bullet_damage   = Balance.ENEMY_BULLET_DAMAGE
 	_health              = max_health
 	health_bar.max_value = max_health
 	health_bar.value     = _health
@@ -69,7 +75,7 @@ func _physics_process(delta: float) -> void:
 	# enemies engage from much farther than the DetectionArea radius would
 	# allow, and re-acquire a target if one slipped away unnoticed.
 	if _scan_timer <= 0.0 and _state != State.DEAD:
-		_scan_timer = TARGET_SCAN_PERIOD
+		_scan_timer = Balance.ENEMY_TARGET_SCAN_PERIOD
 		_acquire_target()
 
 	match _state:
@@ -103,7 +109,7 @@ func _tick_alert(_delta: float) -> void:
 	if dist <= attack_range * 1.4 and _shoot_cooldown <= 0.0:
 		var dir: Vector2 = (_target.global_position - global_position).normalized()
 		_fire(dir)
-		_shoot_cooldown = SHOOT_COOLDOWN
+		_shoot_cooldown = Balance.ENEMY_SHOOT_COOLDOWN
 
 func _tick_attack(_delta: float) -> void:
 	if not _is_target_engageable():
@@ -118,13 +124,13 @@ func _tick_attack(_delta: float) -> void:
 	_play_anim("shoot")
 	if _shoot_cooldown <= 0.0:
 		_fire(dir)
-		_shoot_cooldown = SHOOT_COOLDOWN
+		_shoot_cooldown = Balance.ENEMY_SHOOT_COOLDOWN
 	var dist: float = global_position.distance_to(_target.global_position)
 	if dist > attack_range * 1.2:
 		_state = State.ALERT
 
 # Active soldier search — picks the closest live soldier within sight_range.
-# Runs at TARGET_SCAN_PERIOD so the enemy can engage well before the
+# Runs at Balance.ENEMY_TARGET_SCAN_PERIOD so the enemy can engage well before the
 # physics-based DetectionArea would notice an approach.
 func _acquire_target() -> void:
 	var best: Node2D = null
@@ -182,7 +188,7 @@ func _play_walk_anim(direction: Vector2) -> void:
 func _water_speed_mult() -> float:
 	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
 	if map_gen and map_gen.has_method("is_water_at") and map_gen.is_water_at(global_position):
-		return WATER_SPEED_MULT
+		return Balance.ENEMY_WATER_SPEED_MULT
 	return 1.0
 
 # Slope speed multiplier — slower going uphill, faster going downhill.
@@ -197,7 +203,7 @@ func _set_new_patrol_dest() -> void:
 	var offset := Vector2(randf_range(-150, 150), randf_range(-150, 150))
 	_patrol_dest = global_position + offset
 	nav_agent.target_position = _patrol_dest
-	_patrol_timer = PATROL_INTERVAL
+	_patrol_timer = Balance.ENEMY_PATROL_INTERVAL
 
 func _fire(direction: Vector2) -> void:
 	if bullet_scene == null:

@@ -1,35 +1,35 @@
 extends CharacterBody2D
 
-@export var is_female: bool = false
-@export var move_speed: float = 215.0
-@export var max_health: int = 3
+const Balance = preload("res://scripts/BalanceConfig.gd")
 
-# Maze mode swaps _do_move for SoldierMazeMover.tick — see SoldierMazeMover.gd
-# for the rationale. Set by Main.gd on level 4 soldiers.
-@export var maze_mode: bool = false
-
+# -----------------------------------------------------------------------------
+# Per-scene customisation — these vary by soldier slot (sprites, bullet colour)
+# and stay @export so each soldier_X.tscn can override them in the editor.
+# Stat numbers (HP, speed, weapon damage) live in Balance.gd.
+# -----------------------------------------------------------------------------
+@export var is_female:     bool         = false
 @export var male_frames:   SpriteFrames
 @export var female_frames: SpriteFrames
+@export var bullet_scene:  PackedScene
+@export var bullet_color:  Color        = Color.YELLOW
 
-@export var bullet_scene: PackedScene
+# Maze mode swaps _do_move for SoldierMazeMover.tick — see SoldierMazeMover.gd
+# for the rationale. Set by Main.gd on level 4 / 5 soldiers.
+@export var maze_mode: bool = false
 
-# ---------------------------------------------------------------------------
-# Per-soldier weapon stats. Pistol and rifle (AUTO) are independently tunable.
-# Grenade and SACRIFICE intentionally use shared constants and are NOT exposed
-# here — they're balance-critical squad-level abilities.
-# ---------------------------------------------------------------------------
-@export_group("Pistol")
-@export var pistol_damage:   int   = 1
-@export var pistol_speed:    float = 700.0
-@export var pistol_distance: float = 2000.0
-
-@export_group("Rifle")
-@export var rifle_damage:   int   = 1
-@export var rifle_speed:    float = 900.0
-@export var rifle_distance: float = 2000.0
-
-@export_group("Projectile")
-@export var bullet_color: Color = Color.YELLOW
+# -----------------------------------------------------------------------------
+# Stats sourced from BalanceConfig in _ready(). Held as instance vars so the
+# rest of the script keeps reading `move_speed`, `pistol_damage`, etc. without
+# indirection.
+# -----------------------------------------------------------------------------
+var move_speed:      float
+var max_health:      int
+var pistol_damage:   int
+var pistol_speed:    float
+var pistol_distance: float
+var rifle_damage:    int
+var rifle_speed:     float
+var rifle_distance:  float
 
 @onready var nav_agent:  NavigationAgent2D    = $NavigationAgent2D
 @onready var sprite:     AnimatedSprite2D     = $AnimatedSprite2D
@@ -51,8 +51,7 @@ var _weapon: WeaponType = WeaponType.PISTOL
 
 # Rifle ammo is a shared squad pool in GameManager — see GameManager.rifle_ammo_pool.
 # Grenade ammo is still per-soldier since only one soldier throws per order.
-const GRENADE_AMMO_MAX := 5
-var _grenade_ammo: int = GRENADE_AMMO_MAX
+var _grenade_ammo: int = 0   # populated from BalanceConfig in _ready()
 
 func cycle_weapon() -> void:
 	_weapon = (_weapon + 1) % WEAPON_COUNT as WeaponType
@@ -94,11 +93,8 @@ const GROUP_LABEL_COLORS: Array[Color] = [
 ]
 var _group_label: Label = null
 
-# Auto-defend — soldiers in idle (non-active) groups fire their pistol
-# automatically when an enemy comes within range.
-const AUTODEFEND_RANGE    := 280.0   # pixels — matches enemy attack_range
-const AUTODEFEND_COOLDOWN := 1.5     # seconds between shots (3× slower than normal pistol)
-const AUTODEFEND_JITTER   := 0.35    # radians of random spread — noticeably inaccurate
+# Auto-defend — idle-group soldiers fire their pistol when an enemy comes
+# within range. Tuning lives in BalanceConfig (SOLDIER_AUTODEFEND_*).
 var _autodefend_cooldown: float = 0.0
 
 # Spawn-order slot (0..squad_size-1). Set by Main; used to index per-soldier
@@ -123,43 +119,24 @@ var _bullet_aim:  Vector2 = Vector2.ZERO   # extended aim point for rifle/pistol
 var _shoot_cooldown:    float = 0.0
 var _shoot_flash_timer: float = 0.0
 
-const SHOOT_FLASH_DURATION  := 0.18
-const SHOOT_COOLDOWN_PISTOL := 0.5
-const SHOOT_COOLDOWN_AUTO   := 0.12   # fast burst fire
-const GRENADE_COOLDOWN_SEC  := 2.0
-const ARRIVAL_THRESHOLD     := 8.0
-const WATER_SPEED_MULT      := 0.4
-
-# Walking-bomb (SACRIFICE) tunables — soldier sprints toward target then detonates.
-const BOMB_SPEED_MULT     := 1.6     # multiplier applied to move_speed while armed
-const BOMB_RADIUS         := 200.0   # explosion damage radius (px)
-const BOMB_DAMAGE         := 15      # huge damage — instakill most things
-const BOMB_ARRIVAL_DIST   := 24.0    # px from target to trigger detonation
-const BOMB_FX_TIME        := 0.65    # explosion visual lifetime (sec)
-var _bomb_target: Vector2 = Vector2.ZERO
-
-# Stuck detection — if the soldier barely moves for STUCK_CHECK_INTERVAL seconds
-# while in MOVING state, sidestep to escape corners of rocks/trees.
-const STUCK_CHECK_INTERVAL := 0.5
-const STUCK_THRESHOLD      := 8.0    # pixels
-const UNSTICK_DURATION     := 0.35   # seconds spent sidestepping
-const UNSTICK_SPEED_MULT   := 1.0
-var _stuck_timer:     float   = STUCK_CHECK_INTERVAL
+# Shoot / water / sacrifice / stuck / catch-up tuning all lives in Balance.
+# Variables below hold the per-instance state these systems use.
+var _bomb_target:     Vector2 = Vector2.ZERO
+var _stuck_timer:     float   = 0.0   # reset from BalanceConfig in _ready/move_to
 var _stuck_check_pos: Vector2 = Vector2.ZERO
 var _unstick_timer:   float   = 0.0
 var _unstick_dir:     Vector2 = Vector2.ZERO
 
-# Catch-up sprint — continuous bonus based on how far this soldier has fallen
-# behind the squad centroid. Within CATCHUP_NEAR the bonus is zero (we're in
-# formation, no reason to sprint), ramping linearly to CATCHUP_SPEED_MULT at
-# CATCHUP_FAR. Replaces the previous binary timer which fired indiscriminately
-# every time a soldier left water or finished an unstick, even when already in
-# formation with the rest of the squad.
-const CATCHUP_SPEED_MULT := 1.5
-const CATCHUP_NEAR       := 110.0   # px from centroid — no bonus inside this
-const CATCHUP_FAR        := 320.0   # px — full bonus at or beyond this
-
 func _ready() -> void:
+	move_speed      = Balance.SOLDIER_MOVE_SPEED
+	max_health      = Balance.SOLDIER_MAX_HEALTH
+	pistol_damage   = Balance.SOLDIER_PISTOL_DAMAGE
+	pistol_speed    = Balance.SOLDIER_PISTOL_SPEED
+	pistol_distance = Balance.SOLDIER_PISTOL_DISTANCE
+	rifle_damage    = Balance.SOLDIER_RIFLE_DAMAGE
+	rifle_speed     = Balance.SOLDIER_RIFLE_SPEED
+	rifle_distance  = Balance.SOLDIER_RIFLE_DISTANCE
+	_grenade_ammo   = Balance.SOLDIER_GRENADE_AMMO_MAX
 	_health = max_health
 
 	if is_female and female_frames:
@@ -237,7 +214,7 @@ func move_to(destination: Vector2) -> void:
 		return
 	_move_target = destination
 	nav_agent.target_position = destination
-	_stuck_timer     = STUCK_CHECK_INTERVAL
+	_stuck_timer     = Balance.SOLDIER_STUCK_CHECK_INTERVAL
 	_stuck_check_pos = global_position
 	_state = State.MOVING
 
@@ -307,12 +284,12 @@ func _do_move(delta: float) -> void:
 
 	_unstick_timer = max(_unstick_timer - delta, 0.0)
 
-	# Stuck detection: if we haven't moved STUCK_THRESHOLD pixels in the last
-	# STUCK_CHECK_INTERVAL seconds, sidestep to escape corners of rocks/trees.
+	# Stuck detection: if we haven't moved Balance.SOLDIER_STUCK_THRESHOLD pixels in the last
+	# Balance.SOLDIER_STUCK_CHECK_INTERVAL seconds, sidestep to escape corners of rocks/trees.
 	_stuck_timer -= delta
 	if _stuck_timer <= 0.0:
-		_stuck_timer = STUCK_CHECK_INTERVAL
-		if _unstick_timer <= 0.0 and global_position.distance_to(_stuck_check_pos) < STUCK_THRESHOLD:
+		_stuck_timer = Balance.SOLDIER_STUCK_CHECK_INTERVAL
+		if _unstick_timer <= 0.0 and global_position.distance_to(_stuck_check_pos) < Balance.SOLDIER_STUCK_THRESHOLD:
 			_try_unstick()
 		_stuck_check_pos = global_position
 
@@ -360,7 +337,7 @@ func _try_unstick() -> void:
 	if randf() < 0.5:
 		perp = -perp
 	_unstick_dir   = perp
-	_unstick_timer = UNSTICK_DURATION
+	_unstick_timer = Balance.SOLDIER_UNSTICK_DURATION
 	# Also nudge the nav target slightly so the path re-evaluates on the next tick.
 	var nudge := perp * 32.0
 	nav_agent.target_position = _move_target + nudge
@@ -368,7 +345,7 @@ func _try_unstick() -> void:
 func _do_bomb_charge(_delta: float) -> void:
 	# Sprint directly toward the bomb target. On arrival OR if killed in transit
 	# (handled in take_damage), detonate.
-	if global_position.distance_to(_bomb_target) <= BOMB_ARRIVAL_DIST:
+	if global_position.distance_to(_bomb_target) <= Balance.SACRIFICE_ARRIVAL_DIST:
 		_explode()
 		return
 
@@ -378,7 +355,7 @@ func _do_bomb_charge(_delta: float) -> void:
 
 	var next_pos:  Vector2 = nav_agent.get_next_path_position()
 	var direction: Vector2 = (next_pos - global_position).normalized()
-	velocity = direction * move_speed * BOMB_SPEED_MULT * _water_speed_mult()
+	velocity = direction * move_speed * Balance.SACRIFICE_SPEED_MULT * _water_speed_mult()
 	move_and_slide()
 	_play_walk_anim(direction)
 
@@ -393,8 +370,8 @@ func _explode() -> void:
 				continue  # no friendly fire on remaining squad
 			if not target.has_method("take_damage"):
 				continue
-			if (target as Node2D).global_position.distance_to(origin) <= BOMB_RADIUS:
-				target.take_damage(BOMB_DAMAGE)
+			if (target as Node2D).global_position.distance_to(origin) <= Balance.SACRIFICE_RADIUS:
+				target.take_damage(Balance.SACRIFICE_DAMAGE)
 
 	# Visual explosion: spawn a temporary Node2D that draws the blast circle.
 	# Added to the viewport directly, matching how grenades are spawned, so the
@@ -403,7 +380,7 @@ func _explode() -> void:
 	fx.set_script(preload("res://scripts/BombExplosionFX.gd"))
 	get_viewport().add_child(fx)
 	fx.global_position = origin
-	fx.start(BOMB_RADIUS, BOMB_FX_TIME)
+	fx.start(Balance.SACRIFICE_RADIUS, Balance.SACRIFICE_FX_TIME)
 
 	# The soldier dies in the blast.
 	_health = 0
@@ -421,9 +398,9 @@ func _do_shoot() -> void:
 				_weapon = WeaponType.PISTOL
 				return
 			GameManager.rifle_ammo_pool -= 1
-			_shoot_cooldown = SHOOT_COOLDOWN_AUTO
+			_shoot_cooldown = Balance.SOLDIER_RIFLE_COOLDOWN
 		WeaponType.PISTOL:
-			_shoot_cooldown   = SHOOT_COOLDOWN_PISTOL
+			_shoot_cooldown   = Balance.SOLDIER_PISTOL_COOLDOWN
 		_:
 			return
 
@@ -432,7 +409,7 @@ func _do_shoot() -> void:
 		sprite.flip_h = dir.x < 0
 
 	_play_anim("shoot")
-	_shoot_flash_timer = SHOOT_FLASH_DURATION
+	_shoot_flash_timer = Balance.SOLDIER_SHOOT_FLASH_DURATION
 	gunshot.pitch_scale = randf_range(0.9, 1.1)
 	gunshot.play()
 
@@ -455,13 +432,13 @@ func _throw_grenade(target: Vector2) -> void:
 		_weapon = WeaponType.PISTOL
 		return
 	_grenade_ammo   -= 1
-	_shoot_cooldown  = GRENADE_COOLDOWN_SEC
+	_shoot_cooldown  = Balance.SOLDIER_GRENADE_COOLDOWN
 
 	var dir: Vector2 = (target - global_position).normalized()
 	if dir.x != 0:
 		sprite.flip_h = dir.x < 0
 	_play_anim("shoot")
-	_shoot_flash_timer = SHOOT_FLASH_DURATION
+	_shoot_flash_timer = Balance.SOLDIER_SHOOT_FLASH_DURATION
 
 	var grenade   := Node2D.new()
 	grenade.set_script(_GRENADE_SCRIPT)
@@ -475,7 +452,7 @@ func _throw_grenade(target: Vector2) -> void:
 func _water_speed_mult() -> float:
 	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
 	if map_gen and map_gen.has_method("is_water_at") and map_gen.is_water_at(global_position):
-		return WATER_SPEED_MULT
+		return Balance.SOLDIER_WATER_SPEED_MULT
 	return 1.0
 
 # Slope speed multiplier — slower going uphill, faster going downhill.
@@ -487,7 +464,7 @@ func _slope_speed_mult(direction: Vector2) -> float:
 	return 1.0
 
 # Distance-based catch-up. Soldiers near the squad centroid run at base speed;
-# stragglers smoothly ramp up to CATCHUP_SPEED_MULT. This replaces the old
+# stragglers smoothly ramp up to Balance.SOLDIER_CATCHUP_SPEED_MULT. This replaces the old
 # binary timer that sprinted indiscriminately after water exits / unstick
 # events, even when the soldier was already in formation.
 func _catchup_speed_mult() -> float:
@@ -498,10 +475,10 @@ func _catchup_speed_mult() -> float:
 	if centroid == Vector2.ZERO:
 		return 1.0
 	var d: float = global_position.distance_to(centroid)
-	if d <= CATCHUP_NEAR:
+	if d <= Balance.SOLDIER_CATCHUP_NEAR:
 		return 1.0
-	var t: float = clampf((d - CATCHUP_NEAR) / (CATCHUP_FAR - CATCHUP_NEAR), 0.0, 1.0)
-	return lerpf(1.0, CATCHUP_SPEED_MULT, t)
+	var t: float = clampf((d - Balance.SOLDIER_CATCHUP_NEAR) / (Balance.SOLDIER_CATCHUP_FAR - Balance.SOLDIER_CATCHUP_NEAR), 0.0, 1.0)
+	return lerpf(1.0, Balance.SOLDIER_CATCHUP_SPEED_MULT, t)
 
 func _die() -> void:
 	# Soldiers are not removed from the field — they remain as a "downed" body
@@ -577,7 +554,7 @@ func _try_autodefend(delta: float) -> void:
 	if _autodefend_cooldown > 0.0:
 		return
 	var closest: Node2D = null
-	var closest_d := AUTODEFEND_RANGE
+	var closest_d: float = Balance.SOLDIER_AUTODEFEND_RANGE
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(e):
 			continue
@@ -588,7 +565,7 @@ func _try_autodefend(delta: float) -> void:
 	if closest == null:
 		return
 	var dir := (closest.global_position - global_position).normalized()
-	dir = dir.rotated(randf_range(-AUTODEFEND_JITTER, AUTODEFEND_JITTER))
+	dir = dir.rotated(randf_range(-Balance.SOLDIER_AUTODEFEND_JITTER, Balance.SOLDIER_AUTODEFEND_JITTER))
 	if dir.x != 0:
 		sprite.flip_h = dir.x < 0
 	gunshot.pitch_scale = randf_range(0.9, 1.1)
@@ -599,7 +576,7 @@ func _try_autodefend(delta: float) -> void:
 		bullet.global_position = global_position
 		bullet.initialise(dir, self)
 		bullet.set_stats(pistol_damage, pistol_speed, pistol_distance, bullet_color)
-	_autodefend_cooldown = AUTODEFEND_COOLDOWN
+	_autodefend_cooldown = Balance.SOLDIER_AUTODEFEND_COOLDOWN
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud and hud.has_method("show_under_attack"):
 		hud.show_under_attack(group_id + 1)

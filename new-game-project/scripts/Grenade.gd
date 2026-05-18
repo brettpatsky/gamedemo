@@ -1,18 +1,12 @@
 extends Node2D
 
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
 # Parabolic grenade projectile.  Created programmatically by Soldier._throw_grenade().
 # Call initialise() immediately after add_child().
 
-const SPEED            := 250.0   # pixels/sec (horizontal component)
-const ARC_HEIGHT       := 80.0    # peak height above the straight-line path (px)
-const EXPLOSION_RADIUS := 110.0   # damage radius on impact
-const DAMAGE           := 12      # 4× original — compensates for one throw vs one-per-soldier
-# Memory totems regenerate 16 HP/s, which makes pistols useless against them.
-# Grenades get a heavy bonus so a single throw cracks a totem shield (80 HP →
-# 20 HP left after one grenade; ~1.25 s of regen pressure, so a follow-up
-# grenade or rifle burst finishes it).
-const TOTEM_DAMAGE     := 60
-const SHOW_TIME        := 0.3     # seconds the explosion graphic stays visible
+# All grenade tuning (speed, arc, radius, damage, totem bonus, show time)
+# lives in BalanceConfig under the GRENADE_* prefix.
 
 var _start_pos:   Vector2
 var _end_pos:     Vector2
@@ -25,7 +19,7 @@ func initialise(from: Vector2, to: Vector2, shooter: Node2D) -> void:
 	_start_pos   = from
 	_end_pos     = to
 	_shooter     = shooter
-	_travel_time = maxf(from.distance_to(to) / SPEED, 0.3)
+	_travel_time = maxf(from.distance_to(to) / Balance.GRENADE_SPEED, 0.3)
 
 func _process(delta: float) -> void:
 	if _exploded:
@@ -33,7 +27,7 @@ func _process(delta: float) -> void:
 	_elapsed += delta
 	var t    := clampf(_elapsed / _travel_time, 0.0, 1.0)
 	var flat := _start_pos.lerp(_end_pos, t)
-	var arc  := -ARC_HEIGHT * 4.0 * t * (1.0 - t)   # parabola peaking at t = 0.5
+	var arc: float = -Balance.GRENADE_ARC_HEIGHT * 4.0 * t * (1.0 - t)   # parabola peaking at t = 0.5
 	global_position = flat + Vector2(0.0, arc)
 	queue_redraw()
 	if t >= 1.0:
@@ -44,7 +38,7 @@ func _explode() -> void:
 	global_position = _end_pos
 	_deal_damage()
 	queue_redraw()
-	get_tree().create_timer(SHOW_TIME).timeout.connect(queue_free)
+	get_tree().create_timer(Balance.GRENADE_SHOW_TIME).timeout.connect(queue_free)
 
 func _deal_damage() -> void:
 	# enemy_projectiles included so grenades sweep away the Heart's
@@ -58,16 +52,16 @@ func _deal_damage() -> void:
 				continue
 			if not target.has_method("take_damage"):
 				continue
-			if (target as Node2D).global_position.distance_to(_end_pos) > EXPLOSION_RADIUS:
+			if (target as Node2D).global_position.distance_to(_end_pos) > Balance.GRENADE_EXPLOSION_RADIUS:
 				continue
 			# Heavy bonus damage to memory totems — required to outpace their
 			# 16 HP/s regen during the boss's Phase 2.
-			var dmg: int = TOTEM_DAMAGE if target.is_in_group("memory_totems") else DAMAGE
+			var dmg: int = Balance.GRENADE_TOTEM_DAMAGE if target.is_in_group("memory_totems") else Balance.GRENADE_DAMAGE
 			target.take_damage(dmg)
 
 func _draw() -> void:
 	if _exploded:
-		draw_circle(Vector2.ZERO, EXPLOSION_RADIUS, Color(1.0, 0.4, 0.0, 0.4))
-		draw_arc(Vector2.ZERO, EXPLOSION_RADIUS, 0.0, TAU, 32, Color(1.0, 0.65, 0.0), 2.0)
+		draw_circle(Vector2.ZERO, Balance.GRENADE_EXPLOSION_RADIUS, Color(1.0, 0.4, 0.0, 0.4))
+		draw_arc(Vector2.ZERO, Balance.GRENADE_EXPLOSION_RADIUS, 0.0, TAU, 32, Color(1.0, 0.65, 0.0), 2.0)
 	else:
 		draw_circle(Vector2.ZERO, 5.0, Color(0.15, 0.75, 0.1))

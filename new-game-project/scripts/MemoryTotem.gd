@@ -12,17 +12,14 @@
 # =============================================================================
 extends StaticBody2D
 
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
 signal totem_destroyed
 
-const MAX_HEALTH:    int   = 80
-# Regen sits BELOW the all-pistol DPS (≈12 with a full squad) so the player
-# can always grind a totem down with pistols if they've burned through their
-# rifle ammo + grenades. Net pistol throughput is ~6 HP/s → ~13 s per totem,
-# slow but viable. Rifle (~50 dps net 44) and grenades (60 burst) remain the
-# fast path the design favours.
-const REGEN_RATE:    float = 6.0    # HP / second restored continuously
-
-var _health:      float = MAX_HEALTH
+# HP and regen rate live in BalanceConfig (TOTEM_MAX_HEALTH / TOTEM_REGEN_RATE).
+# Regen sits below all-pistol DPS so the squad can always grind a totem down
+# with pistols, while rifle + grenades remain the fast path.
+var _health:      float = 0.0     # set in _ready() from BalanceConfig
 var _destroyed:   bool  = false
 var _pulse_phase: float = 0.0
 
@@ -33,7 +30,8 @@ func _ready() -> void:
 	add_to_group("memory_totems")
 	collision_layer = 1
 	collision_mask  = 0
-	health_bar.max_value = MAX_HEALTH
+	_health = float(Balance.TOTEM_MAX_HEALTH)
+	health_bar.max_value = Balance.TOTEM_MAX_HEALTH
 	health_bar.value     = _health
 	queue_redraw()
 
@@ -41,8 +39,8 @@ func _process(delta: float) -> void:
 	if _destroyed:
 		return
 	_pulse_phase += delta
-	if _health < MAX_HEALTH:
-		_health = minf(_health + REGEN_RATE * delta, float(MAX_HEALTH))
+	if _health < Balance.TOTEM_MAX_HEALTH:
+		_health = minf(_health + Balance.TOTEM_REGEN_RATE * delta, float(Balance.TOTEM_MAX_HEALTH))
 		health_bar.value = _health
 	queue_redraw()
 
@@ -58,7 +56,7 @@ func take_damage(amount: int) -> void:
 		queue_free()
 
 func _draw() -> void:
-	var hp_ratio: float = clampf(_health / float(MAX_HEALTH), 0.0, 1.0)
+	var hp_ratio: float = clampf(_health / float(Balance.TOTEM_MAX_HEALTH), 0.0, 1.0)
 	# Inner corrupted core — deep violet.
 	draw_circle(Vector2.ZERO, 32.0, Color(0.25, 0.05, 0.45))
 	draw_circle(Vector2.ZERO, 22.0, Color(0.55, 0.15, 0.85))

@@ -7,11 +7,9 @@
 # =============================================================================
 extends Area2D
 
-const RADIUS:           float = 90.0
-const DRAIN_RATE:       float = 14.0  # rifle ammo siphoned per second per soldier inside
-const DAMAGE_TICK:      float = 0.8   # seconds between damage ticks per soldier
-const DAMAGE_PER_TICK:  int   = 1     # HP per tick — combined with ammo drain makes sludge a real threat
+const Balance = preload("res://scripts/BalanceConfig.gd")
 
+# Radius, drain rate, and damage tuning live in BalanceConfig (SLUDGE_*).
 var _accumulator: float = 0.0
 var _anim_phase:  float = 0.0
 var _damage_timer: float = 0.0
@@ -26,7 +24,7 @@ func _ready() -> void:
 	# blocked when the node is added during a physics-query flush.
 	# Build the collision shape in code so the scene file isn't needed.
 	var shape := CircleShape2D.new()
-	shape.radius = RADIUS
+	shape.radius = Balance.SLUDGE_RADIUS
 	var cs := CollisionShape2D.new()
 	cs.shape = shape
 	add_child(cs)
@@ -49,7 +47,7 @@ func _process(delta: float) -> void:
 		_damage_timer = 0.0   # reset so the first soldier to step in eats a tick fast
 		return
 	# Rifle pool drain — aggregated across all soldiers standing in sludge.
-	_accumulator += DRAIN_RATE * delta * float(alive_inside.size())
+	_accumulator += Balance.SLUDGE_DRAIN_RATE * delta * float(alive_inside.size())
 	var whole: int = int(_accumulator)
 	if whole > 0:
 		_accumulator -= float(whole)
@@ -58,20 +56,20 @@ func _process(delta: float) -> void:
 	_damage_timer -= delta
 	if _damage_timer > 0.0:
 		return
-	_damage_timer = DAMAGE_TICK
+	_damage_timer = Balance.SLUDGE_DAMAGE_TICK
 	for s in alive_inside:
 		if s.has_method("take_damage"):
-			s.take_damage(DAMAGE_PER_TICK)
+			s.take_damage(Balance.SLUDGE_DAMAGE_PER_TICK)
 
 func _draw() -> void:
 	# Layered violet pools — outer halo + main body + writhing inner rim.
-	draw_circle(Vector2.ZERO, RADIUS,        Color(0.30, 0.05, 0.45, 0.35))
-	draw_circle(Vector2.ZERO, RADIUS * 0.85, Color(0.45, 0.10, 0.65, 0.55))
-	draw_circle(Vector2.ZERO, RADIUS * 0.55, Color(0.65, 0.20, 0.85, 0.65))
+	draw_circle(Vector2.ZERO, Balance.SLUDGE_RADIUS,        Color(0.30, 0.05, 0.45, 0.35))
+	draw_circle(Vector2.ZERO, Balance.SLUDGE_RADIUS * 0.85, Color(0.45, 0.10, 0.65, 0.55))
+	draw_circle(Vector2.ZERO, Balance.SLUDGE_RADIUS * 0.55, Color(0.65, 0.20, 0.85, 0.65))
 	# Three slowly drifting bubbles to sell the "alive" feel.
 	for i in 3:
 		var phase: float = _anim_phase * 0.8 + float(i) * (TAU / 3.0)
-		var r: float = RADIUS * (0.35 + 0.10 * sin(phase * 1.7))
-		var pos := Vector2(cos(phase), sin(phase)) * (RADIUS * 0.45)
+		var r: float = Balance.SLUDGE_RADIUS * (0.35 + 0.10 * sin(phase * 1.7))
+		var pos := Vector2(cos(phase), sin(phase)) * (Balance.SLUDGE_RADIUS * 0.45)
 		draw_circle(pos, r * 0.20, Color(0.9, 0.6, 1.0, 0.55))
-	draw_arc(Vector2.ZERO, RADIUS, 0.0, TAU, 48, Color(0.85, 0.50, 1.0, 0.75), 2.5)
+	draw_arc(Vector2.ZERO, Balance.SLUDGE_RADIUS, 0.0, TAU, 48, Color(0.85, 0.50, 1.0, 0.75), 2.5)

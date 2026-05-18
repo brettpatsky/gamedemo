@@ -17,6 +17,8 @@
 # =============================================================================
 extends StaticBody2D
 
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
 signal boss_defeated
 signal phase_changed(phase: int)
 signal void_embrace_started
@@ -25,23 +27,12 @@ signal void_embrace_progress(t: float)        # 0..1 channel progress
 signal void_embrace_cleared                    # channel ended without wipe
 
 # ---------------------------------------------------------------------------
-# Health / phase tuning
+# Health, phase thresholds, and per-phase timings live in BalanceConfig.gd
+# under the BOSS_* prefix. Only data that's structural to this script (the
+# Phase 1 attack pattern offsets) stays here.
 # ---------------------------------------------------------------------------
-const MAX_HEALTH:         int = 360
-const PHASE_2_THRESHOLD:  int = 240     # HP at which Phase 1 → Phase 2
-const PHASE_3_THRESHOLD:  int = 120     # HP at which Phase 2 → Phase 3 (gated by totems)
 
-# ---------------------------------------------------------------------------
-# Phase 1 — telegraphed AOE zones
-# ---------------------------------------------------------------------------
-# A pattern of 3 large danger zones flash up across the boss room, telegraph
-# for ~1.8 s, then deal damage for ~2 s before despawning and the next pattern
-# spawning. Forces the squad to keep moving rather than fire safely from a
-# corner. Offsets are boss-relative.
-const PHASE1_WARN:        float = 1.8
-const PHASE1_DAMAGE:      float = 2.0
-const PHASE1_PAUSE:       float = 0.6
-const PHASE1_CYCLE:       float = PHASE1_WARN + PHASE1_DAMAGE + PHASE1_PAUSE
+# Phase 1 — telegraphed AOE zone offsets. Offsets are boss-relative.
 const PHASE1_PATTERNS: Array = [
 	# Pattern A — south triangle (zones at SW / SE / N). Safe spots: north
 	# corners and the gap between SW and SE.
@@ -56,27 +47,6 @@ const PHASE1_PATTERNS: Array = [
 ]
 
 # ---------------------------------------------------------------------------
-# Phase 2 — totems + sludge
-# ---------------------------------------------------------------------------
-const TOTEM_COUNT:         int   = 3
-const TOTEM_RADIUS:        float = 280.0   # distance from boss
-# Slow predictable orbit — totems drift around the boss together. ~21 sec for a
-# full rotation. Forces the squad to track moving targets and reposition.
-const TOTEM_ORBIT_SPEED:   float = 0.30    # radians/sec
-const SLUDGE_COUNT:        int   = 3
-const SLUDGE_RADIUS_RING:  float = 240.0   # ring of sludge pools
-
-# ---------------------------------------------------------------------------
-# Phase 3 — projectile spiral + void embrace
-# ---------------------------------------------------------------------------
-const PROJECTILE_INTERVAL: float = 0.16
-const VOID_PRE_DELAY:      float = 5.0
-const VOID_CHANNEL_TIME:   float = 15.0
-const VOID_COOLDOWN_AFTER_INT: float = 4.0
-const VOID_INTERRUPT_DMG:  int   = 8     # any single hit ≥ this interrupts the channel
-const VOID_WIPE_DAMAGE:    int   = 9999
-
-# ---------------------------------------------------------------------------
 # Preloads — sub-scripts spawned dynamically
 # ---------------------------------------------------------------------------
 const _ZONE_SCRIPT         = preload("res://scripts/PhaseDangerZone.gd")
@@ -87,7 +57,7 @@ const _TOTEM_SCENE: PackedScene = preload("res://scenes/bosses/memory_totem.tscn
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
-var _health: int = MAX_HEALTH
+var _health: int = 0   # populated from BalanceConfig in _ready()
 var _phase:  int = 0      # 0 = dormant (squad still in the corridor), 1/2/3 = active
 var _invulnerable: bool = false
 var _destroyed:    bool = false
@@ -126,7 +96,8 @@ func _ready() -> void:
 	add_to_group("boss")
 	collision_layer = 1
 	collision_mask  = 0
-	health_bar.max_value = MAX_HEALTH
+	_health = Balance.BOSS_MAX_HEALTH
+	health_bar.max_value = Balance.BOSS_MAX_HEALTH
 	health_bar.value     = _health
 	# Dormant until the squad crosses into the boss room — BossArenaLevel's
 	# trigger zone calls activate() at that point.
@@ -167,12 +138,12 @@ func take_damage(amount: int) -> void:
 		return
 	_health -= amount
 	health_bar.value = _health
-	if _void_active and amount >= VOID_INTERRUPT_DMG:
+	if _void_active and amount >= Balance.BOSS_VOID_INTERRUPT_DMG:
 		_interrupt_void_embrace()
 	# Phase transitions — deferred because take_damage is invoked from a Bullet
 	# collision callback during physics flushing. Spawning Area2D children
 	# (beams / sludge / projectiles) is illegal mid-flush.
-	if _phase == 1 and _health <= PHASE_2_THRESHOLD:
+	if _phase == 1 and _health <= Balance.BOSS_PHASE_2_THRESHOLD:
 		_phase = 2  # claim the phase NOW so we don't enter twice on subsequent hits
 		call_deferred("_enter_phase_2")
 	elif _phase == 3 and _health <= 0:
@@ -192,7 +163,7 @@ func _enter_phase_1() -> void:
 
 func _tick_phase_1(delta: float) -> void:
 	_zone_cycle_timer += delta
-	if _zone_cycle_timer < PHASE1_CYCLE:
+	if _zone_cycle_timer < (Balance.BOSS_PHASE1_WARN + Balance.BOSS_PHASE1_DAMAGE + Balance.BOSS_PHASE1_PAUSE):
 		return
 	_zone_cycle_timer = 0.0
 	_zone_pattern_idx = (_zone_pattern_idx + 1) % PHASE1_PATTERNS.size()
@@ -210,7 +181,7 @@ func _spawn_zone_pattern(idx: int) -> void:
 		get_parent().add_child(zone)
 		zone.global_position = global_position + offset
 		if zone.has_method("configure"):
-			zone.configure(PHASE1_WARN, PHASE1_DAMAGE)
+			zone.configure(Balance.BOSS_PHASE1_WARN, Balance.BOSS_PHASE1_DAMAGE)
 		_zones.append(zone)
 
 func _clear_zones() -> void:
@@ -234,29 +205,29 @@ func _enter_phase_2() -> void:
 func _tick_phase_2(delta: float) -> void:
 	# Drive the synchronised totem orbit — predictable so the squad can lead
 	# their shots, but it forces them to keep moving and re-aiming.
-	_totem_angle += TOTEM_ORBIT_SPEED * delta
+	_totem_angle += Balance.BOSS_TOTEM_ORBIT_SPEED * delta
 	var any_alive: bool = false
 	for i in _totems.size():
 		var t: Node = _totems[i]
 		if not is_instance_valid(t):
 			continue
 		any_alive = true
-		var base_angle: float = (TAU / float(TOTEM_COUNT)) * float(i) - PI * 0.5
+		var base_angle: float = (TAU / float(Balance.BOSS_TOTEM_COUNT)) * float(i) - PI * 0.5
 		var angle: float = base_angle + _totem_angle
 		(t as Node2D).global_position = global_position \
-				+ Vector2(cos(angle), sin(angle)) * TOTEM_RADIUS
+				+ Vector2(cos(angle), sin(angle)) * Balance.BOSS_TOTEM_RADIUS
 	if not any_alive:
 		_phase = 3   # claim the phase early so this tick doesn't re-fire
 		call_deferred("_enter_phase_3")
 
 func _spawn_totems() -> void:
-	# Keep _totems sized to TOTEM_COUNT so each slot keeps its base orbit angle
+	# Keep _totems sized to Balance.BOSS_TOTEM_COUNT so each slot keeps its base orbit angle
 	# even after the totem in that slot is destroyed (the slot becomes invalid,
 	# but the indices of surviving totems stay stable).
 	_totems.clear()
-	for i in TOTEM_COUNT:
-		var base_angle: float = (TAU / float(TOTEM_COUNT)) * float(i) - PI * 0.5
-		var pos := global_position + Vector2(cos(base_angle), sin(base_angle)) * TOTEM_RADIUS
+	for i in Balance.BOSS_TOTEM_COUNT:
+		var base_angle: float = (TAU / float(Balance.BOSS_TOTEM_COUNT)) * float(i) - PI * 0.5
+		var pos := global_position + Vector2(cos(base_angle), sin(base_angle)) * Balance.BOSS_TOTEM_RADIUS
 		var totem: Node = _TOTEM_SCENE.instantiate()
 		get_parent().add_child(totem)
 		(totem as Node2D).global_position = pos
@@ -270,9 +241,9 @@ func _on_totem_destroyed() -> void:
 
 func _spawn_sludge_pools() -> void:
 	_sludge_pools.clear()
-	for i in SLUDGE_COUNT:
-		var angle: float = (TAU / float(SLUDGE_COUNT)) * float(i) + PI * 0.25
-		var pos := global_position + Vector2(cos(angle), sin(angle)) * SLUDGE_RADIUS_RING
+	for i in Balance.BOSS_SLUDGE_COUNT:
+		var angle: float = (TAU / float(Balance.BOSS_SLUDGE_COUNT)) * float(i) + PI * 0.25
+		var pos := global_position + Vector2(cos(angle), sin(angle)) * Balance.BOSS_SLUDGE_RADIUS_RING
 		var pool := Area2D.new()
 		pool.set_script(_SLUDGE_SCRIPT)
 		get_parent().add_child(pool)
@@ -295,14 +266,14 @@ func _enter_phase_3() -> void:
 	_clear_sludge_pools()
 	# Phase 3 has no rotating beams — the spiral projectile storm + Void
 	# Embrace channel + (still-orbiting) corrupted aura supply the threat.
-	_void_pre_timer     = VOID_PRE_DELAY
+	_void_pre_timer     = Balance.BOSS_VOID_PRE_DELAY
 	_void_active        = false
 	_void_channel_timer = 0.0
 	_projectile_timer   = 0.0
 	# Make sure Phase 3 starts at a defined HP even if the player overshot in
 	# Phase 1 (it can't actually overshoot, but the bookkeeping is cheap).
-	if _health > PHASE_3_THRESHOLD:
-		_health = PHASE_3_THRESHOLD
+	if _health > Balance.BOSS_PHASE_3_THRESHOLD:
+		_health = Balance.BOSS_PHASE_3_THRESHOLD
 		health_bar.value = _health
 	phase_changed.emit(3)
 
@@ -310,13 +281,13 @@ func _tick_phase_3(delta: float) -> void:
 	# Spiral projectile fire.
 	_projectile_timer -= delta
 	if _projectile_timer <= 0.0:
-		_projectile_timer = PROJECTILE_INTERVAL
+		_projectile_timer = Balance.BOSS_PROJECTILE_INTERVAL
 		_fire_spiral_volley()
 
 	# Void Embrace channel logic.
 	if _void_active:
 		_void_channel_timer -= delta
-		void_embrace_progress.emit(1.0 - clampf(_void_channel_timer / VOID_CHANNEL_TIME, 0.0, 1.0))
+		void_embrace_progress.emit(1.0 - clampf(_void_channel_timer / Balance.BOSS_VOID_CHANNEL_TIME, 0.0, 1.0))
 		if _void_channel_timer <= 0.0:
 			_complete_void_embrace()
 	else:
@@ -338,7 +309,7 @@ func _fire_spiral_volley() -> void:
 
 func _start_void_embrace() -> void:
 	_void_active = true
-	_void_channel_timer = VOID_CHANNEL_TIME
+	_void_channel_timer = Balance.BOSS_VOID_CHANNEL_TIME
 	void_embrace_started.emit()
 	void_embrace_progress.emit(0.0)
 
@@ -347,13 +318,13 @@ func _interrupt_void_embrace() -> void:
 		return
 	_void_active = false
 	_void_channel_timer = 0.0
-	_void_pre_timer = VOID_COOLDOWN_AFTER_INT
+	_void_pre_timer = Balance.BOSS_VOID_COOLDOWN_AFTER_INT
 	void_embrace_interrupted.emit()
 	void_embrace_cleared.emit()
 
 func _complete_void_embrace() -> void:
 	_void_active = false
-	_void_pre_timer = VOID_PRE_DELAY
+	_void_pre_timer = Balance.BOSS_VOID_PRE_DELAY
 	void_embrace_cleared.emit()
 	# Wipe every soldier in the currently active group.
 	var squad: Node = get_tree().get_first_node_in_group("squad_controller")
@@ -370,7 +341,7 @@ func _complete_void_embrace() -> void:
 		if active_group_id >= 0 and "group_id" in s and s.group_id != active_group_id:
 			continue
 		if s.has_method("take_damage"):
-			s.take_damage(VOID_WIPE_DAMAGE)
+			s.take_damage(Balance.BOSS_VOID_WIPE_DAMAGE)
 
 # =============================================================================
 # DEATH
@@ -412,7 +383,7 @@ func _draw() -> void:
 		pts.append(Vector2(cos(a), sin(a)) * 80.0)
 	draw_colored_polygon(pts, Color(0.12, 0.08, 0.18))
 	# Inner cracks — colour intensifies as health drops.
-	var hp_ratio: float = clampf(float(_health) / float(MAX_HEALTH), 0.0, 1.0)
+	var hp_ratio: float = clampf(float(_health) / float(Balance.BOSS_MAX_HEALTH), 0.0, 1.0)
 	var crack_color := Color(1.0, 0.4 * (1.0 - hp_ratio), 1.0 * (1.0 - hp_ratio * 0.5), 0.8)
 	for i in 6:
 		var a: float = (TAU / 6.0) * float(i) - PI * 0.5
@@ -436,7 +407,7 @@ func is_void_active() -> bool:
 func get_void_progress() -> float:
 	if not _void_active:
 		return 0.0
-	return 1.0 - clampf(_void_channel_timer / VOID_CHANNEL_TIME, 0.0, 1.0)
+	return 1.0 - clampf(_void_channel_timer / Balance.BOSS_VOID_CHANNEL_TIME, 0.0, 1.0)
 
 func get_phase() -> int:
 	return _phase
