@@ -15,7 +15,12 @@ extends StaticBody2D
 signal totem_destroyed
 
 const MAX_HEALTH:    int   = 80
-const REGEN_RATE:    float = 16.0   # HP / second restored continuously
+# Regen sits BELOW the all-pistol DPS (≈12 with a full squad) so the player
+# can always grind a totem down with pistols if they've burned through their
+# rifle ammo + grenades. Net pistol throughput is ~6 HP/s → ~13 s per totem,
+# slow but viable. Rifle (~50 dps net 44) and grenades (60 burst) remain the
+# fast path the design favours.
+const REGEN_RATE:    float = 6.0    # HP / second restored continuously
 
 var _health:      float = MAX_HEALTH
 var _destroyed:   bool  = false

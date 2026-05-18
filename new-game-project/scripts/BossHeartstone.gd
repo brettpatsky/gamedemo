@@ -88,9 +88,13 @@ const _TOTEM_SCENE: PackedScene = preload("res://scenes/bosses/memory_totem.tscn
 # State
 # ---------------------------------------------------------------------------
 var _health: int = MAX_HEALTH
-var _phase:  int = 0      # 0 = uninitialised, 1/2/3 = active phase
+var _phase:  int = 0      # 0 = dormant (squad still in the corridor), 1/2/3 = active
 var _invulnerable: bool = false
 var _destroyed:    bool = false
+# True once the squad has crossed the trigger threshold into the boss room.
+# Until then, _process is idle and nothing attacks the squad — the player has
+# time to organise in the passageway / outside area.
+var _activated:    bool = false
 
 var _zones:        Array[Node2D] = []   # Phase-1 active danger zones
 var _totems:       Array[Node]   = []
@@ -124,6 +128,14 @@ func _ready() -> void:
 	collision_mask  = 0
 	health_bar.max_value = MAX_HEALTH
 	health_bar.value     = _health
+	# Dormant until the squad crosses into the boss room — BossArenaLevel's
+	# trigger zone calls activate() at that point.
+
+# Called by the arena trigger zone when a soldier enters the boss room.
+func activate() -> void:
+	if _activated or _destroyed:
+		return
+	_activated = true
 	_enter_phase_1()
 
 # =============================================================================
@@ -134,6 +146,8 @@ func _process(delta: float) -> void:
 	queue_redraw()
 	if _destroyed:
 		return
+	if not _activated:
+		return   # dormant until the squad enters the boss room
 	match _phase:
 		1: _tick_phase_1(delta)
 		2: _tick_phase_2(delta)
@@ -145,6 +159,8 @@ func _process(delta: float) -> void:
 func take_damage(amount: int) -> void:
 	if _destroyed:
 		return
+	if not _activated:
+		return   # ignore stray hits while the fight hasn't begun
 	if _invulnerable:
 		# Audio/visual feedback for "no damage" could go here. Returning silently
 		# is fine — the player sees the HP bar isn't moving.

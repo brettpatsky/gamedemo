@@ -7,11 +7,14 @@
 # =============================================================================
 extends Area2D
 
-const RADIUS:       float = 90.0
-const DRAIN_RATE:   float = 14.0  # rifle ammo siphoned per second per soldier inside
+const RADIUS:           float = 90.0
+const DRAIN_RATE:       float = 14.0  # rifle ammo siphoned per second per soldier inside
+const DAMAGE_TICK:      float = 0.8   # seconds between damage ticks per soldier
+const DAMAGE_PER_TICK:  int   = 1     # HP per tick — combined with ammo drain makes sludge a real threat
 
 var _accumulator: float = 0.0
 var _anim_phase:  float = 0.0
+var _damage_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("sludge_pools")
@@ -33,20 +36,32 @@ func _process(delta: float) -> void:
 	_anim_phase += delta
 	queue_redraw()
 	var bodies: Array = get_overlapping_bodies()
-	var count_inside: int = 0
+	# Walk the live, undowned soldiers once and apply both the ammo drain (in
+	# aggregate) and per-soldier periodic damage.
+	var alive_inside: Array = []
 	for b in bodies:
-		if b.is_in_group("soldiers"):
-			# Downed soldiers don't drain ammo.
-			if b.has_method("is_downed") and b.is_downed():
-				continue
-			count_inside += 1
-	if count_inside <= 0:
+		if not b.is_in_group("soldiers"):
+			continue
+		if b.has_method("is_downed") and b.is_downed():
+			continue
+		alive_inside.append(b)
+	if alive_inside.is_empty():
+		_damage_timer = 0.0   # reset so the first soldier to step in eats a tick fast
 		return
-	_accumulator += DRAIN_RATE * delta * float(count_inside)
+	# Rifle pool drain — aggregated across all soldiers standing in sludge.
+	_accumulator += DRAIN_RATE * delta * float(alive_inside.size())
 	var whole: int = int(_accumulator)
 	if whole > 0:
 		_accumulator -= float(whole)
 		GameManager.rifle_ammo_pool = maxi(GameManager.rifle_ammo_pool - whole, 0)
+	# Soldier damage — per-tick chip damage on each soldier standing inside.
+	_damage_timer -= delta
+	if _damage_timer > 0.0:
+		return
+	_damage_timer = DAMAGE_TICK
+	for s in alive_inside:
+		if s.has_method("take_damage"):
+			s.take_damage(DAMAGE_PER_TICK)
 
 func _draw() -> void:
 	# Layered violet pools — outer halo + main body + writhing inner rim.

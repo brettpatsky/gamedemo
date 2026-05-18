@@ -513,6 +513,18 @@ func _process(delta: float) -> void:
 		_arrow_node.queue_redraw()
 	_refresh_soldier_stats()
 	_refresh_boss_overlay()
+	_poll_rifle_ammo()
+
+# SludgePool decrements GameManager.rifle_ammo_pool directly without notifying
+# the HUD, which left the cached `_rifle_ammo` stale — the player would only
+# see the real number after firing or switching weapons (sometimes a sudden
+# 40+ jump). Polling here keeps the readout honest every frame.
+func _poll_rifle_ammo() -> void:
+	var current: int = GameManager.rifle_ammo_pool
+	if current == _rifle_ammo:
+		return
+	_rifle_ammo = current
+	_refresh_ammo_labels()
 
 func _refresh_boss_overlay() -> void:
 	if _boss == null or not is_instance_valid(_boss):
