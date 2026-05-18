@@ -65,10 +65,7 @@ func _ready() -> void:
 # MapGenerator-compatible interface — same names Main.gd / Camera / Bullet expect
 # =============================================================================
 func get_map_centre() -> Vector2:
-	# Aim the camera roughly at the boss-room/corridor interface so the squad
-	# is visible at spawn and the boss can be seen "looming" at the top of the
-	# screen until the squad advances.
-	return to_global(Vector2(_map_w_px * 0.5, ROOM_HEIGHT * 0.5 + 150.0))
+	return to_global(Vector2(_map_w_px * 0.5, _map_h_px * 0.5))
 
 func get_map_rect() -> Rect2:
 	return Rect2(to_global(Vector2.ZERO), Vector2(_map_w_px, _map_h_px))
@@ -138,9 +135,9 @@ func _spawn_corridor_walls() -> void:
 	var centre_x: float = _map_w_px * 0.5
 	var corr_left:  float = centre_x - CORRIDOR_HALF_W
 	var corr_right: float = centre_x + CORRIDOR_HALF_W
-	var height:     float = CORRIDOR_BOTTOM_Y - ROOM_HEIGHT
-	_add_wall(0.0,        ROOM_HEIGHT, corr_left,             height)   # bottom-left of room
-	_add_wall(corr_right, ROOM_HEIGHT, _map_w_px - corr_right, height)   # bottom-right of room
+	var height:     float = _map_h_px - ROOM_HEIGHT
+	_add_wall(0.0,        ROOM_HEIGHT, corr_left,              height)   # left wall of corridor
+	_add_wall(corr_right, ROOM_HEIGHT, _map_w_px - corr_right, height)   # right wall of corridor
 
 func _add_wall(x: float, y: float, w: float, h: float) -> void:
 	var body  := StaticBody2D.new()
@@ -169,21 +166,17 @@ func _bake_nav() -> void:
 	var right:      float = _map_w_px - INSET
 	var top:        float = INSET
 	var room_bot:   float = ROOM_HEIGHT
-	var corr_bot:   float = CORRIDOR_BOTTOM_Y
-	var out_bot:    float = _map_h_px - INSET
+	var path_bot:   float = _map_h_px - INSET
 
+	# Inverted-T shape: wide boss room on top, narrow corridor below.
 	var nav_poly := NavigationPolygon.new()
 	nav_poly.add_outline(PackedVector2Array([
 		nav_region.to_local(to_global(Vector2(left,        top))),
 		nav_region.to_local(to_global(Vector2(right,       top))),
 		nav_region.to_local(to_global(Vector2(right,       room_bot))),
 		nav_region.to_local(to_global(Vector2(corr_right,  room_bot))),
-		nav_region.to_local(to_global(Vector2(corr_right,  corr_bot))),
-		nav_region.to_local(to_global(Vector2(right,       corr_bot))),
-		nav_region.to_local(to_global(Vector2(right,       out_bot))),
-		nav_region.to_local(to_global(Vector2(left,        out_bot))),
-		nav_region.to_local(to_global(Vector2(left,        corr_bot))),
-		nav_region.to_local(to_global(Vector2(corr_left,   corr_bot))),
+		nav_region.to_local(to_global(Vector2(corr_right,  path_bot))),
+		nav_region.to_local(to_global(Vector2(corr_left,   path_bot))),
 		nav_region.to_local(to_global(Vector2(corr_left,   room_bot))),
 		nav_region.to_local(to_global(Vector2(left,        room_bot))),
 	]))
