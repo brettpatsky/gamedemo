@@ -33,19 +33,24 @@
 extends Node2D
 
 signal boss_defeated
+signal arena_locked
 
 const WALL_THICKNESS:     float = 96.0
 const ROOM_HEIGHT:        float = 700.0    # y bound between boss room (above) and corridor (below)
 const CORRIDOR_BOTTOM_Y:  float = 900.0    # y bound between corridor (above) and outside area (below)
 const CORRIDOR_HALF_W:    float = 100.0    # corridor is 200 px wide, centred horizontally
 
-@onready var background: ColorRect          = $Background
-@onready var nav_region: NavigationRegion2D = $NavigationRegion2D
-@onready var spawn_point: Node2D            = $SpawnPoint
-@onready var boss: Node                     = $Boss
+@onready var background:      ColorRect          = $Background
+@onready var nav_region:      NavigationRegion2D = $NavigationRegion2D
+@onready var spawn_point:     Node2D             = $SpawnPoint
+@onready var boss:            Node               = $Boss
+@onready var corridor_border: ColorRect          = $CorridorBorder
+@onready var corridor_floor:  ColorRect          = $CorridorFloor
 
-var _map_w_px: float = 0.0
-var _map_h_px: float = 0.0
+var _map_w_px:        float          = 0.0
+var _map_h_px:        float          = 0.0
+var _boss_active:     bool           = false
+var _soldiers_in_room: Array[Node2D] = []
 
 # =============================================================================
 # READY
@@ -65,9 +70,13 @@ func _ready() -> void:
 # MapGenerator-compatible interface — same names Main.gd / Camera / Bullet expect
 # =============================================================================
 func get_map_centre() -> Vector2:
+	if _boss_active:
+		return to_global(Vector2(_map_w_px * 0.5, ROOM_HEIGHT * 0.5))
 	return to_global(Vector2(_map_w_px * 0.5, _map_h_px * 0.5))
 
 func get_map_rect() -> Rect2:
+	if _boss_active:
+		return Rect2(to_global(Vector2.ZERO), Vector2(_map_w_px, ROOM_HEIGHT))
 	return Rect2(to_global(Vector2.ZERO), Vector2(_map_w_px, _map_h_px))
 
 func is_water_at(_world_pos: Vector2) -> bool:
@@ -201,9 +210,51 @@ func _spawn_room_trigger() -> void:
 	cs.position = Vector2(_map_w_px * 0.5, ROOM_HEIGHT * 0.5)
 	trigger.add_child(cs)
 	trigger.body_entered.connect(_on_room_entered)
+	trigger.body_exited.connect(_on_room_exited)
 
 func _on_room_entered(body: Node2D) -> void:
 	if not body.is_in_group("soldiers"):
 		return
-	if boss and boss.has_method("activate"):
-		boss.activate()
+	if not _soldiers_in_room.has(body):
+		_soldiers_in_room.append(body)
+	_check_all_in_room()
+
+func _on_room_exited(body: Node2D) -> void:
+	if _boss_active:
+		return
+	_soldiers_in_room.erase(body)
+
+func _check_all_in_room() -> void:
+	if _boss_active:
+		return
+	var alive_total: int = GameManager.soldiers_alive
+	if alive_total <= 0:
+		return
+	# Rebuild list keeping only valid, living soldiers that are inside.
+	var still_valid: Array[Node2D] = []
+	var alive_inside: int = 0
+	for s: Node2D in _soldiers_in_room:
+		if not is_instance_valid(s):
+			continue
+		if s.has_method("is_downed") and s.is_downed():
+			continue
+		still_valid.append(s)
+		alive_inside += 1
+	_soldiers_in_room = still_valid
+	if alive_inside >= alive_total:
+		_lock_arena()
+		if boss and boss.has_method("activate"):
+			boss.activate()
+
+func _lock_arena() -> void:
+	if _boss_active:
+		return
+	_boss_active = true
+	if corridor_border:
+		corridor_border.hide()
+	if corridor_floor:
+		corridor_floor.hide()
+	# Seal the corridor entrance so the squad can't retreat back out.
+	var centre_x: float = _map_w_px * 0.5
+	_add_wall(centre_x - CORRIDOR_HALF_W, ROOM_HEIGHT, CORRIDOR_HALF_W * 2.0, 20.0)
+	arena_locked.emit()

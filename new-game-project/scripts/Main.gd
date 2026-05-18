@@ -238,6 +238,13 @@ func _setup_objective() -> void:
 			# Boss arena — defeating the Heart wins the mission.
 			if map_gen and map_gen.has_signal("boss_defeated"):
 				map_gen.boss_defeated.connect(_on_mission_win)
+			# When the squad enters the boss room, hide the corridor and zoom in.
+			if map_gen and map_gen.has_signal("arena_locked"):
+				map_gen.arena_locked.connect(func() -> void:
+					var camera: Node = get_tree().get_first_node_in_group("main_camera")
+					if camera and camera.has_method("lock_to_rect"):
+						camera.lock_to_rect(map_gen.get_map_rect())
+				)
 			var boss: Node = map_gen.get_objective_node("boss")
 			if boss and hud.has_method("set_boss"):
 				hud.set_boss(boss)

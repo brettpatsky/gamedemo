@@ -106,6 +106,12 @@ func _soft_follow_squad(delta: float) -> void:
 	if centroid != Vector2.ZERO:
 		position = position.lerp(centroid, follow_speed * delta)
 
+# Restrict the camera to a new rect and smoothly zoom to fit it.
+# Does NOT snap position — the squad follow and clamp bring the view there naturally.
+func lock_to_rect(rect: Rect2) -> void:
+	_map_rect   = rect
+	_target_zoom = _get_min_zoom()
+
 func _clamp_to_map() -> void:
 	var half_vp: Vector2 = get_viewport_rect().size * 0.5 / zoom.x
 	position.x = clamp(position.x, _map_rect.position.x + half_vp.x, _map_rect.end.x - half_vp.x)
