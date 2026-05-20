@@ -167,11 +167,23 @@ func _spawn_squad(count: int) -> void:
 	if soldier_scenes.is_empty():
 		push_error("[Main] soldier_scenes is empty — assign at least one PackedScene in the Inspector!")
 		return
-	var positions: Array[Vector2] = map_gen.get_spawn_positions(count)
-	for i in count:
-		var scene: PackedScene = soldier_scenes[i % soldier_scenes.size()]
+	# Filter the slot list against RunState — dead kids stay dead for the run
+	# and never spawn. `count` is the cap (1 for maze levels, full squad
+	# otherwise); we honour it by truncating the living-slot list.
+	var living: Array[int] = RunState.living_slots()
+	if living.is_empty():
+		push_warning("[Main] No living kids in RunState — squad will be empty")
+		return
+	var slots_to_spawn: Array[int] = living.slice(0, count)
+	var positions: Array[Vector2] = map_gen.get_spawn_positions(slots_to_spawn.size())
+	for i in slots_to_spawn.size():
+		var slot: int = slots_to_spawn[i]
+		var scene: PackedScene = soldier_scenes[slot % soldier_scenes.size()]
 		var soldier: Node2D = scene.instantiate()
-		soldier.slot_index = i
+		soldier.slot_index = slot
+		var carry_hp: int = RunState.get_carry_hp(slot)
+		if carry_hp > 0 and soldier.has_method("set_carried_hp"):
+			soldier.set_carried_hp(carry_hp)
 		if GameManager.current_level == 4 or GameManager.current_level == 5:
 			soldier.maze_mode = true
 		soldier.add_to_group("soldiers")
@@ -184,6 +196,29 @@ func _spawn_squad(count: int) -> void:
 func _setup_objective() -> void:
 	match GameManager.current_level:
 		1:
+			# Mission win is "clear every enemy" — same as before. The cage and
+			# memory fragment are side objectives that the player picks up
+			# along the way; freeing the parent flips a RunState bit and shows
+			# a toast, but it doesn't end the mission.
+			var cage: Node = map_gen.get_objective_node("parent_cage")
+			if cage:
+				if cage.has_signal("parent_freed"):
+					cage.parent_freed.connect(func(slot: int) -> void:
+						hud.show_toast("KID %d'S PARENT FREED" % (slot + 1),
+								Color(1.0, 0.85, 0.35), 3.0)
+					)
+				if cage.has_signal("wrong_kid_entered"):
+					cage.wrong_kid_entered.connect(func(_slot: int) -> void:
+						var expected: int = (cage.child_slot if "child_slot" in cage else 0) + 1
+						hud.show_toast("Only Kid %d can open this cage" % expected,
+								Color(0.95, 0.75, 0.75), 2.0)
+					)
+			var frag: Node = map_gen.get_objective_node("memory_fragment")
+			if frag and frag.has_signal("collected"):
+				frag.collected.connect(func(_id: String, name_text: String) -> void:
+					hud.show_toast("MEMORY RECOVERED — %s" % name_text,
+							Color(0.7, 0.95, 1.0), 2.5)
+				)
 			GameManager.mission_complete.connect(_on_mission_win)
 		2:
 			var structures = map_gen.get_objective_node("fortified_structure")
@@ -275,6 +310,7 @@ func _on_mission_win() -> void:
 	if _mission_ended:
 		return
 	_mission_ended = true
+	_persist_run_state()
 	if GameManager.current_level >= 6:
 		hud.show_mission_result("YOU WIN! ALL LEVELS COMPLETE!", Color.YELLOW, false)
 	else:
@@ -284,7 +320,24 @@ func _on_mission_fail() -> void:
 	if _mission_ended:
 		return
 	_mission_ended = true
+	_persist_run_state()
 	hud.show_mission_result("MISSION FAILED", Color.RED, false)
+
+# Snapshots the squad at the moment the mission ends and rolls the result into
+# RunState. Downed (unrevived) soldiers count as lost for the rest of the run;
+# anyone still standing carries their current HP into the next mission.
+func _persist_run_state() -> void:
+	var survivors: Array = []
+	for s in get_tree().get_nodes_in_group("soldiers"):
+		if not is_instance_valid(s):
+			continue
+		if s.has_method("is_downed") and s.is_downed():
+			continue
+		var slot: int = s.slot_index if "slot_index" in s else -1
+		var hp:   int = s.get_health() if s.has_method("get_health") else -1
+		if slot >= 0 and hp >= 0:
+			survivors.append({"slot": slot, "hp": hp})
+	RunState.record_mission_end(GameManager.current_level, survivors)
 
 # ---------------------------------------------------------------------------
 func advance_level() -> void:

@@ -261,14 +261,20 @@ func update_group_info(active: int, total: int, alive_groups: Array = []) -> voi
 
 func show_objective(level: int) -> void:
 	var texts := {
-		1: "OBJECTIVE: Eliminate all enemies",
+		1: "OBJECTIVE: Eliminate all enemies   •   Side: free Kid 1's parent",
 		2: "OBJECTIVE: Destroy the fortified structure",
 		3: "OBJECTIVE: Escort the NPC to extraction",
 		4: "OBJECTIVE: Escape the maze",
 		5: "OBJECTIVE: Escape the ruined catacombs",
 		6: "OBJECTIVE: Shatter the Weeping Heart",
 	}
-	_objective_label.text = texts.get(level, "")
+	var text: String = texts.get(level, "")
+	# Mission 1 — if the matching kid has already died this run, the parent
+	# rescue is off the table. Drop the side objective from the text so the
+	# player isn't misled into hunting for an inert cage.
+	if level == 1 and not RunState.kids_alive[0]:
+		text = "OBJECTIVE: Eliminate all enemies   (Kid 1 lost — parent unreachable)"
+	_objective_label.text = text
 	if level == 3:
 		_escort_label.show()
 	else:
@@ -414,11 +420,17 @@ func update_enemy_count(count: int) -> void:
 		_enemy_label.text = "ENEMIES: %d" % count
 
 func show_under_attack(group_num: int) -> void:
+	show_toast("GROUP %d IS UNDER ATTACK!" % group_num, Color(1.0, 0.2, 0.2), 3.0)
+
+# Generic transient top-centre notification — reuses the under-attack label
+# slot so we don't carry a second long-lived child. Latest message wins.
+func show_toast(message: String, colour: Color = Color.WHITE, duration: float = 2.5) -> void:
 	if _under_attack_label == null:
 		return
-	_under_attack_label.text = "GROUP %d IS UNDER ATTACK!" % group_num
+	_under_attack_label.text = message
+	_under_attack_label.add_theme_color_override("font_color", colour)
 	_under_attack_label.show()
-	_under_attack_timer = 3.0
+	_under_attack_timer = duration
 
 # =============================================================================
 # INTERNAL — refresh visual state

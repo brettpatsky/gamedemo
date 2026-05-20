@@ -104,6 +104,16 @@ var _autodefend_cooldown: float = 0.0
 # accuracy stats stored in GameManager.
 var slot_index: int = -1
 
+# Per-run HP carry-over from RunState. Set by Main BEFORE add_child so that
+# _ready can apply it after computing max_health. -1 = use full HP (default).
+var _carry_hp_override: int = -1
+
+func set_carried_hp(hp: int) -> void:
+	_carry_hp_override = hp
+
+func get_health() -> int:
+	return _health
+
 # Called by Bullet.gd when a bullet fired by this soldier successfully hits
 # a damageable target. Bumps the shared accuracy counter.
 func on_bullet_hit(_target: Node2D) -> void:
@@ -141,6 +151,8 @@ func _ready() -> void:
 	if rifle_distance  <= 0.0: rifle_distance  = Balance.SOLDIER_RIFLE_DISTANCE
 	_grenade_ammo = Balance.SOLDIER_GRENADE_AMMO_MAX
 	_health = max_health
+	if _carry_hp_override > 0:
+		_health = min(_carry_hp_override, max_health)
 
 	if is_female and female_frames:
 		sprite.sprite_frames = female_frames

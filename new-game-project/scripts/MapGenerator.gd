@@ -72,6 +72,7 @@ func generate(seed_value: int = 0) -> void:
 	_bake_navigation()
 	# Escort mission picks the NPC spot first so enemy spawn can avoid it.
 	match GameManager.current_level:
+		1: _spawn_mission_1_objectives()
 		2: _spawn_fortified_structure()
 		3: _spawn_escort_mission()
 	_spawn_enemies()
@@ -569,6 +570,57 @@ func _spawn_enemies() -> void:
 # ---------------------------------------------------------------------------
 func get_objective_node(group: String) -> Variant:
 	return _objective_nodes.get(group, null)
+
+# ---------------------------------------------------------------------------
+# Level 1 — drop the parent cage and one memory fragment into the outer ring
+# of the map, well clear of the squad's central spawn band and far enough
+# apart from each other that they don't share a single fight.
+# ---------------------------------------------------------------------------
+func _spawn_mission_1_objectives() -> void:
+	var cage_scene: PackedScene = load("res://scenes/parent_cage.tscn")
+	var frag_scene: PackedScene = load("res://scenes/memory_fragment.tscn")
+	if cage_scene == null and frag_scene == null:
+		return
+
+	var outer := _passable_cells.filter(func(c: Vector2i) -> bool:
+		if c.x < 3 or c.x > map_width - 4: return false
+		if c.y < 3 or c.y > map_height - 4: return false
+		var cx := float(c.x) / float(map_width)
+		var cy := float(c.y) / float(map_height)
+		return cx < 0.20 or cx > 0.80 or cy < 0.20 or cy > 0.80
+	)
+	if outer.is_empty():
+		return
+	outer.shuffle()
+	var cage_cell: Vector2i = outer[0]
+
+	if cage_scene:
+		var cage: Node2D = cage_scene.instantiate()
+		cage.position = tile_map.map_to_local(cage_cell)
+		if "child_slot" in cage:
+			cage.set("child_slot", 0)   # mission 1 frees Kid 1's parent
+		add_child(cage)
+		_objective_nodes["parent_cage"] = cage
+
+	if frag_scene:
+		# Drop the fragment on the cell farthest from the cage so the player
+		# has to choose between the safer pickup and the parent.
+		var best_cell: Vector2i = outer[0]
+		var best_d:    int      = 0
+		for c in outer:
+			var diff: Vector2i = c - cage_cell
+			var d: int = diff.x * diff.x + diff.y * diff.y
+			if d > best_d:
+				best_d = d
+				best_cell = c
+		var frag: Node2D = frag_scene.instantiate()
+		frag.position = tile_map.map_to_local(best_cell)
+		if "fragment_id" in frag:
+			frag.set("fragment_id", "mission_1_school_photo")
+		if "display_name" in frag:
+			frag.set("display_name", "School Photo")
+		add_child(frag)
+		_objective_nodes["memory_fragment"] = frag
 
 # ---------------------------------------------------------------------------
 # Level 2 — spawn 5 fortified structures spread across the map.

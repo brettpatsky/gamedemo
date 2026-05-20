@@ -17,15 +17,25 @@ const RNG_MAX: float = 1500.0
 @onready var _bios_grid: GridContainer = $MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid
 @onready var _help_popup: ColorRect = $HelpPopup
 
+var _run_status_label: Label = null
+
 func _ready() -> void:
 	GameManager.score = 0
-	_update_bio_cards()
+	_build_debug_panel()
+	RunState.run_reset.connect(_on_run_reset)
+	RunState.kid_lost.connect(func(_slot: int) -> void: _refresh_run_view())
+	RunState.parent_freed.connect(func(_slot: int) -> void: _refresh_run_view())
+	_refresh_run_view()
 
 func _update_bio_cards() -> void:
 	for i in SOLDIER_SCENES.size():
 		var card := _bios_grid.get_child(i) as Control
 		if card == null:
 			continue
+		# Dim cards for kids who died earlier in the run so the title screen
+		# reads the current squad at a glance.
+		card.modulate = Color(1, 1, 1, 1) if RunState.kids_alive[i] \
+				else Color(0.4, 0.4, 0.4, 0.55)
 		var stats := _read_soldier_stats(SOLDIER_SCENES[i])
 		var avg_dmg := (float(stats["pistol_damage"]) + float(stats["rifle_damage"])) * 0.5
 		var avg_spd := (float(stats["pistol_speed"])    + float(stats["rifle_speed"]))    * 0.5
@@ -98,3 +108,55 @@ func _on_help_close_pressed() -> void:
 
 func _on_exit_pressed() -> void:
 	get_tree().quit()
+
+# =============================================================================
+# Debug / run-status panel — top-right of the title screen.
+# Built programmatically so the .tscn doesn't need editing while the design is
+# still in flux. Remove (or gate behind a debug flag) before shipping.
+# =============================================================================
+func _build_debug_panel() -> void:
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	panel.position = Vector2(-340, 20)
+	panel.custom_minimum_size = Vector2(320, 0)
+	add_child(panel)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 6)
+	panel.add_child(vb)
+
+	_run_status_label = Label.new()
+	_run_status_label.add_theme_font_size_override("font_size", 14)
+	vb.add_child(_run_status_label)
+
+	var reset_btn := Button.new()
+	reset_btn.text = "RESET RUN  (F12)"
+	reset_btn.pressed.connect(_on_reset_run_pressed)
+	vb.add_child(reset_btn)
+
+func _refresh_run_view() -> void:
+	_refresh_run_status_label()
+	_update_bio_cards()
+
+func _refresh_run_status_label() -> void:
+	if _run_status_label == null:
+		return
+	var lines := PackedStringArray()
+	lines.append("RUN STATE")
+	lines.append("Kids alive:    %d / %d" % [RunState.kids_alive_count(), RunState.SQUAD_SIZE])
+	lines.append("Parents freed: %d / %d" % [RunState.parents_freed_count(), RunState.SQUAD_SIZE])
+	lines.append("Missions done: %s" % str(RunState.missions_completed))
+	lines.append("Fragments:     %d" % RunState.fragments.size())
+	for i in RunState.SQUAD_SIZE:
+		var status: String = "alive" if RunState.kids_alive[i] else "DEAD "
+		var hp_raw: int    = RunState.get_carry_hp(i)
+		var hp_str: String = "max" if hp_raw < 0 else str(hp_raw)
+		var parent: String = "✓" if RunState.parents_freed[i] else "·"
+		lines.append("  Kid %d  %s  HP %-3s  parent %s" % [i + 1, status, hp_str, parent])
+	_run_status_label.text = "\n".join(lines)
+
+func _on_reset_run_pressed() -> void:
+	RunState.start_new_run()
+
+func _on_run_reset() -> void:
+	_refresh_run_view()
