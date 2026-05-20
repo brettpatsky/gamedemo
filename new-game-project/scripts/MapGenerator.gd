@@ -239,16 +239,21 @@ func _spawn_topography() -> void:
 	overlay.position = tile_map.position
 	add_child(overlay)
 
-# Inline script for the overlay node — proper hillshade rendering.
+# Inline script for the overlay node — smooth hillshade rendering.
 #
-# Each tile is tinted by the dot product of its surface normal (derived from
-# elevation gradient) with a virtual light direction coming from the NW. The
-# eye naturally reads bright-NW-edge / dark-SE-edge tiles as raised ground
-# and inverted shading as depressions — the same trick paper topo maps use.
+# Each tile is drawn as a quad with per-vertex colours computed at its four
+# corners. Adjacent tiles share corner positions AND share corner colours,
+# so there are no visible seams between them — the eye reads a continuous
+# gradient rather than a stack of flat tiles.
 #
-# Water tiles are skipped (water_mask = 1) so the shading doesn't muddy up
-# the blue. Subtle contour lines mark the gameplay thresholds so players can
-# tell where the projectile / movement bonuses kick in.
+# Colour combines two signals:
+#   - hillshade brightness: dot(gradient, light direction). NW-lit slopes
+#     read as raised ground; SE-lit ones as depressions.
+#   - zone tint: warm orange where elevation crosses the HILL_THRESHOLD,
+#     cool blue past VALLEY_THRESHOLD. Fades in smoothly so there is no
+#     hard contour — just a soft gradient marking the gameplay boundary.
+#
+# Water tiles are skipped (water_mask = 1) so shading doesn't muddy the blue.
 func _make_topography_script() -> GDScript:
 	var src := """
 extends Node2D
@@ -262,102 +267,180 @@ var water_mask: PackedByteArray
 const HILL_THRESHOLD   := 0.18
 const VALLEY_THRESHOLD := -0.18
 
-# Hillshade — light coming from the NW (negative x and y). Adjusting these
-# changes the apparent sun direction; intensity scales gradient magnitude
-# into the [-1, 1] brightness band.
 const LIGHT_X         := -0.6
 const LIGHT_Y         := -0.6
-const SHADE_INTENSITY := 5.0
+const SHADE_INTENSITY := 6.0
 const HIGHLIGHT_ALPHA := 0.55
 const SHADOW_ALPHA    := 0.65
 
-const HIGHLIGHT := Color(1.00, 0.96, 0.78)   # warm sun-lit cream
-const SHADOW    := Color(0.02, 0.06, 0.14)   # deep cool shadow
+const HIGHLIGHT   := Color(1.00, 0.96, 0.78)   # warm sun-lit cream
+const SHADOW      := Color(0.02, 0.06, 0.14)   # deep cool shadow
+const HILL_TINT   := Color(1.00, 0.78, 0.40)   # warm peak tint
+const VALLEY_TINT := Color(0.20, 0.40, 0.85)   # cool valley tint
+const ZONE_MAX_A  := 0.35
+const ZONE_FALLOFF := 0.30   # noise units over which the zone tint fades in
 
-# Threshold contour — kept subtle so the hillshade is the dominant visual.
-const CONTOUR_HILL   := Color(1.00, 0.92, 0.40, 0.50)
-const CONTOUR_VALLEY := Color(0.40, 0.85, 1.00, 0.50)
-const CONTOUR_THICK  := 1.5
+# Cliff drop-shadows. With light from NW, any tile whose NORTH or WEST
+# neighbour sits in a higher elevation band has a soft shadow band cast
+# onto its inside edge. Adjacent same-band tiles get nothing — the shadow
+# only appears at gameplay-meaningful elevation transitions.
+const DROP_SHADOW_COL    := Color(0.02, 0.04, 0.10)
+const DROP_SHADOW_WIDTH  := 16.0   # px the shadow extends from the cliff
+const DROP_SHADOW_ALPHA  := 0.55   # alpha at the cliff face (fades to 0)
 
-func _elev(x: int, y: int) -> float:
-	if x < 0: x = 0
-	elif x >= map_width: x = map_width - 1
-	if y < 0: y = 0
-	elif y >= map_height: y = map_height - 1
-	return elevation[x * map_height + y]
+# Corner elevation = average of the (up to 4) tile centres that meet at this
+# corner. Corner (cx, cy) sits at the meeting point of tiles
+# (cx-1, cy-1), (cx, cy-1), (cx-1, cy), (cx, cy).
+func _corner_elev(cx: int, cy: int) -> float:
+	var sum: float = 0.0
+	var n:   int   = 0
+	for dx in [-1, 0]:
+		for dy in [-1, 0]:
+			var tx: int = cx + dx
+			var ty: int = cy + dy
+			if tx >= 0 and tx < map_width and ty >= 0 and ty < map_height:
+				sum += elevation[tx * map_height + ty]
+				n += 1
+	if n == 0:
+		return 0.0
+	return sum / float(n)
 
 func _is_water(x: int, y: int) -> bool:
 	if x < 0 or x >= map_width or y < 0 or y >= map_height:
-		return false
+		return true
 	if water_mask.size() == 0:
 		return false
 	return water_mask[x * map_height + y] != 0
 
-func _classify(e: float) -> int:
-	if e > HILL_THRESHOLD:   return 1
+# Elevation band: -1 (valley), 0 (flat), 1 (hill). Out-of-bounds reads as
+# flat so edge tiles do not get phantom shadows from nothing.
+func _classify_at(x: int, y: int) -> int:
+	if x < 0 or x >= map_width or y < 0 or y >= map_height:
+		return 0
+	var e: float = elevation[x * map_height + y]
+	if e > HILL_THRESHOLD: return 1
 	if e < VALLEY_THRESHOLD: return -1
 	return 0
+
+# Returns the colour to paint at corner (cx, cy). Combines hillshade
+# brightness with the elevation-zone tint, alpha-blended together.
+func _corner_color(cx: int, cy: int) -> Color:
+	var e:  float = _corner_elev(cx, cy)
+	var dx: float = _corner_elev(cx + 1, cy) - _corner_elev(cx - 1, cy)
+	var dy: float = _corner_elev(cx, cy + 1) - _corner_elev(cx, cy - 1)
+	var s:  float = -(dx * LIGHT_X + dy * LIGHT_Y) * SHADE_INTENSITY
+	s = clampf(s, -1.0, 1.0)
+
+	var shade_col: Color
+	if s >= 0.0:
+		shade_col = Color(HIGHLIGHT.r, HIGHLIGHT.g, HIGHLIGHT.b, s * HIGHLIGHT_ALPHA)
+	else:
+		shade_col = Color(SHADOW.r, SHADOW.g, SHADOW.b, -s * SHADOW_ALPHA)
+
+	var zone_alpha: float = 0.0
+	var zone_col := HILL_TINT
+	if e > HILL_THRESHOLD:
+		zone_alpha = clampf((e - HILL_THRESHOLD) / ZONE_FALLOFF, 0.0, 1.0) * ZONE_MAX_A
+		zone_col = HILL_TINT
+	elif e < VALLEY_THRESHOLD:
+		zone_alpha = clampf((VALLEY_THRESHOLD - e) / ZONE_FALLOFF, 0.0, 1.0) * ZONE_MAX_A
+		zone_col = VALLEY_TINT
+
+	# Composite: zone tint OVER hillshade.
+	var sa: float = shade_col.a
+	var za: float = zone_alpha
+	var out_a: float = sa + za * (1.0 - sa)
+	if out_a <= 0.002:
+		return Color(0, 0, 0, 0)
+	var inv: float = 1.0 / out_a
+	var r: float = (shade_col.r * sa + zone_col.r * za * (1.0 - sa)) * inv
+	var g: float = (shade_col.g * sa + zone_col.g * za * (1.0 - sa)) * inv
+	var b: float = (shade_col.b * sa + zone_col.b * za * (1.0 - sa)) * inv
+	return Color(r, g, b, out_a)
 
 func _draw() -> void:
 	if map_width == 0 or map_height == 0:
 		return
-	var ts: float = float(tile_size)
-	# TileMapLayer.map_to_local() returns the CENTRE of each tile; offset by
-	# half a tile so our rects align with what the player sees underneath.
+	var ts:   float = float(tile_size)
 	var half: float = ts * 0.5
 
-	# Pass 1 — hillshade. Per-tile brightness from the elevation gradient.
-	for x in map_width:
-		for y in map_height:
-			if _is_water(x, y):
-				continue
-			var dx: float = _elev(x + 1, y) - _elev(x - 1, y)
-			var dy: float = _elev(x, y + 1) - _elev(x, y - 1)
-			# Surface facing the light → bright; facing away → dark.
-			# Negate so an uphill-toward-light slope reads as bright.
-			var s: float = -(dx * LIGHT_X + dy * LIGHT_Y) * SHADE_INTENSITY
-			s = clampf(s, -1.0, 1.0)
-			if absf(s) < 0.04:
-				continue   # essentially flat — leave the tile alone
-			var rect := Rect2(x * ts - half, y * ts - half, ts, ts)
-			if s > 0.0:
-				var col: Color = HIGHLIGHT
-				col.a = s * HIGHLIGHT_ALPHA
-				draw_rect(rect, col, true)
-			else:
-				var col2: Color = SHADOW
-				col2.a = -s * SHADOW_ALPHA
-				draw_rect(rect, col2, true)
+	# Precompute corner colours so adjacent tiles share both position AND
+	# colour at every shared corner. That is what kills the blockiness.
+	var cw: int = map_width + 1
+	var ch: int = map_height + 1
+	var corner_cols: Array[Color] = []
+	corner_cols.resize(cw * ch)
+	for cx in cw:
+		for cy in ch:
+			corner_cols[cx * ch + cy] = _corner_color(cx, cy)
 
-	# Pass 2 — thin contour lines along the gameplay threshold so players can
-	# tell where the projectile / movement modifier turns on. Drawn after the
-	# hillshade so they stay crisp.
 	for x in map_width:
 		for y in map_height:
 			if _is_water(x, y):
 				continue
-			var cls: int = _classify(elevation[x * map_height + y])
-			if cls == 0:
+			var c00: Color = corner_cols[x       * ch + y]
+			var c10: Color = corner_cols[(x + 1) * ch + y]
+			var c11: Color = corner_cols[(x + 1) * ch + (y + 1)]
+			var c01: Color = corner_cols[x       * ch + (y + 1)]
+			if c00.a < 0.02 and c10.a < 0.02 and c11.a < 0.02 and c01.a < 0.02:
 				continue
-			var line_col: Color = CONTOUR_HILL if cls == 1 else CONTOUR_VALLEY
+			# Soften shading where a tile borders water so the cream / dark
+			# blue doesn't smear into the water edge.
+			if _is_water(x - 1, y) or _is_water(x + 1, y) \
+					or _is_water(x, y - 1) or _is_water(x, y + 1):
+				c00.a *= 0.45; c10.a *= 0.45; c11.a *= 0.45; c01.a *= 0.45
 			var tx: float = x * ts - half
 			var ty: float = y * ts - half
-			# Right edge.
-			var ncls: int = 0
-			if x + 1 < map_width:
-				ncls = _classify(elevation[(x + 1) * map_height + y])
-			if ncls != cls:
-				draw_line(Vector2(tx + ts, ty), Vector2(tx + ts, ty + ts), line_col, CONTOUR_THICK)
-			# Bottom edge.
-			ncls = 0
-			if y + 1 < map_height:
-				ncls = _classify(elevation[x * map_height + (y + 1)])
-			if ncls != cls:
-				draw_line(Vector2(tx, ty + ts), Vector2(tx + ts, ty + ts), line_col, CONTOUR_THICK)
-			if x == 0:
-				draw_line(Vector2(tx, ty), Vector2(tx, ty + ts), line_col, CONTOUR_THICK)
-			if y == 0:
-				draw_line(Vector2(tx, ty), Vector2(tx + ts, ty), line_col, CONTOUR_THICK)
+			var verts := PackedVector2Array([
+				Vector2(tx, ty),
+				Vector2(tx + ts, ty),
+				Vector2(tx + ts, ty + ts),
+				Vector2(tx, ty + ts),
+			])
+			var cols := PackedColorArray([c00, c10, c11, c01])
+			draw_polygon(verts, cols)
+
+	# Pass 3 — cliff drop-shadows along band transitions. Light comes from
+	# the NW, so shadows fall SE: a tile whose NORTH or WEST neighbour is in
+	# a higher band gets a soft shadow band on that edge, fading away from
+	# the cliff face.
+	var shadow_near := DROP_SHADOW_COL
+	shadow_near.a = DROP_SHADOW_ALPHA
+	var shadow_far := DROP_SHADOW_COL
+	shadow_far.a = 0.0
+	for x in map_width:
+		for y in map_height:
+			if _is_water(x, y):
+				continue
+			var z_here: int = _classify_at(x, y)
+			var tx: float = x * ts - half
+			var ty: float = y * ts - half
+			# North neighbour higher → horizontal shadow band along my top edge.
+			if _classify_at(x, y - 1) > z_here and not _is_water(x, y - 1):
+				var w: float = DROP_SHADOW_WIDTH
+				var verts_n := PackedVector2Array([
+					Vector2(tx,      ty),
+					Vector2(tx + ts, ty),
+					Vector2(tx + ts, ty + w),
+					Vector2(tx,      ty + w),
+				])
+				var cols_n := PackedColorArray([
+					shadow_near, shadow_near, shadow_far, shadow_far
+				])
+				draw_polygon(verts_n, cols_n)
+			# West neighbour higher → vertical shadow band along my left edge.
+			if _classify_at(x - 1, y) > z_here and not _is_water(x - 1, y):
+				var w: float = DROP_SHADOW_WIDTH
+				var verts_w := PackedVector2Array([
+					Vector2(tx,     ty),
+					Vector2(tx + w, ty),
+					Vector2(tx + w, ty + ts),
+					Vector2(tx,     ty + ts),
+				])
+				var cols_w := PackedColorArray([
+					shadow_near, shadow_far, shadow_far, shadow_near
+				])
+				draw_polygon(verts_w, cols_w)
 """
 	var gs := GDScript.new()
 	gs.source_code = src

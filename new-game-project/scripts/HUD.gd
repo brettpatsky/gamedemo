@@ -603,7 +603,10 @@ func _draw_enemy_arrow() -> void:
 	var dir  := (target.global_position - origin).normalized()
 	var perp := Vector2(-dir.y, dir.x)
 	var screen_size := get_viewport().get_visible_rect().size
-	var center := Vector2(screen_size.x * 0.5, screen_size.y - 100.0)
+	# Sit clear of the 90px-tall bottom panel even when the arrow points
+	# straight down: tip extends +30, text baseline +50 with ~14px of glyph
+	# height below it. -160 keeps everything above the HUD edge.
+	var center := Vector2(screen_size.x * 0.5, screen_size.y - 160.0)
 	var tip        := center + dir  * 30.0
 	var base_left  := center - dir  * 10.0 + perp * 12.0
 	var base_right := center - dir  * 10.0 - perp * 12.0

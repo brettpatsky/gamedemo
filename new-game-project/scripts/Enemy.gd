@@ -242,6 +242,11 @@ func _die() -> void:
 	_state = State.DEAD
 	velocity = Vector2.ZERO
 	_play_anim("die")
+	# Remove from the "enemies" group immediately so the HUD's closest-enemy
+	# arrow (and any other live-enemy query) stops considering this corpse.
+	# Otherwise the node lingers in the group for ~2s while the fade tween
+	# runs, and the arrow keeps pointing at a dead body.
+	remove_from_group("enemies")
 
 	# FIX: use set_deferred so Godot applies the change AFTER the physics
 	# step finishes — changing collision mid-step causes the flush error.

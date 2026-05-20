@@ -93,6 +93,13 @@ func _ready() -> void:
 	_mission_ended = false
 
 	_spawn_squad(effective_squad_size)
+	# Apply persistent fragment effects on top of the freshly-reset per-mission
+	# baselines. Done after spawn so per-soldier bonuses (future fragments)
+	# can mutate live soldier instances.
+	var applied_fragments: Array[String] = FragmentEffects.apply_all()
+	if not applied_fragments.is_empty():
+		hud.show_toast("MEMORIES ACTIVE — %s" % ", ".join(applied_fragments),
+				Color(0.75, 0.95, 1.0), 3.5)
 	# Maze levels start with a single soldier at the entrance — no formation snap.
 	if GameManager.current_level != 4 and GameManager.current_level != 5:
 		squad_ctrl.snap_to_formation()
