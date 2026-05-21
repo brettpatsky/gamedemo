@@ -203,10 +203,11 @@ func _spawn_squad(count: int) -> void:
 func _setup_objective() -> void:
 	match GameManager.current_level:
 		1:
-			# Mission win is "clear every enemy" — same as before. The cage and
-			# memory fragment are side objectives that the player picks up
-			# along the way; freeing the parent flips a RunState bit and shows
-			# a toast, but it doesn't end the mission.
+			# Mission win is "clear every enemy" — same as before. The parent
+			# cage is a side objective: freeing the matching kid's parent
+			# flips a RunState bit and shows a toast, but doesn't end the
+			# mission. Memory fragments are no longer placed in-mission; the
+			# between-mission reward picker handles those.
 			var cage: Node = map_gen.get_objective_node("parent_cage")
 			if cage:
 				if cage.has_signal("parent_freed"):
@@ -220,12 +221,6 @@ func _setup_objective() -> void:
 						hud.show_toast("Only Kid %d can open this cage" % expected,
 								Color(0.95, 0.75, 0.75), 2.0)
 					)
-			var frag: Node = map_gen.get_objective_node("memory_fragment")
-			if frag and frag.has_signal("collected"):
-				frag.collected.connect(func(_id: String, name_text: String) -> void:
-					hud.show_toast("MEMORY RECOVERED — %s" % name_text,
-							Color(0.7, 0.95, 1.0), 2.5)
-				)
 			GameManager.mission_complete.connect(_on_mission_win)
 		2:
 			var structures = map_gen.get_objective_node("fortified_structure")
@@ -322,6 +317,11 @@ func _on_mission_win() -> void:
 		hud.show_mission_result("YOU WIN! ALL LEVELS COMPLETE!", Color.YELLOW, false)
 	else:
 		hud.show_mission_result("MISSION COMPLETE!", Color.GREEN, true)
+		# Offer up to 3 new fragments. roll_rewards filters out anything
+		# already in RunState.fragments, so picks never repeat. If the pool
+		# is exhausted the picker is a no-op and Next Level is enabled by
+		# default (show_mission_result(.., true) already enabled it).
+		hud.show_reward_picker(FragmentEffects.roll_rewards(3))
 
 func _on_mission_fail() -> void:
 	if _mission_ended:

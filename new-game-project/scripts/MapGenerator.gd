@@ -30,11 +30,10 @@ const ObstacleClass = preload("res://scripts/Obstacle.gd")
 @export var enemy_density:   int   = 30
 @export var tile_config:     TileConfig
 
-# Elevation thresholds: any tile with elevation noise above HILL_THRESHOLD is
-# "high ground" (range bonus); below VALLEY_THRESHOLD is "low ground" (range
-# penalty). Kept here so Bullet.gd and the visual overlay agree on which tiles
-# count. Update both these AND the duplicates in _make_topography_script() if
-# you tune them.
+# Gameplay elevation thresholds used by get_range_modifier_at() — projectile
+# range is boosted past HILL_THRESHOLD and penalised below VALLEY_THRESHOLD.
+# The visual overlay uses its OWN continuous tinting (no thresholds) so peaks
+# and valleys blend smoothly rather than snapping at a band.
 const HILL_THRESHOLD:    float = 0.18
 const VALLEY_THRESHOLD:  float = -0.18
 const HILL_RANGE_MULT:   float = 1.35
@@ -239,21 +238,18 @@ func _spawn_topography() -> void:
 	overlay.position = tile_map.position
 	add_child(overlay)
 
-# Inline script for the overlay node — smooth hillshade rendering.
+# Inline script for the overlay node — smooth hillshade + zone tint + drop
+# shadows. Three signals layered together:
 #
-# Each tile is drawn as a quad with per-vertex colours computed at its four
-# corners. Adjacent tiles share corner positions AND share corner colours,
-# so there are no visible seams between them — the eye reads a continuous
-# gradient rather than a stack of flat tiles.
+#   1) Per-corner hillshade (gradient · light). Corners are shared between
+#      adjacent tiles so the brightness gradient flows continuously.
+#   2) Five-tier zone tint that smoothly lerps cool→neutral→warm as elevation
+#      moves from deep valley to peak. No hard band boundaries.
+#   3) Per-tile drop shadows computed from RAW elevation differences (not
+#      band classification). NW corner is darkest, SE corner is clear, with
+#      smooth in-tile gradients so cliff shadows trail away from the wall.
 #
-# Colour combines two signals:
-#   - hillshade brightness: dot(gradient, light direction). NW-lit slopes
-#     read as raised ground; SE-lit ones as depressions.
-#   - zone tint: warm orange where elevation crosses the HILL_THRESHOLD,
-#     cool blue past VALLEY_THRESHOLD. Fades in smoothly so there is no
-#     hard contour — just a soft gradient marking the gameplay boundary.
-#
-# Water tiles are skipped (water_mask = 1) so shading doesn't muddy the blue.
+# Water tiles are skipped throughout so their blue isn't muddied.
 func _make_topography_script() -> GDScript:
 	var src := """
 extends Node2D
@@ -264,29 +260,43 @@ var map_height: int   = 0
 var elevation:  PackedFloat32Array
 var water_mask: PackedByteArray
 
-const HILL_THRESHOLD   := 0.18
-const VALLEY_THRESHOLD := -0.18
-
 const LIGHT_X         := -0.6
 const LIGHT_Y         := -0.6
 const SHADE_INTENSITY := 6.0
 const HIGHLIGHT_ALPHA := 0.55
 const SHADOW_ALPHA    := 0.65
 
-const HIGHLIGHT   := Color(1.00, 0.96, 0.78)   # warm sun-lit cream
-const SHADOW      := Color(0.02, 0.06, 0.14)   # deep cool shadow
-const HILL_TINT   := Color(1.00, 0.78, 0.40)   # warm peak tint
-const VALLEY_TINT := Color(0.20, 0.40, 0.85)   # cool valley tint
-const ZONE_MAX_A  := 0.35
-const ZONE_FALLOFF := 0.30   # noise units over which the zone tint fades in
+const HIGHLIGHT        := Color(1.00, 0.96, 0.78)   # warm sun-lit cream
+const SHADOW           := Color(0.02, 0.06, 0.14)   # cool shadow side
+const HILL_TINT        := Color(1.00, 0.80, 0.42)   # mid-warm
+const PEAK_TINT        := Color(1.00, 0.50, 0.15)   # high-warm
+const VALLEY_TINT      := Color(0.30, 0.55, 0.95)   # mid-cool
+const DEEP_VALLEY_TINT := Color(0.08, 0.20, 0.60)   # deep-cool
 
-# Cliff drop-shadows. With light from NW, any tile whose NORTH or WEST
-# neighbour sits in a higher elevation band has a soft shadow band cast
-# onto its inside edge. Adjacent same-band tiles get nothing — the shadow
-# only appears at gameplay-meaningful elevation transitions.
-const DROP_SHADOW_COL    := Color(0.02, 0.04, 0.10)
-const DROP_SHADOW_WIDTH  := 16.0   # px the shadow extends from the cliff
-const DROP_SHADOW_ALPHA  := 0.55   # alpha at the cliff face (fades to 0)
+# Zone-tint ramps. Tint alpha starts climbing past ZONE_HILL_START and tops out
+# at ZONE_MAX_A near ZONE_FULL_PEAK_AT. Symmetrical on the valley side.
+const ZONE_HILL_START   := 0.08
+const ZONE_FULL_HILL_AT := 0.30
+const ZONE_FULL_PEAK_AT := 0.55
+const ZONE_MAX_A        := 0.50
+
+# Continuous drop-shadow params. Strength scales linearly with raw elevation
+# difference to higher neighbours, hitting full alpha at SHADOW_FULL_DIFF.
+const SHADOW_DROP_COL   := Color(0.02, 0.04, 0.10)
+const SHADOW_FULL_DIFF  := 0.18
+const SHADOW_MAX_A      := 0.65
+
+func _tile_elev(x: int, y: int) -> float:
+	if x < 0 or x >= map_width or y < 0 or y >= map_height:
+		return 0.0
+	return elevation[x * map_height + y]
+
+func _is_water(x: int, y: int) -> bool:
+	if x < 0 or x >= map_width or y < 0 or y >= map_height:
+		return true
+	if water_mask.size() == 0:
+		return false
+	return water_mask[x * map_height + y] != 0
 
 # Corner elevation = average of the (up to 4) tile centres that meet at this
 # corner. Corner (cx, cy) sits at the meeting point of tiles
@@ -305,25 +315,8 @@ func _corner_elev(cx: int, cy: int) -> float:
 		return 0.0
 	return sum / float(n)
 
-func _is_water(x: int, y: int) -> bool:
-	if x < 0 or x >= map_width or y < 0 or y >= map_height:
-		return true
-	if water_mask.size() == 0:
-		return false
-	return water_mask[x * map_height + y] != 0
-
-# Elevation band: -1 (valley), 0 (flat), 1 (hill). Out-of-bounds reads as
-# flat so edge tiles do not get phantom shadows from nothing.
-func _classify_at(x: int, y: int) -> int:
-	if x < 0 or x >= map_width or y < 0 or y >= map_height:
-		return 0
-	var e: float = elevation[x * map_height + y]
-	if e > HILL_THRESHOLD: return 1
-	if e < VALLEY_THRESHOLD: return -1
-	return 0
-
-# Returns the colour to paint at corner (cx, cy). Combines hillshade
-# brightness with the elevation-zone tint, alpha-blended together.
+# Returns the colour to paint at corner (cx, cy). Hillshade + smooth
+# 5-tier zone tint composited over each other.
 func _corner_color(cx: int, cy: int) -> Color:
 	var e:  float = _corner_elev(cx, cy)
 	var dx: float = _corner_elev(cx + 1, cy) - _corner_elev(cx - 1, cy)
@@ -337,16 +330,22 @@ func _corner_color(cx: int, cy: int) -> Color:
 	else:
 		shade_col = Color(SHADOW.r, SHADOW.g, SHADOW.b, -s * SHADOW_ALPHA)
 
+	# Smooth zone tint — two-stop lerp on each side of flat. Higher elevation
+	# = more saturated warm; lower = more saturated cool. Alpha climbs with
+	# magnitude so high peaks really pop and deep valleys feel low.
 	var zone_alpha: float = 0.0
-	var zone_col := HILL_TINT
-	if e > HILL_THRESHOLD:
-		zone_alpha = clampf((e - HILL_THRESHOLD) / ZONE_FALLOFF, 0.0, 1.0) * ZONE_MAX_A
-		zone_col = HILL_TINT
-	elif e < VALLEY_THRESHOLD:
-		zone_alpha = clampf((VALLEY_THRESHOLD - e) / ZONE_FALLOFF, 0.0, 1.0) * ZONE_MAX_A
-		zone_col = VALLEY_TINT
+	var zone_col: Color = HILL_TINT
+	if e > ZONE_HILL_START:
+		var t_a: float = clampf((e - ZONE_HILL_START) / (ZONE_FULL_PEAK_AT - ZONE_HILL_START), 0.0, 1.0)
+		var t_peak: float = clampf((e - ZONE_FULL_HILL_AT) / (ZONE_FULL_PEAK_AT - ZONE_FULL_HILL_AT), 0.0, 1.0)
+		zone_col = HILL_TINT.lerp(PEAK_TINT, t_peak)
+		zone_alpha = ZONE_MAX_A * t_a
+	elif e < -ZONE_HILL_START:
+		var t_a: float = clampf((-e - ZONE_HILL_START) / (ZONE_FULL_PEAK_AT - ZONE_HILL_START), 0.0, 1.0)
+		var t_deep: float = clampf((-e - ZONE_FULL_HILL_AT) / (ZONE_FULL_PEAK_AT - ZONE_FULL_HILL_AT), 0.0, 1.0)
+		zone_col = VALLEY_TINT.lerp(DEEP_VALLEY_TINT, t_deep)
+		zone_alpha = ZONE_MAX_A * t_a
 
-	# Composite: zone tint OVER hillshade.
 	var sa: float = shade_col.a
 	var za: float = zone_alpha
 	var out_a: float = sa + za * (1.0 - sa)
@@ -358,14 +357,32 @@ func _corner_color(cx: int, cy: int) -> Color:
 	var b: float = (shade_col.b * sa + zone_col.b * za * (1.0 - sa)) * inv
 	return Color(r, g, b, out_a)
 
+# Per-tile per-corner drop-shadow alpha. Light is from NW: the NW corner is
+# darkest (any of N/W/NW neighbours higher contributes), N/W edges fade out
+# toward SE, and the SE corner is always clear. corner: 0=NW 1=NE 2=SE 3=SW.
+func _shadow_at(tx: int, ty: int, corner: int) -> float:
+	var e_t:     float = _tile_elev(tx, ty)
+	var diff_n:  float = max(_tile_elev(tx,     ty - 1) - e_t, 0.0)
+	var diff_w:  float = max(_tile_elev(tx - 1, ty)     - e_t, 0.0)
+	var diff_nw: float = max(_tile_elev(tx - 1, ty - 1) - e_t, 0.0)
+	var strength: float = 0.0
+	if corner == 0:
+		strength = max(max(diff_n, diff_w), diff_nw)
+	elif corner == 1:
+		strength = diff_n
+	elif corner == 3:
+		strength = diff_w
+	# corner == 2 (SE) stays at 0
+	return clampf(strength / SHADOW_FULL_DIFF, 0.0, 1.0) * SHADOW_MAX_A
+
 func _draw() -> void:
 	if map_width == 0 or map_height == 0:
 		return
 	var ts:   float = float(tile_size)
 	var half: float = ts * 0.5
 
-	# Precompute corner colours so adjacent tiles share both position AND
-	# colour at every shared corner. That is what kills the blockiness.
+	# Pass 1 — smooth hillshade + zone tint. Corner colours precomputed so
+	# adjacent tiles share both position and colour at shared corners.
 	var cw: int = map_width + 1
 	var ch: int = map_height + 1
 	var corner_cols: Array[Color] = []
@@ -384,8 +401,6 @@ func _draw() -> void:
 			var c01: Color = corner_cols[x       * ch + (y + 1)]
 			if c00.a < 0.02 and c10.a < 0.02 and c11.a < 0.02 and c01.a < 0.02:
 				continue
-			# Soften shading where a tile borders water so the cream / dark
-			# blue doesn't smear into the water edge.
 			if _is_water(x - 1, y) or _is_water(x + 1, y) \
 					or _is_water(x, y - 1) or _is_water(x, y + 1):
 				c00.a *= 0.45; c10.a *= 0.45; c11.a *= 0.45; c01.a *= 0.45
@@ -400,47 +415,34 @@ func _draw() -> void:
 			var cols := PackedColorArray([c00, c10, c11, c01])
 			draw_polygon(verts, cols)
 
-	# Pass 3 — cliff drop-shadows along band transitions. Light comes from
-	# the NW, so shadows fall SE: a tile whose NORTH or WEST neighbour is in
-	# a higher band gets a soft shadow band on that edge, fading away from
-	# the cliff face.
-	var shadow_near := DROP_SHADOW_COL
-	shadow_near.a = DROP_SHADOW_ALPHA
-	var shadow_far := DROP_SHADOW_COL
-	shadow_far.a = 0.0
+	# Pass 2 — continuous drop-shadows. Each tile gets its own quad with four
+	# per-corner shadow alphas; adjacent tiles aren't required to agree at
+	# shared corners, which is correct — cliff edges ARE discontinuities.
 	for x in map_width:
 		for y in map_height:
 			if _is_water(x, y):
 				continue
-			var z_here: int = _classify_at(x, y)
+			var s_nw: float = _shadow_at(x, y, 0)
+			var s_ne: float = _shadow_at(x, y, 1)
+			var s_se: float = _shadow_at(x, y, 2)
+			var s_sw: float = _shadow_at(x, y, 3)
+			if s_nw < 0.02 and s_ne < 0.02 and s_se < 0.02 and s_sw < 0.02:
+				continue
 			var tx: float = x * ts - half
 			var ty: float = y * ts - half
-			# North neighbour higher → horizontal shadow band along my top edge.
-			if _classify_at(x, y - 1) > z_here and not _is_water(x, y - 1):
-				var w: float = DROP_SHADOW_WIDTH
-				var verts_n := PackedVector2Array([
-					Vector2(tx,      ty),
-					Vector2(tx + ts, ty),
-					Vector2(tx + ts, ty + w),
-					Vector2(tx,      ty + w),
-				])
-				var cols_n := PackedColorArray([
-					shadow_near, shadow_near, shadow_far, shadow_far
-				])
-				draw_polygon(verts_n, cols_n)
-			# West neighbour higher → vertical shadow band along my left edge.
-			if _classify_at(x - 1, y) > z_here and not _is_water(x - 1, y):
-				var w: float = DROP_SHADOW_WIDTH
-				var verts_w := PackedVector2Array([
-					Vector2(tx,     ty),
-					Vector2(tx + w, ty),
-					Vector2(tx + w, ty + ts),
-					Vector2(tx,     ty + ts),
-				])
-				var cols_w := PackedColorArray([
-					shadow_near, shadow_far, shadow_far, shadow_near
-				])
-				draw_polygon(verts_w, cols_w)
+			var verts := PackedVector2Array([
+				Vector2(tx, ty),
+				Vector2(tx + ts, ty),
+				Vector2(tx + ts, ty + ts),
+				Vector2(tx, ty + ts),
+			])
+			var cols := PackedColorArray([
+				Color(SHADOW_DROP_COL.r, SHADOW_DROP_COL.g, SHADOW_DROP_COL.b, s_nw),
+				Color(SHADOW_DROP_COL.r, SHADOW_DROP_COL.g, SHADOW_DROP_COL.b, s_ne),
+				Color(SHADOW_DROP_COL.r, SHADOW_DROP_COL.g, SHADOW_DROP_COL.b, s_se),
+				Color(SHADOW_DROP_COL.r, SHADOW_DROP_COL.g, SHADOW_DROP_COL.b, s_sw),
+			])
+			draw_polygon(verts, cols)
 """
 	var gs := GDScript.new()
 	gs.source_code = src
@@ -660,9 +662,12 @@ func get_objective_node(group: String) -> Variant:
 # apart from each other that they don't share a single fight.
 # ---------------------------------------------------------------------------
 func _spawn_mission_1_objectives() -> void:
+	# Memory fragments are now granted by the between-mission reward picker
+	# (see HUD.show_reward_picker), so we only need to place the parent cage
+	# here. The MemoryFragment / memory_fragment.tscn assets are kept around
+	# for future per-mission optional objectives but no longer spawn by default.
 	var cage_scene: PackedScene = load("res://scenes/parent_cage.tscn")
-	var frag_scene: PackedScene = load("res://scenes/memory_fragment.tscn")
-	if cage_scene == null and frag_scene == null:
+	if cage_scene == null:
 		return
 
 	var outer := _passable_cells.filter(func(c: Vector2i) -> bool:
@@ -677,33 +682,12 @@ func _spawn_mission_1_objectives() -> void:
 	outer.shuffle()
 	var cage_cell: Vector2i = outer[0]
 
-	if cage_scene:
-		var cage: Node2D = cage_scene.instantiate()
-		cage.position = tile_map.map_to_local(cage_cell)
-		if "child_slot" in cage:
-			cage.set("child_slot", 0)   # mission 1 frees Kid 1's parent
-		add_child(cage)
-		_objective_nodes["parent_cage"] = cage
-
-	if frag_scene:
-		# Drop the fragment on the cell farthest from the cage so the player
-		# has to choose between the safer pickup and the parent.
-		var best_cell: Vector2i = outer[0]
-		var best_d:    int      = 0
-		for c in outer:
-			var diff: Vector2i = c - cage_cell
-			var d: int = diff.x * diff.x + diff.y * diff.y
-			if d > best_d:
-				best_d = d
-				best_cell = c
-		var frag: Node2D = frag_scene.instantiate()
-		frag.position = tile_map.map_to_local(best_cell)
-		if "fragment_id" in frag:
-			frag.set("fragment_id", "mission_1_school_photo")
-		if "display_name" in frag:
-			frag.set("display_name", "School Photo")
-		add_child(frag)
-		_objective_nodes["memory_fragment"] = frag
+	var cage: Node2D = cage_scene.instantiate()
+	cage.position = tile_map.map_to_local(cage_cell)
+	if "child_slot" in cage:
+		cage.set("child_slot", 0)   # mission 1 frees Kid 1's parent
+	add_child(cage)
+	_objective_nodes["parent_cage"] = cage
 
 # ---------------------------------------------------------------------------
 # Level 2 — spawn 5 fortified structures spread across the map.

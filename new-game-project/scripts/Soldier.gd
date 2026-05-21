@@ -114,6 +114,24 @@ func set_carried_hp(hp: int) -> void:
 func get_health() -> int:
 	return _health
 
+# Public helpers used by FragmentEffects to apply between-mission rewards.
+# All three are safe to call right after the soldier has been added to the
+# scene tree (_ready has run synchronously up to its first await by then).
+func add_max_health(delta: int) -> void:
+	max_health += delta
+	_health = mini(_health + delta, max_health)
+	if health_bar:
+		health_bar.max_value = max_health
+		health_bar.value     = _health
+
+func heal_to_full() -> void:
+	_health = max_health
+	if health_bar:
+		health_bar.value = _health
+
+func add_grenade_ammo(delta: int) -> void:
+	_grenade_ammo = maxi(_grenade_ammo + delta, 0)
+
 # Called by Bullet.gd when a bullet fired by this soldier successfully hits
 # a damageable target. Bumps the shared accuracy counter.
 func on_bullet_hit(_target: Node2D) -> void:

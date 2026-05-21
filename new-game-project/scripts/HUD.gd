@@ -73,6 +73,13 @@ var _group_buttons: Array[Button] = []
 var _under_attack_label: Label = null
 var _under_attack_timer: float = 0.0
 
+# Between-mission reward picker — populated by show_reward_picker(), hidden
+# until then. The picker disables the Next Level button until the player
+# selects one of the three cards.
+var _reward_panel: PanelContainer = null
+var _reward_card_buttons: Array[Button] = []
+var _reward_card_ids: Array[String] = []
+
 # Revive UI — references resolved during _wire_formation_buttons().
 var _revive_button:        Button = null
 var _revive_counter_label: Label  = null
@@ -421,6 +428,80 @@ func update_enemy_count(count: int) -> void:
 
 func show_under_attack(group_num: int) -> void:
 	show_toast("GROUP %d IS UNDER ATTACK!" % group_num, Color(1.0, 0.2, 0.2), 3.0)
+
+# =============================================================================
+# REWARD PICKER  (shown after a non-boss mission win)
+# =============================================================================
+func show_reward_picker(ids: Array[String]) -> void:
+	if ids.is_empty():
+		return
+	if _reward_panel == null:
+		_build_reward_picker()
+	if _next_level_button:
+		_next_level_button.disabled = true
+	for i in _reward_card_buttons.size():
+		var btn := _reward_card_buttons[i]
+		if i < ids.size():
+			var id: String = ids[i]
+			btn.text = "%s\n\n%s" % [FragmentEffects.get_name(id), FragmentEffects.get_description(id)]
+			btn.show()
+		else:
+			btn.hide()
+	_reward_card_ids = ids
+	_reward_panel.show()
+
+func _build_reward_picker() -> void:
+	_reward_panel = PanelContainer.new()
+	_reward_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_reward_panel.position = Vector2(-330, -130)
+	_reward_panel.custom_minimum_size = Vector2(660, 220)
+	_reward_panel.hide()
+	add_child(_reward_panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_bottom", 14)
+	_reward_panel.add_child(margin)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 10)
+	margin.add_child(vb)
+
+	var title := Label.new()
+	title.text = "CHOOSE A MEMORY TO CARRY FORWARD"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(1.0, 0.92, 0.7))
+	vb.add_child(title)
+
+	var hb := HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.add_theme_constant_override("separation", 12)
+	vb.add_child(hb)
+
+	for i in 3:
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(190, 140)
+		btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		btn.clip_text = false
+		var idx: int = i
+		btn.pressed.connect(func() -> void: _on_reward_card_pressed(idx))
+		hb.add_child(btn)
+		_reward_card_buttons.append(btn)
+
+func _on_reward_card_pressed(card_index: int) -> void:
+	if card_index < 0 or card_index >= _reward_card_ids.size():
+		return
+	var id: String = _reward_card_ids[card_index]
+	RunState.collect_fragment(id)
+	if _reward_panel:
+		_reward_panel.hide()
+	if _next_level_button:
+		_next_level_button.disabled = false
+	show_toast("MEMORY TAKEN — %s" % FragmentEffects.get_name(id),
+			Color(0.85, 1.0, 0.95), 3.0)
 
 # Generic transient top-centre notification — reuses the under-attack label
 # slot so we don't carry a second long-lived child. Latest message wins.
