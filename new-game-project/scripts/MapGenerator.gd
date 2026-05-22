@@ -76,6 +76,11 @@ func generate(seed_value: int = 0) -> void:
 	match GameManager.current_level:
 		3: _spawn_fortified_structure()
 		4: _spawn_escort_mission()
+	# Procedural missions 2-4 each also place that mission's parent cage and
+	# themed memory fragment in the outer ring. Tutorial / mazes / boss handle
+	# their own placement; this only runs for levels MapGenerator owns.
+	if GameManager.current_level >= 2 and GameManager.current_level <= 4:
+		_spawn_mission_parent_and_fragment()
 	_spawn_enemies()
 
 # ---------------------------------------------------------------------------
@@ -659,17 +664,23 @@ func get_objective_node(group: String) -> Variant:
 	return _objective_nodes.get(group, null)
 
 # ---------------------------------------------------------------------------
-# Level 1 — drop the parent cage and one memory fragment into the outer ring
-# of the map, well clear of the squad's central spawn band and far enough
-# apart from each other that they don't share a single fight.
+# Drops the current mission's parent cage and themed memory fragment into the
+# outer ring of the map, well clear of the squad's central spawn band and
+# far enough apart that they don't share a single fight. Mission N frees
+# Kid N's parent (slot N-1) and grants the fragment from
+# FragmentEffects.MISSION_FRAGMENTS[N].
 # ---------------------------------------------------------------------------
-func _spawn_mission_1_objectives() -> void:
-	# Memory fragments are now granted by the between-mission reward picker
-	# (see HUD.show_reward_picker), so we only need to place the parent cage
-	# here. The MemoryFragment / memory_fragment.tscn assets are kept around
-	# for future per-mission optional objectives but no longer spawn by default.
+func _spawn_mission_parent_and_fragment() -> void:
+	var level: int = GameManager.current_level
+	var child_slot: int = level - 1
+	var fragment_id: String = FragmentEffects.get_mission_fragment_id(level)
+	if fragment_id == "":
+		return
+	var fragment_name: String = FragmentEffects.get_display_name(fragment_id)
+
 	var cage_scene: PackedScene = load("res://scenes/parent_cage.tscn")
-	if cage_scene == null:
+	var frag_scene: PackedScene = load("res://scenes/memory_fragment.tscn")
+	if cage_scene == null and frag_scene == null:
 		return
 
 	var outer := _passable_cells.filter(func(c: Vector2i) -> bool:
@@ -684,12 +695,33 @@ func _spawn_mission_1_objectives() -> void:
 	outer.shuffle()
 	var cage_cell: Vector2i = outer[0]
 
-	var cage: Node2D = cage_scene.instantiate()
-	cage.position = tile_map.map_to_local(cage_cell)
-	if "child_slot" in cage:
-		cage.set("child_slot", 0)   # mission 1 frees Kid 1's parent
-	add_child(cage)
-	_objective_nodes["parent_cage"] = cage
+	if cage_scene:
+		var cage: Node2D = cage_scene.instantiate()
+		cage.position = tile_map.map_to_local(cage_cell)
+		if "child_slot" in cage:
+			cage.set("child_slot", child_slot)
+		add_child(cage)
+		_objective_nodes["parent_cage"] = cage
+
+	if frag_scene:
+		# Drop the fragment on the cell farthest from the cage so the player
+		# has to commit to a detour rather than grab both in one fight.
+		var best_cell: Vector2i = outer[0]
+		var best_d: int = 0
+		for c in outer:
+			var diff: Vector2i = c - cage_cell
+			var d: int = diff.x * diff.x + diff.y * diff.y
+			if d > best_d:
+				best_d = d
+				best_cell = c
+		var frag: Node2D = frag_scene.instantiate()
+		frag.position = tile_map.map_to_local(best_cell)
+		if "fragment_id" in frag:
+			frag.set("fragment_id", fragment_id)
+		if "display_name" in frag:
+			frag.set("display_name", fragment_name)
+		add_child(frag)
+		_objective_nodes["memory_fragment"] = frag
 
 # ---------------------------------------------------------------------------
 # Level 2 — spawn 5 fortified structures spread across the map.

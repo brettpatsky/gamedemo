@@ -35,7 +35,27 @@ const FRAGMENT_METADATA := {
 		"name":        "Birthday Candle",
 		"description": "All kids start each mission at full HP",
 	},
+	"bus_pass": {
+		"name":        "Bus Pass",
+		"description": "+15% squad move speed each mission",
+	},
 }
+
+# Mission-N → in-mission fragment mapping. The artifact placed in each
+# mission's map is the SAME id every run — picking it up adds that fragment
+# to RunState.fragments and the reward picker afterwards offers from the
+# remaining pool. Missions 2-6 each free one parent + grant one of these.
+const MISSION_FRAGMENTS := {
+	1: "school_photo",
+	2: "coach_whistle",
+	3: "locker_key",
+	4: "birthday_candle",
+	5: "lucky_pencil",
+	6: "bus_pass",
+}
+
+static func get_mission_fragment_id(level: int) -> String:
+	return MISSION_FRAGMENTS.get(level, "")
 
 static func get_display_name(id: String) -> String:
 	var entry: Variant = FRAGMENT_METADATA.get(id, null)
@@ -96,6 +116,11 @@ static func _apply_one(id: String) -> bool:
 			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
 				if s.has_method("heal_to_full"):
 					s.heal_to_full()
+			return true
+		"bus_pass":
+			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
+				if s.has_method("add_speed_bonus"):
+					s.add_speed_bonus(0.15)
 			return true
 		_:
 			push_warning("[FragmentEffects] Unknown fragment id: %s" % id)

@@ -59,12 +59,16 @@ const MAZE_LAYOUT: Array[String] = [
 ]
 
 const _ROCK_SCENE: PackedScene = preload("res://scenes/mazes/maze_rock.tscn")
+const _PARENT_CAGE_SCENE:     PackedScene = preload("res://scenes/parent_cage.tscn")
+const _MEMORY_FRAGMENT_SCENE: PackedScene = preload("res://scenes/memory_fragment.tscn")
 
 @onready var background: ColorRect          = $Background
 @onready var nav_region: NavigationRegion2D = $NavigationRegion2D
 
 var _map_w_px: float = 0.0
 var _map_h_px: float = 0.0
+var _parent_cage:     Node = null
+var _memory_fragment: Node = null
 
 func _ready() -> void:
 	add_to_group("map_generator")
@@ -74,6 +78,7 @@ func _ready() -> void:
 	_compute_map_bounds()
 	_bake_nav()
 	_connect_exit()
+	_spawn_mission_parent_and_fragment()
 
 # ---------------------------------------------------------------------------
 # MapGenerator-compatible interface (same API as MapGenerator.gd / MazeLevel.gd)
@@ -104,7 +109,67 @@ func get_exit_zone() -> Node:
 func get_objective_node(key: String) -> Variant:
 	if key == "maze_exit":
 		return get_exit_zone()
+	if key == "parent_cage":
+		return _parent_cage
+	if key == "memory_fragment":
+		return _memory_fragment
 	return null
+
+# Places the current mission's parent cage and themed fragment in two random
+# open cells of the maze, far from the spawn corner. Mirrors the logic in
+# MazeLevel.gd (kept duplicated rather than shared via a base class because
+# the two mazes' grids and CELL_SIZE happen to match but conceptually each
+# script owns its own layout).
+func _spawn_mission_parent_and_fragment() -> void:
+	var level: int = GameManager.current_level
+	var fragment_id: String = FragmentEffects.get_mission_fragment_id(level)
+	if fragment_id == "":
+		return
+	var fragment_name: String = FragmentEffects.get_display_name(fragment_id)
+
+	var open_cells: Array[Vector2i] = []
+	for row_idx in MAZE_LAYOUT.size():
+		var row: String = MAZE_LAYOUT[row_idx]
+		for col_idx in row.length():
+			if row[col_idx] != ".":
+				continue
+			var diff_x: int = col_idx - 1
+			var diff_y: int = row_idx - 1
+			if diff_x * diff_x + diff_y * diff_y < 16:
+				continue
+			open_cells.append(Vector2i(col_idx, row_idx))
+	if open_cells.is_empty():
+		return
+	open_cells.shuffle()
+	var cage_cell: Vector2i = open_cells[0]
+
+	if _PARENT_CAGE_SCENE:
+		var cage: Node2D = _PARENT_CAGE_SCENE.instantiate()
+		cage.position = Vector2(cage_cell.x * CELL_SIZE + _HALF_CELL,
+				cage_cell.y * CELL_SIZE + _HALF_CELL)
+		if "child_slot" in cage:
+			cage.set("child_slot", level - 1)
+		add_child(cage)
+		_parent_cage = cage
+
+	if _MEMORY_FRAGMENT_SCENE:
+		var best_cell: Vector2i = open_cells[0]
+		var best_d: int = 0
+		for c in open_cells:
+			var diff: Vector2i = c - cage_cell
+			var d: int = diff.x * diff.x + diff.y * diff.y
+			if d > best_d:
+				best_d = d
+				best_cell = c
+		var frag: Node2D = _MEMORY_FRAGMENT_SCENE.instantiate()
+		frag.position = Vector2(best_cell.x * CELL_SIZE + _HALF_CELL,
+				best_cell.y * CELL_SIZE + _HALF_CELL)
+		if "fragment_id" in frag:
+			frag.set("fragment_id", fragment_id)
+		if "display_name" in frag:
+			frag.set("display_name", fragment_name)
+		add_child(frag)
+		_memory_fragment = frag
 
 func generate(_seed_value: int = 0) -> void:
 	GameManager.enemies_alive = 0

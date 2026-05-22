@@ -147,6 +147,11 @@ func heal_to_full() -> void:
 func add_grenade_ammo(delta: int) -> void:
 	_grenade_ammo = maxi(_grenade_ammo + delta, 0)
 
+func add_speed_bonus(percent: float) -> void:
+	move_speed *= (1.0 + percent)
+	if nav_agent:
+		nav_agent.max_speed = move_speed
+
 # Called by Bullet.gd when a bullet fired by this soldier successfully hits
 # a damageable target. Bumps the shared accuracy counter.
 func on_bullet_hit(_target: Node2D) -> void:

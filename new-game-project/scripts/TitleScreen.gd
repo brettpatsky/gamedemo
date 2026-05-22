@@ -1,5 +1,7 @@
 extends Control
 
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
 const SOLDIER_SCENES := [
 	"res://scenes/soldier_1.tscn",
 	"res://scenes/soldier_2.tscn",
@@ -57,13 +59,22 @@ func _set_bar(card: Control, rel_path: String, value: float, max_val: float) -> 
 		bar.value     = clamp(value, 0.0, max_val)
 
 # Instantiate off-tree to read @export values without triggering _ready.
+#
+# Soldier.gd's _ready falls back to Balance defaults whenever an @export stat
+# is left at its zero default (the maths in Soldier.gd is `if X <= 0: X = BalanceX`).
+# We mirror that fallback here so the bio cards reflect what each kid actually
+# plays as in-game — without it, soldier_2 / soldier_5 (which only override the
+# speed/range/HP exports, not damage) showed empty DMG bars.
 func _read_soldier_stats(path: String) -> Dictionary:
 	var defaults := {
-		"max_health": 3,
-		"pistol_damage": 1, "rifle_damage": 1,
-		"pistol_speed": 600.0, "rifle_speed": 700.0,
-		"pistol_distance": 1500.0, "rifle_distance": 1200.0,
-		"bullet_color": Color.YELLOW,
+		"max_health":      Balance.SOLDIER_MAX_HEALTH,
+		"pistol_damage":   Balance.SOLDIER_PISTOL_DAMAGE,
+		"rifle_damage":    Balance.SOLDIER_RIFLE_DAMAGE,
+		"pistol_speed":    Balance.SOLDIER_PISTOL_SPEED,
+		"rifle_speed":     Balance.SOLDIER_RIFLE_SPEED,
+		"pistol_distance": Balance.SOLDIER_PISTOL_DISTANCE,
+		"rifle_distance":  Balance.SOLDIER_RIFLE_DISTANCE,
+		"bullet_color":    Color.YELLOW,
 	}
 	var scene: PackedScene = load(path)
 	if scene == null:

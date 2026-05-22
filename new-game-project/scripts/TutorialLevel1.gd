@@ -27,8 +27,8 @@ const ROOM_W_TILES     := 10
 const ROOM_H_TILES     := 12
 const NUM_ROOMS        := 7    # 6 puzzles + final room
 const WALL_THICKNESS   := 1
-const DOORWAY_ROW_TOP  := 5    # interior row indices (0..ROOM_H_TILES-1)
-const DOORWAY_ROW_BOT  := 6
+const DOORWAY_ROW_TOP  := 4    # interior row indices (0..ROOM_H_TILES-1)
+const DOORWAY_ROW_BOT  := 7    # 4-tile gap so a 1×6 vertical line streams through
 
 # Pre-computed half-tile counts so per-room positioning uses tidy int math.
 # Bit-shift instead of `/ 2` so the compiler doesn't re-fire the
@@ -134,12 +134,13 @@ func _build_walls() -> void:
 		_place_wall(0, y)
 		_place_wall(MAP_W_TILES - 1, y)
 	# Inner dividers — vertical walls between each adjacent pair of rooms,
-	# with a 2-tile-tall doorway in the middle.
+	# with a wide doorway in the middle (DOORWAY_ROW_TOP..DOORWAY_ROW_BOT
+	# inclusive — 4 tiles wide so a 1×6 vertical line can pass).
 	for r in NUM_ROOMS - 1:
 		var divider_x: int = 1 + (r + 1) * (ROOM_W_TILES + 1) - 1
 		for y in MAP_H_TILES:
 			var interior_y: int = y - 1
-			if interior_y == DOORWAY_ROW_TOP or interior_y == DOORWAY_ROW_BOT:
+			if interior_y >= DOORWAY_ROW_TOP and interior_y <= DOORWAY_ROW_BOT:
 				continue
 			_place_wall(divider_x, y)
 
@@ -177,7 +178,8 @@ func _doorway_position(room_index: int) -> Vector2:
 func _spawn_gate(room_index: int) -> PuzzleGate:
 	var gate := PuzzleGate.new()
 	gate.width  = float(TILE)
-	gate.height = float(TILE * 2)
+	# Gate spans the full doorway so the squad can't slip past unsolved puzzles.
+	gate.height = float(TILE * (DOORWAY_ROW_BOT - DOORWAY_ROW_TOP + 1))
 	gate.position = _doorway_position(room_index)
 	add_child(gate)
 	return gate

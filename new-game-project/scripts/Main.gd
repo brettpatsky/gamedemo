@@ -199,6 +199,15 @@ func _spawn_squad(count: int) -> void:
 		push_warning("[Main] No living kids in RunState — squad will be empty")
 		return
 	var slots_to_spawn: Array[int] = living.slice(0, count)
+	# Maze missions only spawn one kid, and each maze frees a specific kid's
+	# parent. Prefer that kid so the cage actually opens; fall back to the
+	# first living kid if they've died earlier in the run (cage stays shut,
+	# mission still winnable via the maze exit).
+	if count == 1 and (GameManager.current_level == 5 or GameManager.current_level == 6):
+		var preferred_slot: int = GameManager.current_level - 1
+		if preferred_slot >= 0 and preferred_slot < RunState.SQUAD_SIZE \
+				and RunState.kids_alive[preferred_slot]:
+			slots_to_spawn = [preferred_slot]
 	var positions: Array[Vector2] = map_gen.get_spawn_positions(slots_to_spawn.size())
 	for i in slots_to_spawn.size():
 		var slot: int = slots_to_spawn[i]
@@ -208,7 +217,7 @@ func _spawn_squad(count: int) -> void:
 		var carry_hp: int = RunState.get_carry_hp(slot)
 		if carry_hp > 0 and soldier.has_method("set_carried_hp"):
 			soldier.set_carried_hp(carry_hp)
-		if GameManager.current_level == 4 or GameManager.current_level == 5:
+		if GameManager.current_level == 5 or GameManager.current_level == 6:
 			soldier.maze_mode = true
 		soldier.add_to_group("soldiers")
 		_subviewport.add_child(soldier)
@@ -218,34 +227,21 @@ func _spawn_squad(count: int) -> void:
 
 # ---------------------------------------------------------------------------
 func _setup_objective() -> void:
+	# Every non-boss mission can have a parent cage + memory fragment placed
+	# by its level script. Wire them here uniformly; the tutorial wins the
+	# mission on parent rescue, every other mission treats the cage as a
+	# side objective that flips a RunState bit and shows a toast.
+	if GameManager.current_level != 7:
+		_wire_parent_cage(GameManager.current_level == 1)
+		_wire_memory_fragment()
+
 	match GameManager.current_level:
 		1:
-			# Tutorial level — mission ends when Kid 1's parent is freed in the
-			# final room. The combat in Puzzle 1 would otherwise clear all
-			# enemies and trip GameManager.mission_complete early, so we
-			# DELIBERATELY do not connect that signal here.
-			var cage: Node = map_gen.get_objective_node("parent_cage")
-			if cage:
-				if cage.has_signal("parent_freed"):
-					cage.parent_freed.connect(func(slot: int) -> void:
-						hud.show_toast("KID %d'S PARENT FREED" % (slot + 1),
-								Color(1.0, 0.85, 0.35), 3.0)
-						_on_mission_win()
-					)
-				if cage.has_signal("wrong_kid_entered"):
-					cage.wrong_kid_entered.connect(func(_slot: int) -> void:
-						var expected: int = (cage.child_slot if "child_slot" in cage else 0) + 1
-						hud.show_toast("Only Kid %d can open this cage" % expected,
-								Color(0.95, 0.75, 0.75), 2.0)
-					)
-			# The tutorial's final room holds the school photo — surface it on
-			# pickup so the player knows the memory's been added to the run.
-			var frag: Node = map_gen.get_objective_node("memory_fragment")
-			if frag and frag.has_signal("collected"):
-				frag.collected.connect(func(_id: String, name_text: String) -> void:
-					hud.show_toast("MEMORY RECOVERED — %s" % name_text,
-							Color(0.7, 0.95, 1.0), 2.5)
-				)
+			# Tutorial — _wire_parent_cage above already routes parent_freed
+			# to _on_mission_win, and DELIBERATELY mission_complete is not
+			# connected: clearing the three Puzzle 1 dummies would otherwise
+			# end the mission five rooms early.
+			pass
 		2:
 			# Eliminate Enemies — GameManager.mission_complete fires when the
 			# enemies_alive counter reaches zero (see GameManager.on_enemy_died,
@@ -358,6 +354,40 @@ func _on_mission_fail() -> void:
 	_mission_ended = true
 	_persist_run_state()
 	hud.show_mission_result("MISSION FAILED", Color.RED, false)
+
+# Connects the level's parent-cage signals if the map_gen has placed one.
+# When end_mission_on_freed is true (tutorial), opening the cage also ends
+# the mission via _on_mission_win. Otherwise it's purely a side objective —
+# the toast fires and RunState.parents_freed flips, but the mission doesn't
+# end. wrong_kid_entered toasts a hint either way.
+func _wire_parent_cage(end_mission_on_freed: bool) -> void:
+	var cage: Node = map_gen.get_objective_node("parent_cage") if map_gen else null
+	if cage == null:
+		return
+	if cage.has_signal("parent_freed"):
+		cage.parent_freed.connect(func(slot: int) -> void:
+			hud.show_toast("KID %d'S PARENT FREED" % (slot + 1),
+					Color(1.0, 0.85, 0.35), 3.0)
+			if end_mission_on_freed:
+				_on_mission_win()
+		)
+	if cage.has_signal("wrong_kid_entered"):
+		cage.wrong_kid_entered.connect(func(_slot: int) -> void:
+			var expected: int = (cage.child_slot if "child_slot" in cage else 0) + 1
+			hud.show_toast("Only Kid %d can open this cage" % expected,
+					Color(0.95, 0.75, 0.75), 2.0)
+		)
+
+# Surfaces fragment pickup as a "MEMORY RECOVERED" toast. The fragment
+# itself adds the id to RunState.fragments in its own script.
+func _wire_memory_fragment() -> void:
+	var frag: Node = map_gen.get_objective_node("memory_fragment") if map_gen else null
+	if frag == null or not frag.has_signal("collected"):
+		return
+	frag.collected.connect(func(_id: String, name_text: String) -> void:
+		hud.show_toast("MEMORY RECOVERED — %s" % name_text,
+				Color(0.7, 0.95, 1.0), 2.5)
+	)
 
 # Snapshots the squad at the moment the mission ends and rolls the result into
 # RunState. Downed (unrevived) soldiers count as lost for the rest of the run;
