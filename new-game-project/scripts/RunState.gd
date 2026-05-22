@@ -56,10 +56,15 @@ func start_new_run() -> void:
 	emit_signal("run_reset")
 
 # Snapshots the squad's state at mission end and rolls it forward into the run.
-# `survivors` is an Array of { "slot": int, "hp": int } — one entry per kid
-# that finished the mission still standing (i.e. NOT a downed/unrevived corpse).
-# Slots not present in the array are considered lost for the rest of the run.
-func record_mission_end(mission_id: int, survivors: Array) -> void:
+#   `survivors` — Array of { "slot": int, "hp": int }, one entry per kid that
+#                 finished the mission alive (NOT a downed/unrevived corpse).
+#   `deployed`  — Array[int] of every slot that was actually sent on this
+#                 mission. Kids NOT in this list (e.g. the five kids who
+#                 stayed home during a single-soldier maze run) are left
+#                 untouched: their kids_alive flag and carried HP keep
+#                 whatever values they had going in.
+# A deployed kid who isn't in survivors is the only case that triggers death.
+func record_mission_end(mission_id: int, survivors: Array, deployed: Array[int] = []) -> void:
 	var still_alive := {}
 	for entry in survivors:
 		var slot: int = entry.get("slot", -1)
@@ -68,10 +73,20 @@ func record_mission_end(mission_id: int, survivors: Array) -> void:
 			continue
 		still_alive[slot] = true
 		kid_hp[slot] = hp
-	for i in SQUAD_SIZE:
-		if kids_alive[i] and not still_alive.has(i):
-			kids_alive[i] = false
-			emit_signal("kid_lost", i)
+	# Empty deployed list means "the whole living squad was sent" — the legacy
+	# behaviour for callers that haven't been updated yet. New callers should
+	# pass the actual deployed slots so untouched kids stay safe at home.
+	var effective_deployed: Array[int] = deployed
+	if effective_deployed.is_empty():
+		for i in SQUAD_SIZE:
+			if kids_alive[i]:
+				effective_deployed.append(i)
+	for slot in effective_deployed:
+		if slot < 0 or slot >= SQUAD_SIZE:
+			continue
+		if kids_alive[slot] and not still_alive.has(slot):
+			kids_alive[slot] = false
+			emit_signal("kid_lost", slot)
 	if not missions_completed.has(mission_id):
 		missions_completed.append(mission_id)
 

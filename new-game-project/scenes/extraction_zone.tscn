@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/ExtractionZone.gd" id="1_ez01"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_ez01"]
-radius = 50.0
+radius = 90.0
 
 [node name="ExtractionZone" type="Area2D"]
 script = ExtResource("1_ez01")

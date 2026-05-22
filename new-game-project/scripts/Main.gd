@@ -390,20 +390,28 @@ func _wire_memory_fragment() -> void:
 	)
 
 # Snapshots the squad at the moment the mission ends and rolls the result into
-# RunState. Downed (unrevived) soldiers count as lost for the rest of the run;
-# anyone still standing carries their current HP into the next mission.
+# RunState. The soldiers group still contains downed kids (they're left on the
+# field as revivable corpses), so iterating it gives us the full DEPLOYED list
+# for this mission. Anyone in the group who isn't downed counts as a survivor;
+# downed kids are deployed-but-not-survivor (RunState marks them lost). Kids
+# who weren't deployed at all (e.g. the five who stayed home during a maze
+# mission) are left untouched.
 func _persist_run_state() -> void:
 	var survivors: Array = []
+	var deployed: Array[int] = []
 	for s in get_tree().get_nodes_in_group("soldiers"):
 		if not is_instance_valid(s):
 			continue
+		var slot: int = s.slot_index if "slot_index" in s else -1
+		if slot < 0:
+			continue
+		deployed.append(slot)
 		if s.has_method("is_downed") and s.is_downed():
 			continue
-		var slot: int = s.slot_index if "slot_index" in s else -1
-		var hp:   int = s.get_health() if s.has_method("get_health") else -1
-		if slot >= 0 and hp >= 0:
+		var hp: int = s.get_health() if s.has_method("get_health") else -1
+		if hp >= 0:
 			survivors.append({"slot": slot, "hp": hp})
-	RunState.record_mission_end(GameManager.current_level, survivors)
+	RunState.record_mission_end(GameManager.current_level, survivors, deployed)
 
 # ---------------------------------------------------------------------------
 func advance_level() -> void:

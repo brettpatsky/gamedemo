@@ -826,13 +826,19 @@ func _spawn_escort_mission() -> void:
 			walls.append(wall)
 		_objective_nodes["escort_walls"] = walls
 
-	# Extraction zone at the very top of the map
+	# Extraction zone at the top of the map. Keep a 2-tile margin from every
+	# edge so the (now larger) zone disc never lands flush against the wall
+	# where the NPC physically can't reach the centre.
 	var ext_zone := _passable_cells.filter(func(c: Vector2i) -> bool:
-		return float(c.y) / map_height < 0.10
+		if c.x < 2 or c.x > map_width - 3: return false
+		if c.y < 2 or c.y > map_height - 3: return false
+		return float(c.y) / map_height < 0.15
 	)
 	if ext_zone.is_empty():
 		ext_zone = _passable_cells.filter(func(c: Vector2i) -> bool:
-			return float(c.y) / map_height < 0.20
+			if c.x < 2 or c.x > map_width - 3: return false
+			if c.y < 2 or c.y > map_height - 3: return false
+			return float(c.y) / map_height < 0.25
 		)
 	if ext_zone.is_empty():
 		return

@@ -21,10 +21,14 @@ func _on_body_entered(body: Node2D) -> void:
 		npc_extracted.emit()
 
 func _draw() -> void:
-	draw_circle(Vector2.ZERO, 50.0, Color(0.1, 0.9, 0.1, 0.25))
-	draw_arc(Vector2.ZERO, 50.0, 0.0, TAU, 48, Color(0.0, 0.8, 0.0), 3.0)
+	# Radius matches the CircleShape2D in extraction_zone.tscn — keep them
+	# in sync or the visible disc won't match where the trigger actually fires.
+	const R := 90.0
+	draw_circle(Vector2.ZERO, R, Color(0.1, 0.9, 0.1, 0.25))
+	draw_arc(Vector2.ZERO, R, 0.0, TAU, 48, Color(0.0, 0.8, 0.0), 3.0)
+	# Up-arrow glyph in the centre, scaled to roughly half the radius.
 	var pts := PackedVector2Array([
-		Vector2(-18,  8), Vector2(0, -18), Vector2(18,  8),
-		Vector2(12,   8), Vector2(0,  -8), Vector2(-12,  8)
+		Vector2(-32, 14), Vector2(0, -32), Vector2(32, 14),
+		Vector2(22, 14), Vector2(0, -14), Vector2(-22, 14)
 	])
 	draw_colored_polygon(pts, Color(0.0, 0.7, 0.0, 0.6))
