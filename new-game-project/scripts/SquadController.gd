@@ -158,6 +158,10 @@ func remove_soldier(soldier: Node2D) -> void:
 # Spends one revive potion to bring the most recently downed soldier back.
 # Returns true on success. Called by the HUD revive button.
 func try_revive() -> bool:
+	# Hard gate — tutorial pre-Puzzle 5 has Revive locked. HUD button is
+	# disabled there, but guard here in case the call reaches us anyway.
+	if not GameManager.revive_enabled:
+		return false
 	# Prune any references that have somehow been freed.
 	_downed = _downed.filter(func(n: Node2D) -> bool: return is_instance_valid(n))
 	if _downed.is_empty():

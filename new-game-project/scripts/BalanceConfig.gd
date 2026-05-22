@@ -41,6 +41,10 @@ const SACRIFICE_RADIUS:       float = 200.0
 const SACRIFICE_DAMAGE:       int   = 15
 const SACRIFICE_ARRIVAL_DIST: float = 24.0
 const SACRIFICE_FX_TIME:      float = 0.65
+# Safety net: if the bomber can't reach the click point (path blocked, click
+# landed inside geometry, etc.), detonate where they are after this long
+# instead of running forever.
+const SACRIFICE_TIMEOUT:      float = 6.0
 
 # Stuck detection / sidestep unstick.
 const SOLDIER_STUCK_CHECK_INTERVAL: float = 0.5

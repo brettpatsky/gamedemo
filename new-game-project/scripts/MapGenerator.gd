@@ -70,10 +70,12 @@ func generate(seed_value: int = 0) -> void:
 	_spawn_boundary_walls()
 	_bake_navigation()
 	# Escort mission picks the NPC spot first so enemy spawn can avoid it.
+	# Level 1 is the hand-authored tutorial (TutorialLevel1) and never reaches
+	# MapGenerator. Level 2 is the open-field Eliminate-Enemies mission (no
+	# special objective beyond _spawn_enemies). 3/4 are structures / escort.
 	match GameManager.current_level:
-		1: _spawn_mission_1_objectives()
-		2: _spawn_fortified_structure()
-		3: _spawn_escort_mission()
+		3: _spawn_fortified_structure()
+		4: _spawn_escort_mission()
 	_spawn_enemies()
 
 # ---------------------------------------------------------------------------

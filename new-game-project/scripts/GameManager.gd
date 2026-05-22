@@ -16,6 +16,11 @@ signal mission_complete               # all enemies cleared
 signal score_changed(new_score)       # UI listens here
 signal enemies_changed(count)         # count enemies remaining
 signal revives_changed(remaining)     # HUD updates the revive-potion counter
+# Feature-gate signals — the tutorial locks Sacrifice and Revive until the
+# final trial. Missions 2-7 leave them enabled. HUD listens for these to
+# enable/disable the corresponding buttons in real time.
+signal sacrifice_enabled_changed(enabled: bool)
+signal revive_enabled_changed(enabled: bool)
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +45,24 @@ var revive_potions: int = REVIVES_PER_MISSION
 const RIFLE_AMMO_POOL_MAX := 300
 var rifle_ammo_pool: int = RIFLE_AMMO_POOL_MAX
 
+# Feature gates. Reset to true at the start of every mission; the tutorial
+# disables both during Main._ready and re-enables them when Puzzle 5 (the
+# Identity Gate) completes — see TutorialLevel1._build_room_identity.
+var sacrifice_enabled: bool = true
+var revive_enabled:    bool = true
+
+func set_sacrifice_enabled(value: bool) -> void:
+	if sacrifice_enabled == value:
+		return
+	sacrifice_enabled = value
+	emit_signal("sacrifice_enabled_changed", value)
+
+func set_revive_enabled(value: bool) -> void:
+	if revive_enabled == value:
+		return
+	revive_enabled = value
+	emit_signal("revive_enabled_changed", value)
+
 # Per-soldier accuracy stats (indexed by spawn slot 0..squad_size-1).
 # Persisted in GameManager so dead soldiers' final totals survive after queue_free.
 var soldier_shots: Array[int] = []
@@ -57,6 +80,10 @@ func reset_squad_stats(size: int) -> void:
 	revive_potions  = REVIVES_PER_MISSION
 	rifle_ammo_pool = RIFLE_AMMO_POOL_MAX
 	emit_signal("revives_changed", revive_potions)
+	# Default both feature gates open at the start of every mission. Tutorial
+	# locks them again in Main.gd right after this call.
+	set_sacrifice_enabled(true)
+	set_revive_enabled(true)
 
 func record_shot(slot: int) -> void:
 	if slot >= 0 and slot < soldier_shots.size():
@@ -67,7 +94,7 @@ func record_hit(slot: int) -> void:
 		soldier_hits[slot] += 1
 
 func advance_level() -> void:
-	current_level = min(current_level + 1, 6)
+	current_level = min(current_level + 1, 7)
 
 # ---------------------------------------------------------------------------
 # Called once at startup
@@ -118,11 +145,12 @@ func use_revive() -> bool:
 	return true
 
 # ---------------------------------------------------------------------------
-# Call when an enemy dies; checks win condition for Level 1 only.
-# Levels 2 and 3 have separate objectives (structure / escort).
+# Call when an enemy dies; checks win condition for Level 2 (Eliminate Enemies).
+# Level 1 is the tutorial (wins on parent rescue), 3–4 have separate
+# objectives (structures / escort), 5–6 are maze escapes, 7 is the boss.
 # ---------------------------------------------------------------------------
 func on_enemy_died() -> void:
 	enemies_alive -= 1
 	emit_signal("enemies_changed", enemies_alive) #broardcast remaining enemies to HUD
-	if enemies_alive <= 0 and current_level == 1:
+	if enemies_alive <= 0 and current_level == 2:
 		emit_signal("mission_complete")

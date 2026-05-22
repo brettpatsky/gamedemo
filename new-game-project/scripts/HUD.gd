@@ -149,6 +149,11 @@ func _ready() -> void:
 	# Toggle the revive button on/off as soldiers fall and come back.
 	GameManager.soldier_died.connect(func(_s: Node) -> void: _refresh_revive_button())
 	GameManager.soldier_revived.connect(func(_s: Node) -> void: _refresh_revive_button())
+	# Feature-gate signals — the tutorial locks Sacrifice and Revive until
+	# Puzzle 5 completes. Listen so the buttons grey out / come back in real time.
+	GameManager.sacrifice_enabled_changed.connect(func(_e: bool) -> void: _refresh_weapon_locked_state())
+	GameManager.revive_enabled_changed.connect(func(_e: bool) -> void: _refresh_revive_button())
+	_refresh_weapon_locked_state()
 
 	_refresh_weapon_highlight()
 	_refresh_formation_highlight()
@@ -268,28 +273,31 @@ func update_group_info(active: int, total: int, alive_groups: Array = []) -> voi
 
 func show_objective(level: int) -> void:
 	var texts := {
-		1: "OBJECTIVE: Eliminate all enemies   •   Side: free Kid 1's parent",
-		2: "OBJECTIVE: Destroy the fortified structure",
-		3: "OBJECTIVE: Escort the NPC to extraction",
-		4: "OBJECTIVE: Escape the maze",
-		5: "OBJECTIVE: Escape the ruined catacombs",
-		6: "OBJECTIVE: Shatter the Weeping Heart",
+		1: "OBJECTIVE: Solve the six trials and free Kid 1's parent",
+		2: "OBJECTIVE: Eliminate all enemies",
+		3: "OBJECTIVE: Destroy the fortified structure",
+		4: "OBJECTIVE: Escort the NPC to extraction",
+		5: "OBJECTIVE: Escape the maze",
+		6: "OBJECTIVE: Escape the ruined catacombs",
+		7: "OBJECTIVE: Shatter the Weeping Heart",
 	}
 	var text: String = texts.get(level, "")
-	# Mission 1 — if the matching kid has already died this run, the parent
-	# rescue is off the table. Drop the side objective from the text so the
-	# player isn't misled into hunting for an inert cage.
+	# Tutorial soft-lock guard: if Kid 1 has somehow already died this run
+	# (e.g. retrying after a wipe in a later mission), the parent can never be
+	# freed and the run is stuck. Surface that explicitly so the player resets.
 	if level == 1 and not RunState.kids_alive[0]:
-		text = "OBJECTIVE: Eliminate all enemies   (Kid 1 lost — parent unreachable)"
+		text = "OBJECTIVE: Kid 1 lost — RESET RUN (F12) to retry the tutorial"
 	_objective_label.text = text
-	if level == 3:
+	if level == 4:
 		_escort_label.show()
 	else:
 		_escort_label.hide()
-	# Maze levels have no enemies; boss level has its own health bar — hide the
-	# generic ENEMIES counter on all three so the UI doesn't look redundant.
+	# Tutorial (3 dummies after Puzzle 1), mazes (no enemies), and the boss
+	# (own health bar) all hide the generic ENEMIES counter — only Level 2,
+	# the Eliminate-Enemies mission, surfaces it as the primary readout.
+	# Levels 3 and 4 (structures / escort) still show it as a side stat.
 	if _enemy_label:
-		_enemy_label.visible = level != 4 and level != 5 and level != 6
+		_enemy_label.visible = level == 2 or level == 3 or level == 4
 
 func update_escort_health(current: int, max_hp: int) -> void:
 	_escort_label.text = "ESCORT HEALTH: %d / %d" % [current, max_hp]
@@ -443,7 +451,7 @@ func show_reward_picker(ids: Array[String]) -> void:
 		var btn := _reward_card_buttons[i]
 		if i < ids.size():
 			var id: String = ids[i]
-			btn.text = "%s\n\n%s" % [FragmentEffects.get_name(id), FragmentEffects.get_description(id)]
+			btn.text = "%s\n\n%s" % [FragmentEffects.get_display_name(id), FragmentEffects.get_description(id)]
 			btn.show()
 		else:
 			btn.hide()
@@ -500,7 +508,7 @@ func _on_reward_card_pressed(card_index: int) -> void:
 		_reward_panel.hide()
 	if _next_level_button:
 		_next_level_button.disabled = false
-	show_toast("MEMORY TAKEN — %s" % FragmentEffects.get_name(id),
+	show_toast("MEMORY TAKEN — %s" % FragmentEffects.get_display_name(id),
 			Color(0.85, 1.0, 0.95), 3.0)
 
 # Generic transient top-centre notification — reuses the under-attack label
@@ -650,17 +658,17 @@ func _draw_enemy_arrow() -> void:
 	var origin: Vector2 = squad_ctrl.get_centroid()
 
 	var target: Node2D = null
-	if GameManager.current_level == 3:
+	if GameManager.current_level == 4:
 		# Point at the trapped/unfreed NPC, then at the extraction zone once
 		# they've linked up with the squad.
 		if _escort_joined:
 			target = _extraction_zone if is_instance_valid(_extraction_zone) else null
 		else:
 			target = _escort_npc if is_instance_valid(_escort_npc) else null
-	elif GameManager.current_level == 4 or GameManager.current_level == 5:
+	elif GameManager.current_level == 5 or GameManager.current_level == 6:
 		# Maze escape — always point to the exit.
 		target = _maze_exit if is_instance_valid(_maze_exit) else null
-	elif GameManager.current_level == 6:
+	elif GameManager.current_level == 7:
 		# Boss fight — entire arena fits on-screen, so no enemy arrow is needed.
 		return
 	else:
@@ -745,14 +753,22 @@ func _on_revives_changed(_remaining: int) -> void:
 	_refresh_revive_button()
 
 # Updates the counter label and enabled state. The button is disabled when
-# either no potions remain OR there is no downed soldier to revive.
+# the feature is locked (tutorial pre-Puzzle 5), no potions remain, or no
+# downed soldier exists to revive.
 func _refresh_revive_button() -> void:
 	if _revive_button == null:
 		return
 	if _revive_counter_label:
 		_revive_counter_label.text = str(GameManager.revive_potions)
 	var squad_ctrl: Node = get_tree().get_first_node_in_group("squad_controller")
-	var can: bool = GameManager.revive_potions > 0
+	var can: bool = GameManager.revive_enabled and GameManager.revive_potions > 0
 	if can and squad_ctrl and squad_ctrl.has_method("can_revive"):
 		can = squad_ctrl.can_revive()
 	_revive_button.disabled = not can
+
+# Disables the Sacrifice weapon button when GameManager.sacrifice_enabled is
+# false. Called on _ready and whenever the gate flips.
+func _refresh_weapon_locked_state() -> void:
+	var sacrifice_btn := _weapon_grid.get_node_or_null("WeaponButton3") as Button
+	if sacrifice_btn:
+		sacrifice_btn.disabled = not GameManager.sacrifice_enabled

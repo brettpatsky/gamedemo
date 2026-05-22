@@ -26,6 +26,8 @@ const Balance = preload("res://scripts/BalanceConfig.gd")
 # bullet colour, etc. Falls back to wrapping if fewer scenes than squad_size.
 @export var soldier_scenes: Array[PackedScene]
 
+# Level 1 — hand-authored tutorial corridor (six puzzles + parent room).
+const TUTORIAL_1_SCENE_PATH := "res://scenes/tutorials/tutorial_1.tscn"
 # Level 4 — first hand-authored maze (the original 22×15).
 const MAZE_SCENE_PATH := "res://scenes/mazes/maze_1.tscn"
 # Level 5 — larger 44×30 maze with multiple paths to the exit.
@@ -52,11 +54,20 @@ func _ready() -> void:
 	$GameViewport.set_position(Vector2.ZERO)
 	$GameViewport.set_size(Vector2(vp_size.x, vp_size.y - HUD_HEIGHT))
 
-	# Levels 4 and 5 swap the procedural MapGenerator for a hand-authored maze
-	# and run with a single soldier (the corridors are 1 tile wide).
-	# Level 6 swaps it for the Heart boss arena (full squad of 6).
+	# Level 1 swaps MapGenerator for the tutorial corridor (full squad of 6).
+	# Levels 5 and 6 swap for the hand-authored mazes (single soldier, the
+	# corridors are 1 tile wide). Level 7 swaps for the Heart boss arena
+	# (full squad). Levels 2-4 keep the procedural MapGenerator.
 	var effective_squad_size: int = squad_size
-	if GameManager.current_level == 4:
+	if GameManager.current_level == 1:
+		var old: Node = map_gen
+		map_gen = _spawn_alt_level(TUTORIAL_1_SCENE_PATH)
+		old.remove_from_group("map_generator")
+		old.queue_free()
+		var camera: Node = get_tree().get_first_node_in_group("main_camera")
+		if camera and camera.has_method("refresh_map_bounds"):
+			camera.refresh_map_bounds()
+	elif GameManager.current_level == 5:
 		var old: Node = map_gen
 		map_gen = _spawn_alt_level(MAZE_SCENE_PATH)
 		old.remove_from_group("map_generator")
@@ -67,7 +78,7 @@ func _ready() -> void:
 		var camera: Node = get_tree().get_first_node_in_group("main_camera")
 		if camera and camera.has_method("refresh_map_bounds"):
 			camera.refresh_map_bounds()
-	elif GameManager.current_level == 5:
+	elif GameManager.current_level == 6:
 		var old: Node = map_gen
 		map_gen = _spawn_alt_level(MAZE_2_SCENE_PATH)
 		old.remove_from_group("map_generator")
@@ -76,7 +87,7 @@ func _ready() -> void:
 		var camera: Node = get_tree().get_first_node_in_group("main_camera")
 		if camera and camera.has_method("refresh_map_bounds"):
 			camera.refresh_map_bounds()
-	elif GameManager.current_level == 6:
+	elif GameManager.current_level == 7:
 		var old: Node = map_gen
 		map_gen = _spawn_alt_level(BOSS_ARENA_SCENE_PATH)
 		old.remove_from_group("map_generator")
@@ -90,6 +101,12 @@ func _ready() -> void:
 
 	GameManager.soldiers_alive = 0
 	GameManager.reset_squad_stats(effective_squad_size)
+	# Tutorial mission locks Sacrifice and Revive until the player solves
+	# Puzzle 5 (Identity Gate) — see TutorialLevel1._build_room_identity.
+	# Every other mission leaves both available from the start.
+	if GameManager.current_level == 1:
+		GameManager.set_sacrifice_enabled(false)
+		GameManager.set_revive_enabled(false)
 	_mission_ended = false
 
 	_spawn_squad(effective_squad_size)
@@ -101,11 +118,11 @@ func _ready() -> void:
 		hud.show_toast("MEMORIES ACTIVE — %s" % ", ".join(applied_fragments),
 				Color(0.75, 0.95, 1.0), 3.5)
 	# Maze levels start with a single soldier at the entrance — no formation snap.
-	if GameManager.current_level != 4 and GameManager.current_level != 5:
+	if GameManager.current_level != 5 and GameManager.current_level != 6:
 		squad_ctrl.snap_to_formation()
 	# Boss mission gets a heavier loadout: extra rifle ammo for sustained Phase 1
 	# fire and more grenades to crack the orbiting Memory Totems in Phase 2.
-	if GameManager.current_level == 6:
+	if GameManager.current_level == 7:
 		_apply_boss_loadout()
 
 	GameManager.soldier_died.connect(_on_soldier_died)
@@ -117,11 +134,11 @@ func _ready() -> void:
 	hud.show_objective(GameManager.current_level)
 
 # ---------------------------------------------------------------------------
-# Maze click handler (levels 4 and 5): SubViewportContainer._gui_input consumes
+# Maze click handler (levels 5 and 6): SubViewportContainer._gui_input consumes
 # mouse events before _unhandled_input fires, so we intercept in _input (which
 # runs first). Action-based so the gamepad "A" button also triggers a move order.
 func _input(event: InputEvent) -> void:
-	if GameManager.current_level != 4 and GameManager.current_level != 5:
+	if GameManager.current_level != 5 and GameManager.current_level != 6:
 		return
 	if not event.is_action_pressed("squad_move"):
 		return
@@ -157,7 +174,7 @@ func _apply_boss_loadout() -> void:
 		squad_ctrl._update_ammo_hud()
 
 # ---------------------------------------------------------------------------
-# Generic hand-authored level swap (used by levels 4, 5, and 6). The loaded
+# Generic hand-authored level swap (used by levels 1, 5, 6, and 7). The loaded
 # scene's root must implement the MapGenerator interface — see MazeLevel.gd /
 # MazeLevel2.gd / BossArenaLevel.gd for the contract.
 func _spawn_alt_level(path: String) -> Node:
@@ -203,17 +220,17 @@ func _spawn_squad(count: int) -> void:
 func _setup_objective() -> void:
 	match GameManager.current_level:
 		1:
-			# Mission win is "clear every enemy" — same as before. The parent
-			# cage is a side objective: freeing the matching kid's parent
-			# flips a RunState bit and shows a toast, but doesn't end the
-			# mission. Memory fragments are no longer placed in-mission; the
-			# between-mission reward picker handles those.
+			# Tutorial level — mission ends when Kid 1's parent is freed in the
+			# final room. The combat in Puzzle 1 would otherwise clear all
+			# enemies and trip GameManager.mission_complete early, so we
+			# DELIBERATELY do not connect that signal here.
 			var cage: Node = map_gen.get_objective_node("parent_cage")
 			if cage:
 				if cage.has_signal("parent_freed"):
 					cage.parent_freed.connect(func(slot: int) -> void:
 						hud.show_toast("KID %d'S PARENT FREED" % (slot + 1),
 								Color(1.0, 0.85, 0.35), 3.0)
+						_on_mission_win()
 					)
 				if cage.has_signal("wrong_kid_entered"):
 					cage.wrong_kid_entered.connect(func(_slot: int) -> void:
@@ -221,8 +238,20 @@ func _setup_objective() -> void:
 						hud.show_toast("Only Kid %d can open this cage" % expected,
 								Color(0.95, 0.75, 0.75), 2.0)
 					)
-			GameManager.mission_complete.connect(_on_mission_win)
+			# The tutorial's final room holds the school photo — surface it on
+			# pickup so the player knows the memory's been added to the run.
+			var frag: Node = map_gen.get_objective_node("memory_fragment")
+			if frag and frag.has_signal("collected"):
+				frag.collected.connect(func(_id: String, name_text: String) -> void:
+					hud.show_toast("MEMORY RECOVERED — %s" % name_text,
+							Color(0.7, 0.95, 1.0), 2.5)
+				)
 		2:
+			# Eliminate Enemies — GameManager.mission_complete fires when the
+			# enemies_alive counter reaches zero (see GameManager.on_enemy_died,
+			# which is hard-coded to check level == 2).
+			GameManager.mission_complete.connect(_on_mission_win)
+		3:
 			var structures = map_gen.get_objective_node("fortified_structure")
 			if structures is Array and not structures.is_empty():
 				var remaining := [structures.size()]
@@ -239,7 +268,7 @@ func _setup_objective() -> void:
 						if remaining[0] <= 0:
 							_on_mission_win()
 					)
-		3:
+		4:
 			var zone: Node = map_gen.get_objective_node("extraction_zone")
 			var npc:  Node = map_gen.get_objective_node("escort_npc")
 			if zone:
@@ -263,7 +292,7 @@ func _setup_objective() -> void:
 							if is_instance_valid(other):
 								other.queue_free()
 					)
-		4, 5:
+		5, 6:
 			# Maze escape — reaching the exit Area2D wins the mission. Same
 			# wiring works for both maze layouts since they share the API.
 			if map_gen and map_gen.has_signal("escaped"):
@@ -271,7 +300,7 @@ func _setup_objective() -> void:
 			var exit_zone: Node = map_gen.get_objective_node("maze_exit")
 			if exit_zone and hud.has_method("set_maze_exit"):
 				hud.set_maze_exit(exit_zone)
-		6:
+		7:
 			# Boss arena — defeating the Heart wins the mission.
 			if map_gen and map_gen.has_signal("boss_defeated"):
 				map_gen.boss_defeated.connect(_on_mission_win)
@@ -313,7 +342,7 @@ func _on_mission_win() -> void:
 		return
 	_mission_ended = true
 	_persist_run_state()
-	if GameManager.current_level >= 6:
+	if GameManager.current_level >= 7:
 		hud.show_mission_result("YOU WIN! ALL LEVELS COMPLETE!", Color.YELLOW, false)
 	else:
 		hud.show_mission_result("MISSION COMPLETE!", Color.GREEN, true)

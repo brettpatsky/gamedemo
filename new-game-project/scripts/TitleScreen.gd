@@ -76,29 +76,19 @@ func _read_soldier_stats(path: String) -> Dictionary:
 	return defaults
 
 # ---------------------------------------------------------------------------
-func _on_mission_1_pressed() -> void:
-	GameManager.current_level = 1
+# Each mission button delegates to a single helper so they all behave
+# identically apart from which level number they kick off.
+func _start_mission(level: int) -> void:
+	GameManager.current_level = level
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
-func _on_mission_2_pressed() -> void:
-	GameManager.current_level = 2
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
-
-func _on_mission_3_pressed() -> void:
-	GameManager.current_level = 3
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
-
-func _on_mission_4_pressed() -> void:
-	GameManager.current_level = 4
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
-
-func _on_mission_5_pressed() -> void:
-	GameManager.current_level = 5
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
-
-func _on_mission_6_pressed() -> void:
-	GameManager.current_level = 6
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+func _on_mission_1_pressed() -> void: _start_mission(1)   # Tutorial — The Trials
+func _on_mission_2_pressed() -> void: _start_mission(2)   # Eliminate Enemies
+func _on_mission_3_pressed() -> void: _start_mission(3)   # Destroy Structures
+func _on_mission_4_pressed() -> void: _start_mission(4)   # Escort VIP
+func _on_mission_5_pressed() -> void: _start_mission(5)   # Escape (maze 1)
+func _on_mission_6_pressed() -> void: _start_mission(6)   # Ruined Catacombs (maze 2)
+func _on_mission_7_pressed() -> void: _start_mission(7)   # The Weeping Heart (boss)
 
 func _on_help_pressed() -> void:
 	_help_popup.visible = true
@@ -110,15 +100,18 @@ func _on_exit_pressed() -> void:
 	get_tree().quit()
 
 # =============================================================================
-# Debug / run-status panel — top-right of the title screen.
-# Built programmatically so the .tscn doesn't need editing while the design is
-# still in flux. Remove (or gate behind a debug flag) before shipping.
+# Debug / run-status panel — pinned to the bottom-left of the title screen so
+# it stays clear of the title text and the mission buttons. Slightly
+# transparent so it doesn't fully hide the bio cards underneath. Built in
+# code so the .tscn stays untouched while the design is still in flux.
+# Remove (or gate behind a debug flag) before shipping.
 # =============================================================================
 func _build_debug_panel() -> void:
 	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	panel.position = Vector2(-340, 20)
-	panel.custom_minimum_size = Vector2(320, 0)
+	panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	panel.position = Vector2(20, -270)
+	panel.custom_minimum_size = Vector2(320, 250)
+	panel.modulate.a = 0.92
 	add_child(panel)
 
 	var vb := VBoxContainer.new()

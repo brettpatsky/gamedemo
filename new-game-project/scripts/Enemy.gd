@@ -23,6 +23,17 @@ var bullet_damage:   int
 
 @export var bullet_scene: PackedScene
 
+# -----------------------------------------------------------------------------
+# Dummy / training-target mode — tutorial Puzzle 1 uses this so the squad
+# has stationary practice targets that retreat instead of shooting back.
+#  - never fires
+#  - never enters ATTACK state
+#  - flees from the closest soldier (capped distance so they don't run off-map)
+# Set BEFORE adding the enemy to the tree so _ready picks up the HP override.
+# -----------------------------------------------------------------------------
+@export var dummy_mode: bool         = false
+@export var override_max_health: int = 0
+
 @onready var nav_agent:  NavigationAgent2D   = $NavigationAgent2D
 @onready var sprite:     AnimatedSprite2D    = $AnimatedSprite2D
 @onready var health_bar: ProgressBar         = $HealthBar
@@ -44,7 +55,7 @@ var _scan_timer: float = 0.0
 func _ready() -> void:
 	add_to_group("enemies")
 	move_speed      = Balance.ENEMY_MOVE_SPEED
-	max_health      = Balance.ENEMY_MAX_HEALTH
+	max_health      = override_max_health if override_max_health > 0 else Balance.ENEMY_MAX_HEALTH
 	sight_range     = Balance.ENEMY_SIGHT_RANGE
 	attack_range    = Balance.ENEMY_ATTACK_RANGE
 	score_value     = Balance.ENEMY_SCORE_VALUE
@@ -71,10 +82,18 @@ func _physics_process(delta: float) -> void:
 	_shoot_cooldown = max(_shoot_cooldown - delta, 0.0)
 	_scan_timer     = max(_scan_timer     - delta, 0.0)
 
+	if _state == State.DEAD:
+		return
+
+	# Dummy targets bypass the normal AI entirely.
+	if dummy_mode:
+		_tick_flee()
+		return
+
 	# Periodically actively look for soldiers within sight_range. This lets
 	# enemies engage from much farther than the DetectionArea radius would
 	# allow, and re-acquire a target if one slipped away unnoticed.
-	if _scan_timer <= 0.0 and _state != State.DEAD:
+	if _scan_timer <= 0.0:
 		_scan_timer = Balance.ENEMY_TARGET_SCAN_PERIOD
 		_acquire_target()
 
@@ -83,6 +102,39 @@ func _physics_process(delta: float) -> void:
 		State.ALERT:   _tick_alert(delta)
 		State.ATTACK:  _tick_attack(delta)
 		State.DEAD:    pass
+
+# Dummy AI — flee from the nearest soldier; never fire. Used by tutorial
+# Puzzle 1 to give the player moving practice targets that don't shoot back.
+func _tick_flee() -> void:
+	var closest: Node2D = null
+	var closest_d: float = INF
+	for s in get_tree().get_nodes_in_group("soldiers"):
+		if not _is_soldier_engageable(s):
+			continue
+		var d: float = (s as Node2D).global_position.distance_to(global_position)
+		if d < closest_d:
+			closest_d = d
+			closest   = s
+	if closest == null:
+		velocity = Vector2.ZERO
+		move_and_slide()
+		_play_anim("idle")
+		return
+	# Aim 200 px away from the threat. NavigationAgent will steer around
+	# walls; if the agent says we're already there (e.g. cornered), just
+	# stand still rather than jittering against a wall.
+	var flee_dir: Vector2 = (global_position - closest.global_position).normalized()
+	nav_agent.target_position = global_position + flee_dir * 200.0
+	if nav_agent.is_navigation_finished():
+		velocity = Vector2.ZERO
+		move_and_slide()
+		_play_anim("idle")
+		return
+	var next: Vector2 = nav_agent.get_next_path_position()
+	var dir:  Vector2 = (next - global_position).normalized()
+	velocity = dir * move_speed * _water_speed_mult() * _slope_speed_mult(dir)
+	move_and_slide()
+	_play_walk_anim(dir)
 
 # =============================================================================
 # STATE TICKS

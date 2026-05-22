@@ -57,11 +57,26 @@ var _weapon: WeaponType = WeaponType.PISTOL
 var _grenade_ammo: int = 0   # populated from BalanceConfig in _ready()
 
 func cycle_weapon() -> void:
-	_weapon = (_weapon + 1) % WEAPON_COUNT as WeaponType
+	# Step forward until we land on an enabled weapon. Sacrifice is the only
+	# gateable one today (tutorial pre-Puzzle 5); the loop trivially returns
+	# on the first iteration when no gates are active.
+	for _i in WEAPON_COUNT:
+		_weapon = (_weapon + 1) % WEAPON_COUNT as WeaponType
+		if _is_weapon_enabled(_weapon):
+			return
 
 func set_weapon(idx: int) -> void:
-	if idx >= 0 and idx < WEAPON_COUNT:
-		_weapon = idx as WeaponType
+	if idx < 0 or idx >= WEAPON_COUNT:
+		return
+	var w := idx as WeaponType
+	if not _is_weapon_enabled(w):
+		return
+	_weapon = w
+
+func _is_weapon_enabled(w: WeaponType) -> bool:
+	if w == WeaponType.SACRIFICE and not GameManager.sacrifice_enabled:
+		return false
+	return true
 
 func get_weapon() -> WeaponType:
 	return _weapon
@@ -153,6 +168,7 @@ var _shoot_flash_timer: float = 0.0
 # Shoot / water / sacrifice / stuck / catch-up tuning all lives in Balance.
 # Variables below hold the per-instance state these systems use.
 var _bomb_target:     Vector2 = Vector2.ZERO
+var _bomb_timer:      float   = 0.0   # detonates in place if path is blocked
 var _stuck_timer:     float   = 0.0   # reset from BalanceConfig in _ready/move_to
 var _stuck_check_pos: Vector2 = Vector2.ZERO
 var _unstick_timer:   float   = 0.0
@@ -277,7 +293,13 @@ func fire_at(target: Vector2, bullet_aim: Vector2 = Vector2.ZERO) -> void:
 func arm_as_bomb(target: Vector2) -> void:
 	if _state == State.DEAD or _state == State.BOMB:
 		return
+	# Hard gate — tutorial pre-Puzzle 5 has Sacrifice locked even if a stray
+	# fire command somehow reaches here (HUD button is disabled but this is
+	# the only path that can actually spend a kid).
+	if not GameManager.sacrifice_enabled:
+		return
 	_bomb_target = target
+	_bomb_timer  = Balance.SACRIFICE_TIMEOUT
 	nav_agent.target_position = target
 	_state = State.BOMB
 	# Tint the sprite red so it's visually obvious this soldier is armed.
@@ -375,7 +397,7 @@ func _try_unstick() -> void:
 	var nudge := perp * 32.0
 	nav_agent.target_position = _move_target + nudge
 
-func _do_bomb_charge(_delta: float) -> void:
+func _do_bomb_charge(delta: float) -> void:
 	# Sprint directly toward the bomb target. On arrival OR if killed in transit
 	# (handled in take_damage), detonate.
 	if global_position.distance_to(_bomb_target) <= Balance.SACRIFICE_ARRIVAL_DIST:
@@ -383,6 +405,14 @@ func _do_bomb_charge(_delta: float) -> void:
 		return
 
 	if nav_agent.is_navigation_finished():
+		_explode()
+		return
+
+	# Safety net: if the target is unreachable (click landed inside a wall,
+	# nav graph has no path), the agent never marks navigation finished and
+	# the bomber would sprint forever. Detonate in place after SACRIFICE_TIMEOUT.
+	_bomb_timer -= delta
+	if _bomb_timer <= 0.0:
 		_explode()
 		return
 

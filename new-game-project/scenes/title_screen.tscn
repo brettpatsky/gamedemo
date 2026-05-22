@@ -729,47 +729,54 @@ theme_override_colors/font_color = Color(0.85, 0.85, 0.9, 1)
 theme_override_font_sizes/font_size = 22
 text = "Missions"
 
+[node name="ButtonTutorial" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
+theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
+text = "Mission 1 - The Trials"
+
 [node name="Button" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=983084128]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Mission 1 - Eliminate Enemies"
+text = "Mission 2 - Eliminate Enemies"
 
 [node name="Button2" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=34088522]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Misison 2 - Destroy Structures"
+text = "Mission 3 - Destroy Structures"
 
 [node name="Button3" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=882175669]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Mission 3 - Escort VIP"
+text = "Mission 4 - Escort VIP"
 
 [node name="Button4" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=1287536005]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Mission 4 - Escape"
+text = "Mission 5 - Escape"
 
 [node name="Button5" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=1287536006]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Mission 5 - The Ruined Catacombs"
+text = "Mission 6 - The Ruined Catacombs"
 
 [node name="Button6" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=1287536007]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Mission 6 - The Weeping Heart"
+text = "Mission 7 - The Weeping Heart"
 
 [node name="HelpButton" type="Button" parent="."]
 layout_mode = 1
@@ -870,12 +877,13 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
 text = "  Close  "
 
-[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button" to="." method="_on_mission_1_pressed"]
-[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button2" to="." method="_on_mission_2_pressed"]
-[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button3" to="." method="_on_mission_3_pressed"]
-[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button4" to="." method="_on_mission_4_pressed"]
-[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button5" to="." method="_on_mission_5_pressed"]
-[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button6" to="." method="_on_mission_6_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/ButtonTutorial" to="." method="_on_mission_1_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button" to="." method="_on_mission_2_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button2" to="." method="_on_mission_3_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button3" to="." method="_on_mission_4_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button4" to="." method="_on_mission_5_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button5" to="." method="_on_mission_6_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button6" to="." method="_on_mission_7_pressed"]
 [connection signal="pressed" from="HelpButton" to="." method="_on_help_pressed"]
 [connection signal="pressed" from="ExitButton" to="." method="_on_exit_pressed"]
 [connection signal="pressed" from="HelpPopup/CenterContainer/Card/Margin/VBox/CloseButton" to="." method="_on_help_close_pressed"]

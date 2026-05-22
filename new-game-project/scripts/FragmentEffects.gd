@@ -37,7 +37,7 @@ const FRAGMENT_METADATA := {
 	},
 }
 
-static func get_name(id: String) -> String:
+static func get_display_name(id: String) -> String:
 	var entry: Variant = FRAGMENT_METADATA.get(id, null)
 	if entry == null:
 		return id
@@ -70,7 +70,7 @@ static func apply_all() -> Array[String]:
 	var applied: Array[String] = []
 	for id in RunState.fragments:
 		if _apply_one(id):
-			applied.append(get_name(id))
+			applied.append(get_display_name(id))
 	return applied
 
 static func _apply_one(id: String) -> bool:
