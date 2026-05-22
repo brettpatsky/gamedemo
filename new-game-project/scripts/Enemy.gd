@@ -34,6 +34,11 @@ var bullet_damage:   int
 @export var dummy_mode: bool         = false
 @export var override_max_health: int = 0
 
+# Brief invulnerability after spawn — guards reinforcements spawned by a
+# structure destruction against grenades still in flight from the same
+# barrage. Default 0 means "no protection"; set BEFORE add_child to use it.
+@export var spawn_protection: float  = 0.0
+
 @onready var nav_agent:  NavigationAgent2D   = $NavigationAgent2D
 @onready var sprite:     AnimatedSprite2D    = $AnimatedSprite2D
 @onready var health_bar: ProgressBar         = $HealthBar
@@ -52,6 +57,23 @@ var _patrol_dest:      Vector2
 # Patrol/shoot/scan rates and water slowdown live in BalanceConfig (ENEMY_*).
 var _scan_timer: float = 0.0
 
+# Stuck tracking — escalates from "not moving" to a hard teleport along the
+# planned path after a few consecutive failed checks. Mirrors Soldier.gd's
+# escalation, scaled by Balance.ENEMY_STUCK_*.
+var _stuck_timer:     float   = 0.0
+var _stuck_check_pos: Vector2 = Vector2.ZERO
+var _stuck_strikes:   int     = 0
+
+# Strafing — picks a perpendicular direction to slide while in ATTACK.
+# Resets on each ATTACK entry by the timer hitting zero.
+var _strafe_timer: float   = 0.0
+var _strafe_dir:   Vector2 = Vector2.ZERO
+
+# Counts down from `spawn_protection` after _ready; while > 0, take_damage
+# is a no-op. Lets reinforcements appear inside an active grenade barrage
+# without being deleted before the player even sees them.
+var _spawn_protection_timer: float = 0.0
+
 func _ready() -> void:
 	add_to_group("enemies")
 	move_speed      = Balance.ENEMY_MOVE_SPEED
@@ -66,6 +88,7 @@ func _ready() -> void:
 	_health              = max_health
 	health_bar.max_value = max_health
 	health_bar.value     = _health
+	_spawn_protection_timer = spawn_protection
 
 	if bullet_scene == null:
 		bullet_scene = load("res://scenes/bullet.tscn")
@@ -79,15 +102,17 @@ func _ready() -> void:
 	_set_new_patrol_dest()
 
 func _physics_process(delta: float) -> void:
-	_shoot_cooldown = max(_shoot_cooldown - delta, 0.0)
-	_scan_timer     = max(_scan_timer     - delta, 0.0)
+	_shoot_cooldown          = max(_shoot_cooldown - delta, 0.0)
+	_scan_timer              = max(_scan_timer     - delta, 0.0)
+	_spawn_protection_timer  = max(_spawn_protection_timer - delta, 0.0)
 
 	if _state == State.DEAD:
 		return
 
 	# Dummy targets bypass the normal AI entirely.
 	if dummy_mode:
-		_tick_flee()
+		_tick_stuck_check(delta)
+		_tick_flee(delta)
 		return
 
 	# Periodically actively look for soldiers within sight_range. This lets
@@ -97,15 +122,29 @@ func _physics_process(delta: float) -> void:
 		_scan_timer = Balance.ENEMY_TARGET_SCAN_PERIOD
 		_acquire_target()
 
+	_tick_stuck_check(delta)
+
 	match _state:
 		State.PATROL:  _tick_patrol(delta)
 		State.ALERT:   _tick_alert(delta)
 		State.ATTACK:  _tick_attack(delta)
 		State.DEAD:    pass
 
-# Dummy AI — flee from the nearest soldier; never fire. Used by tutorial
-# Puzzle 1 to give the player moving practice targets that don't shoot back.
-func _tick_flee() -> void:
+# Dummy AI — wander around the room with a panic-flee bias when the squad
+# gets too close. Used by tutorial Puzzle 1 to give the player MOVING
+# practice targets. Pure-flee was broken: dummies sprinted to the farthest
+# wall, hit nav-finished, and stood still in corners.
+const _DUMMY_PANIC_DIST:        float = 180.0    # squad within this → flee
+const _DUMMY_REPICK_MIN:        float = 0.7
+const _DUMMY_REPICK_MAX:        float = 1.6
+const _DUMMY_WANDER_STEP_MIN:   float = 80.0
+const _DUMMY_WANDER_STEP_MAX:   float = 160.0
+const _DUMMY_FLEE_STEP_MIN:     float = 120.0
+const _DUMMY_FLEE_STEP_MAX:     float = 220.0
+var _dummy_repick_timer: float = 0.0
+
+func _tick_flee(delta: float) -> void:
+	# Find the nearest soldier so we know whether to panic-flee or just wander.
 	var closest: Node2D = null
 	var closest_d: float = INF
 	for s in get_tree().get_nodes_in_group("soldiers"):
@@ -115,16 +154,27 @@ func _tick_flee() -> void:
 		if d < closest_d:
 			closest_d = d
 			closest   = s
-	if closest == null:
-		velocity = Vector2.ZERO
-		move_and_slide()
-		_play_anim("idle")
-		return
-	# Aim 200 px away from the threat. NavigationAgent will steer around
-	# walls; if the agent says we're already there (e.g. cornered), just
-	# stand still rather than jittering against a wall.
-	var flee_dir: Vector2 = (global_position - closest.global_position).normalized()
-	nav_agent.target_position = global_position + flee_dir * 200.0
+
+	# Repick the wander destination on a timer OR when we've arrived. Without
+	# the timer reset on arrival, dummies sat at corners until the timer
+	# happened to fire; with both, they're constantly in motion.
+	_dummy_repick_timer -= delta
+	if _dummy_repick_timer <= 0.0 or nav_agent.is_navigation_finished():
+		_dummy_repick_timer = randf_range(_DUMMY_REPICK_MIN, _DUMMY_REPICK_MAX)
+		var target_pos: Vector2
+		if closest != null and closest_d < _DUMMY_PANIC_DIST:
+			# Squad is breathing down our neck — flee, but with a ±45° arc so
+			# different dummies don't all stampede in the same direction.
+			var flee_dir: Vector2 = (global_position - closest.global_position).normalized()
+			flee_dir = flee_dir.rotated(randf_range(-PI * 0.25, PI * 0.25))
+			target_pos = global_position + flee_dir * randf_range(_DUMMY_FLEE_STEP_MIN, _DUMMY_FLEE_STEP_MAX)
+		else:
+			# No immediate threat — just wander to keep the player aiming.
+			var angle: float = randf() * TAU
+			var step:  float = randf_range(_DUMMY_WANDER_STEP_MIN, _DUMMY_WANDER_STEP_MAX)
+			target_pos = global_position + Vector2(cos(angle), sin(angle)) * step
+		nav_agent.target_position = target_pos
+
 	if nav_agent.is_navigation_finished():
 		velocity = Vector2.ZERO
 		move_and_slide()
@@ -163,12 +213,25 @@ func _tick_alert(_delta: float) -> void:
 		_fire(dir)
 		_shoot_cooldown = Balance.ENEMY_SHOOT_COOLDOWN
 
-func _tick_attack(_delta: float) -> void:
+func _tick_attack(delta: float) -> void:
 	if not _is_target_engageable():
 		_target = null
 		_state = State.PATROL
 		return
-	velocity = Vector2.ZERO
+	# Pick a fresh perpendicular strafe direction every STRAFE_MIN..MAX_TIME
+	# seconds, randomly flipping sides. Replaces the old "stand still and
+	# trade shots" feel with actual movement during the firefight.
+	_strafe_timer -= delta
+	if _strafe_timer <= 0.0:
+		_strafe_timer = randf_range(Balance.ENEMY_STRAFE_MIN_TIME, Balance.ENEMY_STRAFE_MAX_TIME)
+		var to_target: Vector2 = _target.global_position - global_position
+		var perp: Vector2 = Vector2(-to_target.y, to_target.x)
+		if perp.length() > 0.01:
+			perp = perp.normalized()
+			if randf() < 0.5:
+				perp = -perp
+			_strafe_dir = perp
+	velocity = _strafe_dir * move_speed * Balance.ENEMY_STRAFE_SPEED_MULT * _water_speed_mult()
 	move_and_slide()
 	var dir: Vector2 = (_target.global_position - global_position).normalized()
 	if dir.x != 0:
@@ -198,6 +261,10 @@ func _acquire_target() -> void:
 		_target = best
 		if _state == State.PATROL:
 			_state = State.ALERT
+			# Wake nearby patrolling enemies so the squad doesn't get to
+			# pick them off one at a time. Eliminates the trickle and
+			# replaces it with proper waves.
+			_broadcast_alert()
 
 # Downed soldiers are still in the "soldiers" group (they remain on the field
 # so they can be revived), but enemies must not target them.
@@ -285,6 +352,11 @@ func _play_anim(anim_name: String) -> void:
 func take_damage(amount: int) -> void:
 	if _state == State.DEAD:
 		return
+	# Reinforcements get a brief invulnerability so an in-flight grenade or
+	# bullet from the salvo that destroyed their parent structure doesn't
+	# delete them before the player even sees them appear.
+	if _spawn_protection_timer > 0.0:
+		return
 	_health -= amount
 	health_bar.value = _health
 	if _health <= 0:
@@ -315,6 +387,66 @@ func _die() -> void:
 	tween.tween_property(self, "modulate:a", 0.0, 2.0)
 	await tween.finished
 	queue_free()
+
+# =============================================================================
+# Stuck-recovery + alert broadcast
+# =============================================================================
+
+# Runs every physics frame. Watches movement progress whenever the agent has
+# an unfinished path; after Balance.ENEMY_STUCK_HARD_STRIKES consecutive
+# checks of no real movement, teleports along the path to unwedge.
+func _tick_stuck_check(delta: float) -> void:
+	if nav_agent.is_navigation_finished():
+		_stuck_strikes = 0
+		_stuck_check_pos = global_position
+		return
+	_stuck_timer -= delta
+	if _stuck_timer > 0.0:
+		return
+	_stuck_timer = Balance.ENEMY_STUCK_CHECK_INTERVAL
+	var moved: bool = global_position.distance_to(_stuck_check_pos) >= Balance.ENEMY_STUCK_THRESHOLD
+	_stuck_check_pos = global_position
+	if moved:
+		_stuck_strikes = 0
+		return
+	_stuck_strikes += 1
+	if _stuck_strikes >= Balance.ENEMY_STUCK_HARD_STRIKES:
+		_hard_unstick()
+		_stuck_strikes = 0
+
+# Final-resort unstick: snap toward the next path waypoint. Capped at one
+# tile so it reads as a duck-around rather than a teleport.
+func _hard_unstick() -> void:
+	if nav_agent.is_navigation_finished():
+		return
+	var next: Vector2 = nav_agent.get_next_path_position()
+	var diff: Vector2 = next - global_position
+	if diff.length() < 1.0:
+		return
+	global_position += diff.normalized() * minf(diff.length(), 64.0)
+
+# Called when this enemy first spots the squad: nudges patrolling neighbours
+# inside ENEMY_ALERT_PULSE_RADIUS into ALERT focusing the same target.
+func _broadcast_alert() -> void:
+	if _target == null:
+		return
+	var radius_sq: float = Balance.ENEMY_ALERT_PULSE_RADIUS * Balance.ENEMY_ALERT_PULSE_RADIUS
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e == self or not is_instance_valid(e):
+			continue
+		var d_sq: float = (e as Node2D).global_position.distance_squared_to(global_position)
+		if d_sq <= radius_sq and e.has_method("alert_to"):
+			e.alert_to(_target)
+
+# Receiver for a neighbour's alert pulse. Only pulls in patrolling enemies;
+# anyone already ALERT/ATTACK keeps their existing target.
+func alert_to(target: Node2D) -> void:
+	if _state != State.PATROL:
+		return
+	if not _is_soldier_engageable(target):
+		return
+	_target = target
+	_state = State.ALERT
 
 # =============================================================================
 # SIGNAL HANDLERS

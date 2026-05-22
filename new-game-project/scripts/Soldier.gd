@@ -152,6 +152,30 @@ func add_speed_bonus(percent: float) -> void:
 	if nav_agent:
 		nav_agent.max_speed = move_speed
 
+# Per-instance bonus state. Reset implicitly each mission because soldiers
+# are re-instantiated when Main reloads the scene. FragmentEffects.apply_all
+# bumps these in _ready order at mission start.
+var damage_bonus:     int   = 0      # +damage on every bullet this kid fires
+var range_mult:       float = 1.0    # multiplied into bullet max_distance
+var cooldown_mult:    float = 1.0    # multiplied into fire cooldowns (< 1 = faster)
+var damage_reduction: int   = 0      # subtracted from incoming damage
+var water_immune:     bool  = false  # ignores water speed slowdown
+
+func add_damage_bonus(delta: int) -> void:
+	damage_bonus += delta
+
+func add_range_mult(percent: float) -> void:
+	range_mult *= (1.0 + percent)
+
+func multiply_cooldown(multiplier: float) -> void:
+	cooldown_mult *= multiplier
+
+func add_damage_reduction(delta: int) -> void:
+	damage_reduction += delta
+
+func enable_water_immunity() -> void:
+	water_immune = true
+
 # Called by Bullet.gd when a bullet fired by this soldier successfully hits
 # a damageable target. Bumps the shared accuracy counter.
 func on_bullet_hit(_target: Node2D) -> void:
@@ -176,6 +200,7 @@ var _bomb_target:     Vector2 = Vector2.ZERO
 var _bomb_timer:      float   = 0.0   # detonates in place if path is blocked
 var _stuck_timer:     float   = 0.0   # reset from BalanceConfig in _ready/move_to
 var _stuck_check_pos: Vector2 = Vector2.ZERO
+var _stuck_strikes:   int     = 0     # ≥ HARD_STRIKES → hard-unstick teleport
 var _unstick_timer:   float   = 0.0
 var _unstick_dir:     Vector2 = Vector2.ZERO
 
@@ -270,6 +295,7 @@ func move_to(destination: Vector2) -> void:
 	nav_agent.target_position = destination
 	_stuck_timer     = Balance.SOLDIER_STUCK_CHECK_INTERVAL
 	_stuck_check_pos = global_position
+	_stuck_strikes   = 0
 	_state = State.MOVING
 
 func halt() -> void:
@@ -316,7 +342,12 @@ func take_damage(amount: int) -> void:
 		return
 	if GameManager.god_mode:
 		return
-	_health -= amount
+	# Snack Bar (fragment) soaks `damage_reduction` HP off each hit, minimum 0
+	# so trivial bullets become no-ops rather than negative damage = heal.
+	var net: int = maxi(amount - damage_reduction, 0)
+	if net <= 0:
+		return
+	_health -= net
 	health_bar.value = _health
 	if _health <= 0:
 		if _state == State.BOMB:
@@ -345,12 +376,22 @@ func _do_move(delta: float) -> void:
 	_unstick_timer = max(_unstick_timer - delta, 0.0)
 
 	# Stuck detection: if we haven't moved Balance.SOLDIER_STUCK_THRESHOLD pixels in the last
-	# Balance.SOLDIER_STUCK_CHECK_INTERVAL seconds, sidestep to escape corners of rocks/trees.
+	# Balance.SOLDIER_STUCK_CHECK_INTERVAL seconds, sidestep to escape corners
+	# of rocks/trees. After SOLDIER_STUCK_HARD_STRIKES consecutive failed
+	# checks (≈3 s) escalate to a hard-unstick teleport along the planned path.
 	_stuck_timer -= delta
 	if _stuck_timer <= 0.0:
 		_stuck_timer = Balance.SOLDIER_STUCK_CHECK_INTERVAL
-		if _unstick_timer <= 0.0 and global_position.distance_to(_stuck_check_pos) < Balance.SOLDIER_STUCK_THRESHOLD:
-			_try_unstick()
+		var moved: bool = global_position.distance_to(_stuck_check_pos) >= Balance.SOLDIER_STUCK_THRESHOLD
+		if moved:
+			_stuck_strikes = 0
+		else:
+			_stuck_strikes += 1
+			if _unstick_timer <= 0.0:
+				_try_unstick()
+			if _stuck_strikes >= Balance.SOLDIER_STUCK_HARD_STRIKES:
+				_hard_unstick()
+				_stuck_strikes = 0
 		_stuck_check_pos = global_position
 
 	var is_unsticking := _unstick_timer > 0.0
@@ -401,6 +442,20 @@ func _try_unstick() -> void:
 	# Also nudge the nav target slightly so the path re-evaluates on the next tick.
 	var nudge := perp * 32.0
 	nav_agent.target_position = _move_target + nudge
+
+# Final-resort unstick: snap the soldier toward the next waypoint along the
+# planned path. Breaks RVO-deadlocks and corner-wedges that the sidestep
+# nudge can't escape. Caps the jump at one tile so it reads as "ducking
+# around the obstacle" rather than a teleport.
+func _hard_unstick() -> void:
+	if nav_agent.is_navigation_finished():
+		return
+	var next: Vector2 = nav_agent.get_next_path_position()
+	var diff: Vector2 = next - global_position
+	if diff.length() < 1.0:
+		return
+	global_position += diff.normalized() * minf(diff.length(), 64.0)
+	_unstick_timer = 0.0   # cancel any in-flight sidestep so we don't double-nudge
 
 func _do_bomb_charge(delta: float) -> void:
 	# Sprint directly toward the bomb target. On arrival OR if killed in transit
@@ -466,9 +521,9 @@ func _do_shoot() -> void:
 				_weapon = WeaponType.PISTOL
 				return
 			GameManager.rifle_ammo_pool -= 1
-			_shoot_cooldown = Balance.SOLDIER_RIFLE_COOLDOWN
+			_shoot_cooldown = Balance.SOLDIER_RIFLE_COOLDOWN * cooldown_mult
 		WeaponType.PISTOL:
-			_shoot_cooldown   = Balance.SOLDIER_PISTOL_COOLDOWN
+			_shoot_cooldown   = Balance.SOLDIER_PISTOL_COOLDOWN * cooldown_mult
 		_:
 			return
 
@@ -486,10 +541,15 @@ func _do_shoot() -> void:
 		get_viewport().add_child(bullet)
 		bullet.global_position = global_position
 		bullet.initialise(dir, self)
+		# damage_bonus and range_mult come from FragmentEffects — Lost Marble
+		# bumps damage, Brother's Cap bumps range. Both stack with whatever
+		# base values the kid's tscn (or BalanceConfig) provides.
 		if _weapon == WeaponType.AUTO:
-			bullet.set_stats(rifle_damage, rifle_speed, rifle_distance, bullet_color)
+			bullet.set_stats(rifle_damage + damage_bonus, rifle_speed,
+					rifle_distance * range_mult, bullet_color)
 		else:
-			bullet.set_stats(pistol_damage, pistol_speed, pistol_distance, bullet_color)
+			bullet.set_stats(pistol_damage + damage_bonus, pistol_speed,
+					pistol_distance * range_mult, bullet_color)
 		GameManager.record_shot(slot_index)
 
 func _throw_grenade(target: Vector2) -> void:
@@ -517,7 +577,10 @@ func _throw_grenade(target: Vector2) -> void:
 
 # ---------------------------------------------------------------------------
 # Returns a speed multiplier based on the tile the soldier is standing on.
+# Swimming Goggles (fragment) bypasses the water slowdown entirely.
 func _water_speed_mult() -> float:
+	if water_immune:
+		return 1.0
 	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
 	if map_gen and map_gen.has_method("is_water_at") and map_gen.is_water_at(global_position):
 		return Balance.SOLDIER_WATER_SPEED_MULT

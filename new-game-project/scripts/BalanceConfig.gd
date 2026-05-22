@@ -46,10 +46,13 @@ const SACRIFICE_FX_TIME:      float = 0.65
 # instead of running forever.
 const SACRIFICE_TIMEOUT:      float = 6.0
 
-# Stuck detection / sidestep unstick.
+# Stuck detection / sidestep unstick. The sidestep handles most short
+# wedges; after STUCK_HARD_STRIKES consecutive failed checks (≈3 s with
+# default 0.5 s interval) we hard-unstick by teleporting along the path.
 const SOLDIER_STUCK_CHECK_INTERVAL: float = 0.5
 const SOLDIER_STUCK_THRESHOLD:      float = 8.0
 const SOLDIER_UNSTICK_DURATION:     float = 0.35
+const SOLDIER_STUCK_HARD_STRIKES:   int   = 6
 
 # Rubberbanding (catch-up sprint). Stragglers smoothly ramp from base speed at
 # CATCHUP_NEAR distance from squad centroid to full bonus at CATCHUP_FAR.
@@ -81,6 +84,29 @@ const ENEMY_PATROL_INTERVAL:    float = 3.0
 const ENEMY_SHOOT_COOLDOWN:     float = 0.45
 const ENEMY_TARGET_SCAN_PERIOD: float = 0.4
 const ENEMY_WATER_SPEED_MULT:   float = 0.4
+
+# Strafing in ATTACK — sliding sideways while shooting instead of standing
+# still. Picks a new direction every STRAFE_MIN..MAX_TIME seconds.
+const ENEMY_STRAFE_MIN_TIME:    float = 0.7
+const ENEMY_STRAFE_MAX_TIME:    float = 1.8
+const ENEMY_STRAFE_SPEED_MULT:  float = 0.55
+
+# Alert pulse — when an enemy first sees the squad, nearby patrolling
+# enemies snap into ALERT too. Eliminates the trickle of one-at-a-time
+# engagements when the squad crosses into a populated zone.
+const ENEMY_ALERT_PULSE_RADIUS: float = 380.0
+
+# Stuck detection (same shape as the soldier version).
+const ENEMY_STUCK_CHECK_INTERVAL: float = 0.5
+const ENEMY_STUCK_THRESHOLD:      float = 6.0
+const ENEMY_STUCK_HARD_STRIKES:   int   = 6
+
+# -----------------------------------------------------------------------------
+# Escort NPC — stuck detection so the VIP doesn't snag forever on a tree.
+# -----------------------------------------------------------------------------
+const NPC_STUCK_CHECK_INTERVAL: float = 0.5
+const NPC_STUCK_THRESHOLD:      float = 6.0
+const NPC_STUCK_HARD_STRIKES:   int   = 6
 
 # -----------------------------------------------------------------------------
 # Bullet — defaults used by enemy bullets and as a fallback before a soldier

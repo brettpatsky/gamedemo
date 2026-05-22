@@ -39,6 +39,31 @@ const FRAGMENT_METADATA := {
 		"name":        "Bus Pass",
 		"description": "+15% squad move speed each mission",
 	},
+	# --- Picker-only fragments (no in-mission placement) -------------------
+	"friendship_bracelet": {
+		"name":        "Friendship Bracelet",
+		"description": "Revives don't consume potions",
+	},
+	"swimming_goggles": {
+		"name":        "Swimming Goggles",
+		"description": "Kids ignore the water slowdown",
+	},
+	"dads_watch": {
+		"name":        "Dad's Watch",
+		"description": "Weapons cool down 25% faster",
+	},
+	"snack_bar": {
+		"name":        "Snack Bar",
+		"description": "All incoming damage reduced by 1",
+	},
+	"lost_marble": {
+		"name":        "Lost Marble",
+		"description": "Wand and staff shots deal +1 damage",
+	},
+	"brothers_cap": {
+		"name":        "Brother's Cap",
+		"description": "+25% wand and staff range",
+	},
 }
 
 # Mission-N → in-mission fragment mapping. The artifact placed in each
@@ -121,6 +146,34 @@ static func _apply_one(id: String) -> bool:
 			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
 				if s.has_method("add_speed_bonus"):
 					s.add_speed_bonus(0.15)
+			return true
+		"friendship_bracelet":
+			GameManager.free_revives = true
+			return true
+		"swimming_goggles":
+			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
+				if s.has_method("enable_water_immunity"):
+					s.enable_water_immunity()
+			return true
+		"dads_watch":
+			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
+				if s.has_method("multiply_cooldown"):
+					s.multiply_cooldown(0.75)   # 25% faster fire rate
+			return true
+		"snack_bar":
+			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
+				if s.has_method("add_damage_reduction"):
+					s.add_damage_reduction(1)
+			return true
+		"lost_marble":
+			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
+				if s.has_method("add_damage_bonus"):
+					s.add_damage_bonus(1)
+			return true
+		"brothers_cap":
+			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
+				if s.has_method("add_range_mult"):
+					s.add_range_mult(0.25)
 			return true
 		_:
 			push_warning("[FragmentEffects] Unknown fragment id: %s" % id)

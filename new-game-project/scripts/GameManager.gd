@@ -51,6 +51,10 @@ var rifle_ammo_pool: int = RIFLE_AMMO_POOL_MAX
 var sacrifice_enabled: bool = true
 var revive_enabled:    bool = true
 
+# Friendship Bracelet (fragment) — revives still need at least one potion
+# to "exist" but don't consume it. Reset per mission in reset_squad_stats.
+var free_revives: bool = false
+
 func set_sacrifice_enabled(value: bool) -> void:
 	if sacrifice_enabled == value:
 		return
@@ -84,6 +88,8 @@ func reset_squad_stats(size: int) -> void:
 	# locks them again in Main.gd right after this call.
 	set_sacrifice_enabled(true)
 	set_revive_enabled(true)
+	# Friendship Bracelet (fragment) re-enables free_revives in FragmentEffects.
+	free_revives = false
 
 func record_shot(slot: int) -> void:
 	if slot >= 0 and slot < soldier_shots.size():
@@ -136,12 +142,15 @@ func on_soldier_revived(soldier) -> void:
 			soldier_alive[slot] = true
 	emit_signal("soldier_revived", soldier)
 
-# Returns true if a potion was available and consumed.
+# Returns true if a revive could be spent. Normally consumes one potion;
+# with the Friendship Bracelet fragment active the count is preserved
+# (free_revives = true) — the visible counter stays the same.
 func use_revive() -> bool:
 	if revive_potions <= 0:
 		return false
-	revive_potions -= 1
-	emit_signal("revives_changed", revive_potions)
+	if not free_revives:
+		revive_potions -= 1
+		emit_signal("revives_changed", revive_potions)
 	return true
 
 # ---------------------------------------------------------------------------

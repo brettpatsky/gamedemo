@@ -246,11 +246,10 @@ func _select_group(group: int) -> void:
 	if not _alive_group_ids().has(group):
 		return
 	_active_group = group
-	# Halt soldiers in groups that are no longer active so they hold position
-	# and don't collide with the newly commanded group.
-	for s in soldiers:
-		if s.group_id != _active_group:
-			s.halt()
+	# Deliberately do NOT halt the other groups here. They keep marching toward
+	# whatever destination they were last ordered to — that's the whole point
+	# of multi-group control. (Soldiers don't physically block each other, so
+	# no risk of two groups jamming when they cross paths.)
 	_refresh_group_state()
 	_update_group_hud()
 

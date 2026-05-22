@@ -23,6 +23,13 @@ var _dead:   bool = false
 var _freed:  bool = false   # set true once a sheltering wall is destroyed
 var _joined: bool = false   # set true the first time we reach the squad
 
+# Stuck-recovery — same escalation pattern as Soldier/Enemy. The VIP getting
+# wedged forever was the most disruptive case because the mission stalls.
+const Balance = preload("res://scripts/BalanceConfig.gd")
+var _stuck_timer:     float   = 0.0
+var _stuck_check_pos: Vector2 = Vector2.ZERO
+var _stuck_strikes:   int     = 0
+
 @onready var nav_agent:  NavigationAgent2D = $NavigationAgent2D
 @onready var health_bar: ProgressBar       = $HealthBar
 
@@ -35,7 +42,7 @@ func _ready() -> void:
 	queue_redraw()
 	await get_tree().physics_frame
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if _dead:
 		return
 	# Stay put inside the shelter until the squad blows open a wall.
@@ -53,12 +60,44 @@ func _physics_process(_delta: float) -> void:
 		elif not _joined:
 			_joined = true
 			joined_squad.emit()
+	_tick_stuck_check(delta)
 	if not nav_agent.is_navigation_finished():
 		var next: Vector2 = nav_agent.get_next_path_position()
 		velocity = (next - global_position).normalized() * MOVE_SPEED
 	else:
 		velocity = Vector2.ZERO
 	move_and_slide()
+
+# Same stuck-recovery escalation as Soldier/Enemy. Important here because a
+# wedged VIP halts the mission outright — without the hard-unstick the only
+# fix was to retry the level.
+func _tick_stuck_check(delta: float) -> void:
+	if nav_agent.is_navigation_finished():
+		_stuck_strikes = 0
+		_stuck_check_pos = global_position
+		return
+	_stuck_timer -= delta
+	if _stuck_timer > 0.0:
+		return
+	_stuck_timer = Balance.NPC_STUCK_CHECK_INTERVAL
+	var moved: bool = global_position.distance_to(_stuck_check_pos) >= Balance.NPC_STUCK_THRESHOLD
+	_stuck_check_pos = global_position
+	if moved:
+		_stuck_strikes = 0
+		return
+	_stuck_strikes += 1
+	if _stuck_strikes >= Balance.NPC_STUCK_HARD_STRIKES:
+		_hard_unstick()
+		_stuck_strikes = 0
+
+func _hard_unstick() -> void:
+	if nav_agent.is_navigation_finished():
+		return
+	var next: Vector2 = nav_agent.get_next_path_position()
+	var diff: Vector2 = next - global_position
+	if diff.length() < 1.0:
+		return
+	global_position += diff.normalized() * minf(diff.length(), 64.0)
 
 func _nearest_soldier() -> Node2D:
 	var best: Node2D = null

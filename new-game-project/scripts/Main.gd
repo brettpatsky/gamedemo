@@ -325,6 +325,11 @@ func _spawn_enemies_at(world_pos: Vector2, count: int) -> void:
 		# 96px radius keeps every enemy clear of the 80x80 structure collision box.
 		var angle := (TAU / count) * i
 		var offset := Vector2(cos(angle), sin(angle)) * 96.0
+		# Brief invulnerability so any other grenades from the salvo that
+		# destroyed the structure don't insta-kill the reinforcements before
+		# the player even sees them (spawn ring is inside grenade radius).
+		if "spawn_protection" in enemy:
+			enemy.spawn_protection = 1.0
 		_subviewport.add_child(enemy)
 		enemy.global_position = world_pos + offset
 	GameManager.enemies_alive += count
