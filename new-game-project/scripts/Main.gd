@@ -99,6 +99,12 @@ func _ready() -> void:
 	var seed_to_use: int = map_seed if map_seed != 0 else randi()
 	map_gen.generate(seed_to_use)
 
+	# Procedural-map missions (2-4) get an ambient atmosphere layer: weather,
+	# bird flyovers, and a handful of wandering critters. Tutorial / mazes /
+	# boss skip this — they're either too tight (mazes), too narratively
+	# loaded (boss), or have their own scripted feel (tutorial).
+	_spawn_ambient_effects()
+
 	GameManager.soldiers_alive = 0
 	GameManager.reset_squad_stats(effective_squad_size)
 	# Tutorial mission locks Sacrifice and Revive until the player solves
@@ -172,6 +178,26 @@ func _apply_boss_loadout() -> void:
 	# player issues their first fire order.
 	if squad_ctrl and squad_ctrl.has_method("_update_ammo_hud"):
 		squad_ctrl._update_ammo_hud()
+
+# ---------------------------------------------------------------------------
+# Adds an AmbientLayer to the SubViewport on procedural-map missions so they
+# have weather + birds + wandering critters. Purely visual; no gameplay
+# effect. Tutorial / mazes / boss skip this entirely.
+func _spawn_ambient_effects() -> void:
+	if GameManager.current_level < 2 or GameManager.current_level > 4:
+		return
+	# Randomise per mission load so the same level feels different across
+	# runs. Four options, uniform distribution — tweak the weights here if
+	# any one starts to feel over-represented in playtests.
+	var pool: Array[AmbientLayer.Weather] = [
+		AmbientLayer.Weather.CLEAR,
+		AmbientLayer.Weather.RAIN,
+		AmbientLayer.Weather.SNOW,
+		AmbientLayer.Weather.FOG,
+	]
+	var layer := AmbientLayer.new()
+	layer.weather = pool[randi() % pool.size()]
+	_subviewport.add_child(layer)
 
 # ---------------------------------------------------------------------------
 # Generic hand-authored level swap (used by levels 1, 5, 6, and 7). The loaded
