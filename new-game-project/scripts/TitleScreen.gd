@@ -40,16 +40,20 @@ func _update_bio_cards() -> void:
 		# reads the current squad at a glance.
 		card.modulate = Color(1, 1, 1, 1) if RunState.kids_alive[i] \
 				else Color(0.4, 0.4, 0.4, 0.55)
-		var stats := _read_soldier_stats(SOLDIER_SCENES[i])
-		var avg_dmg := (float(stats["pistol_damage"]) + float(stats["rifle_damage"])) * 0.5
-		var avg_spd := (float(stats["pistol_speed"])    + float(stats["rifle_speed"]))    * 0.5
-		var avg_rng := (float(stats["pistol_distance"]) + float(stats["rifle_distance"])) * 0.5
+		var avg_dmg := (float(Balance.SOLDIER_PISTOL_DAMAGE_PER_SLOT[i]) \
+				+ float(Balance.SOLDIER_RIFLE_DAMAGE_PER_SLOT[i])) * 0.5
+		var avg_spd := (Balance.SOLDIER_PISTOL_SPEED_PER_SLOT[i] \
+				+ Balance.SOLDIER_RIFLE_SPEED_PER_SLOT[i]) * 0.5
+		var avg_rng := (Balance.SOLDIER_PISTOL_DISTANCE_PER_SLOT[i] \
+				+ Balance.SOLDIER_RIFLE_DISTANCE_PER_SLOT[i]) * 0.5
 
 		var name_lbl := card.get_node_or_null("Margin/VBox/Header/Name") as Label
 		if name_lbl:
-			name_lbl.add_theme_color_override("font_color", stats["bullet_color"])
+			name_lbl.add_theme_color_override("font_color",
+					Balance.SOLDIER_BULLET_COLOR_PER_SLOT[i])
 
-		_set_bar(card, "Margin/VBox/HPRow/HPBar",  float(stats["max_health"]), HP_MAX)
+		_set_bar(card, "Margin/VBox/HPRow/HPBar",
+				float(Balance.SOLDIER_MAX_HEALTH_PER_SLOT[i]), HP_MAX)
 		_set_bar(card, "Margin/VBox/DMGRow/DMGBar", avg_dmg, DMG_MAX)
 		_set_bar(card, "Margin/VBox/SPDRow/SPDBar", avg_spd, SPD_MAX)
 		_set_bar(card, "Margin/VBox/RNGRow/RNGBar", avg_rng, RNG_MAX)
@@ -59,34 +63,6 @@ func _set_bar(card: Control, rel_path: String, value: float, max_val: float) -> 
 	if bar:
 		bar.max_value = max_val
 		bar.value     = clamp(value, 0.0, max_val)
-
-# Instantiate off-tree to read @export values without triggering _ready.
-#
-# Soldier.gd's _ready falls back to Balance defaults whenever an @export stat
-# is left at its zero default (the maths in Soldier.gd is `if X <= 0: X = BalanceX`).
-# We mirror that fallback here so the bio cards reflect what each kid actually
-# plays as in-game — without it, soldier_2 / soldier_5 (which only override the
-# speed/range/HP exports, not damage) showed empty DMG bars.
-func _read_soldier_stats(path: String) -> Dictionary:
-	var defaults := {
-		"max_health":      Balance.SOLDIER_MAX_HEALTH,
-		"pistol_damage":   Balance.SOLDIER_PISTOL_DAMAGE,
-		"rifle_damage":    Balance.SOLDIER_RIFLE_DAMAGE,
-		"pistol_speed":    Balance.SOLDIER_PISTOL_SPEED,
-		"rifle_speed":     Balance.SOLDIER_RIFLE_SPEED,
-		"pistol_distance": Balance.SOLDIER_PISTOL_DISTANCE,
-		"rifle_distance":  Balance.SOLDIER_RIFLE_DISTANCE,
-		"bullet_color":    Color.YELLOW,
-	}
-	var scene: PackedScene = load(path)
-	if scene == null:
-		return defaults
-	var inst := scene.instantiate()
-	for key in defaults.keys():
-		if key in inst:
-			defaults[key] = inst.get(key)
-	inst.free()
-	return defaults
 
 # ---------------------------------------------------------------------------
 # Each mission button delegates to a single helper so they all behave

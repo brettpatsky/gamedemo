@@ -15,6 +15,9 @@ extends Node
 # -----------------------------------------------------------------------------
 # Soldier — movement, health, weapons, sacrifice bomb, catch-up, auto-defend
 # -----------------------------------------------------------------------------
+# Squad-wide fallbacks. Soldier.gd uses these only when slot_index < 0 (debug
+# / standalone scenes). Normal missions go through the *_PER_SLOT tables
+# below so every kid's stats are explicit and tunable in one file.
 const SOLDIER_MOVE_SPEED:       float = 215.0
 const SOLDIER_MAX_HEALTH:       int   = 3
 const SOLDIER_WATER_SPEED_MULT: float = 0.4
@@ -30,6 +33,33 @@ const SOLDIER_RIFLE_DAMAGE:   int   = 1
 const SOLDIER_RIFLE_SPEED:    float = 900.0
 const SOLDIER_RIFLE_DISTANCE: float = 2000.0
 const SOLDIER_RIFLE_COOLDOWN: float = 0.12
+
+# -----------------------------------------------------------------------------
+# Per-soldier stat tables. Indexed by slot_index (0 = soldier_1.tscn through
+# 5 = soldier_6.tscn — see TitleScreen.SOLDIER_SCENES for the canonical order).
+# Soldier.gd reads from these in _ready() whenever slot_index >= 0, which is
+# every spawn from Main.gd. The .tscn files no longer carry stat overrides —
+# tweak balance for an individual kid here.
+# -----------------------------------------------------------------------------
+const SOLDIER_MAX_HEALTH_PER_SLOT:      Array[int]   = [8,     6,     2,     5,     2,     3]
+const SOLDIER_MOVE_SPEED_PER_SLOT:      Array[float] = [215.0, 215.0, 215.0, 215.0, 215.0, 215.0]
+const SOLDIER_PISTOL_DAMAGE_PER_SLOT:   Array[int]   = [4,     1,     2,     2,     1,     1]
+const SOLDIER_PISTOL_SPEED_PER_SLOT:    Array[float] = [900.0, 650.0, 800.0, 650.0, 900.0, 700.0]
+const SOLDIER_PISTOL_DISTANCE_PER_SLOT: Array[float] = [1800.0, 700.0, 1400.0, 800.0, 800.0, 1000.0]
+const SOLDIER_RIFLE_DAMAGE_PER_SLOT:    Array[int]   = [5,     1,     2,     2,     1,     3]
+const SOLDIER_RIFLE_SPEED_PER_SLOT:     Array[float] = [1100.0, 850.0, 950.0, 850.0, 1000.0, 1100.0]
+const SOLDIER_RIFLE_DISTANCE_PER_SLOT:  Array[float] = [2500.0, 900.0, 1600.0, 1000.0, 1000.0, 2000.0]
+# Bullet colour is shown on the kid's bio-card name and on the autodefend
+# tracer. Player-controlled fire uses the kid's element colour instead
+# (see Elements.color_of).
+const SOLDIER_BULLET_COLOR_PER_SLOT: Array[Color] = [
+	Color(1.0,  0.95, 0.2),   # slot 0 — soldier_1 — yellow
+	Color(1.0,  1.0,  1.0),   # slot 1 — soldier_2 — white
+	Color(0.3,  0.9,  1.0),   # slot 2 — soldier_3 — cyan
+	Color(1.0,  0.55, 0.1),   # slot 3 — soldier_4 — orange
+	Color(0.3,  1.0,  0.4),   # slot 4 — soldier_5 — green
+	Color(1.0,  0.3,  0.9),   # slot 5 — soldier_6 — magenta
+]
 
 # Grenade — per-soldier ammo, slow throw.
 const SOLDIER_GRENADE_AMMO_MAX: int   = 5

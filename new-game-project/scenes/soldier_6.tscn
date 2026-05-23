@@ -5,10 +5,6 @@
 
 [node name="Soldier6" unique_id=508779960 instance=ExtResource("1_base")]
 is_female = true
-pistol_distance = 1000.0
-rifle_damage = 3
-rifle_speed = 1100.0
-bullet_color = Color(1, 0.3, 0.9, 1)
 
 [node name="GunShotAudio" parent="." index="5" unique_id=1385984911]
 stream = ExtResource("2_eg86k")

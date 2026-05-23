@@ -4,14 +4,6 @@
 [ext_resource type="AudioStream" uid="uid://bfudp53wlf8gd" path="res://resources/audio/sfx/laser4.ogg" id="2_y7ek6"]
 
 [node name="Soldier4" unique_id=1017134846 instance=ExtResource("1_base")]
-max_health = 5
-pistol_damage = 2
-pistol_speed = 650.0
-pistol_distance = 800.0
-rifle_damage = 2
-rifle_speed = 850.0
-rifle_distance = 1000.0
-bullet_color = Color(1, 0.55, 0.1, 1)
 
 [node name="GunShotAudio" parent="." index="5" unique_id=1385984911]
 stream = ExtResource("2_y7ek6")

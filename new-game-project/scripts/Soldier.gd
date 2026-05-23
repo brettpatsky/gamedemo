@@ -3,36 +3,33 @@ extends CharacterBody2D
 const Balance = preload("res://scripts/BalanceConfig.gd")
 
 # -----------------------------------------------------------------------------
-# Per-scene customisation — these vary by soldier slot (sprites, bullet colour)
-# and stay @export so each soldier_X.tscn can override them in the editor.
-# Stat numbers (HP, speed, weapon damage) live in Balance.gd.
+# Per-scene customisation — only visual / asset selections still live on the
+# .tscn. All numeric balance (HP, speed, weapon damage, bullet colour) is
+# read from BalanceConfig per-slot tables in _ready().
 # -----------------------------------------------------------------------------
 @export var is_female:     bool         = false
 @export var male_frames:   SpriteFrames
 @export var female_frames: SpriteFrames
 @export var bullet_scene:  PackedScene
-@export var bullet_color:  Color        = Color.YELLOW
 
 # Maze mode swaps _do_move for SoldierMazeMover.tick — see SoldierMazeMover.gd
 # for the rationale. Set by Main.gd on level 4 / 5 soldiers.
 @export var maze_mode: bool = false
 
 # -----------------------------------------------------------------------------
-# Per-soldier stat overrides — set in the inspector on each soldier_X.tscn.
-# Leave at 0 / 0.0 to inherit the BalanceConfig default (resolved in _ready).
+# Stat fields — populated from BalanceConfig in _ready() by slot_index, then
+# mutated at runtime by FragmentEffects (add_max_health, add_speed_bonus, …).
+# Plain vars rather than @exports so the .tscn can't shadow the config.
 # -----------------------------------------------------------------------------
-@export_group("Stats")
-@export var move_speed:      float = 0.0
-@export var max_health:      int   = 0
-@export_group("Pistol")
-@export var pistol_damage:   int   = 0
-@export var pistol_speed:    float = 0.0
-@export var pistol_distance: float = 0.0
-@export_group("Rifle")
-@export var rifle_damage:    int   = 0
-@export var rifle_speed:     float = 0.0
-@export var rifle_distance:  float = 0.0
-@export_group("")
+var move_speed:      float = 0.0
+var max_health:      int   = 0
+var pistol_damage:   int   = 0
+var pistol_speed:    float = 0.0
+var pistol_distance: float = 0.0
+var rifle_damage:    int   = 0
+var rifle_speed:     float = 0.0
+var rifle_distance:  float = 0.0
+var bullet_color:    Color = Color.YELLOW
 
 @onready var nav_agent:  NavigationAgent2D    = $NavigationAgent2D
 @onready var sprite:     AnimatedSprite2D     = $AnimatedSprite2D
@@ -211,14 +208,28 @@ var _unstick_timer:   float   = 0.0
 var _unstick_dir:     Vector2 = Vector2.ZERO
 
 func _ready() -> void:
-	if move_speed      <= 0.0: move_speed      = Balance.SOLDIER_MOVE_SPEED
-	if max_health      <= 0:   max_health      = Balance.SOLDIER_MAX_HEALTH
-	if pistol_damage   <= 0:   pistol_damage   = Balance.SOLDIER_PISTOL_DAMAGE
-	if pistol_speed    <= 0.0: pistol_speed    = Balance.SOLDIER_PISTOL_SPEED
-	if pistol_distance <= 0.0: pistol_distance = Balance.SOLDIER_PISTOL_DISTANCE
-	if rifle_damage    <= 0:   rifle_damage    = Balance.SOLDIER_RIFLE_DAMAGE
-	if rifle_speed     <= 0.0: rifle_speed     = Balance.SOLDIER_RIFLE_SPEED
-	if rifle_distance  <= 0.0: rifle_distance  = Balance.SOLDIER_RIFLE_DISTANCE
+	# Per-slot stats win when Main has assigned slot_index (every normal
+	# mission spawn). Standalone test scenes that drop a soldier without a
+	# slot fall back to the squad-wide BalanceConfig defaults.
+	if slot_index >= 0 and slot_index < Balance.SOLDIER_MAX_HEALTH_PER_SLOT.size():
+		move_speed      = Balance.SOLDIER_MOVE_SPEED_PER_SLOT[slot_index]
+		max_health      = Balance.SOLDIER_MAX_HEALTH_PER_SLOT[slot_index]
+		pistol_damage   = Balance.SOLDIER_PISTOL_DAMAGE_PER_SLOT[slot_index]
+		pistol_speed    = Balance.SOLDIER_PISTOL_SPEED_PER_SLOT[slot_index]
+		pistol_distance = Balance.SOLDIER_PISTOL_DISTANCE_PER_SLOT[slot_index]
+		rifle_damage    = Balance.SOLDIER_RIFLE_DAMAGE_PER_SLOT[slot_index]
+		rifle_speed     = Balance.SOLDIER_RIFLE_SPEED_PER_SLOT[slot_index]
+		rifle_distance  = Balance.SOLDIER_RIFLE_DISTANCE_PER_SLOT[slot_index]
+		bullet_color    = Balance.SOLDIER_BULLET_COLOR_PER_SLOT[slot_index]
+	else:
+		move_speed      = Balance.SOLDIER_MOVE_SPEED
+		max_health      = Balance.SOLDIER_MAX_HEALTH
+		pistol_damage   = Balance.SOLDIER_PISTOL_DAMAGE
+		pistol_speed    = Balance.SOLDIER_PISTOL_SPEED
+		pistol_distance = Balance.SOLDIER_PISTOL_DISTANCE
+		rifle_damage    = Balance.SOLDIER_RIFLE_DAMAGE
+		rifle_speed     = Balance.SOLDIER_RIFLE_SPEED
+		rifle_distance  = Balance.SOLDIER_RIFLE_DISTANCE
 	_grenade_ammo = Balance.SOLDIER_GRENADE_AMMO_MAX
 	_health = max_health
 	if _carry_hp_override > 0:
