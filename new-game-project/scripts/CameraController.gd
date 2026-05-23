@@ -45,15 +45,10 @@ func refresh_map_bounds() -> void:
 	else:
 		position = _map_rect.get_center()
 
-	# Start halfway between min and max zoom so the map isn't claustrophobically
-	# close. Apply directly to zoom (not just _target_zoom) to skip the lerp snap.
-	# Boss level (6) starts at full zoom-out — the whole T-shaped arena is sized
-	# to fit on screen at min zoom, so the player sees the boss room and the
-	# approach corridor at the same time.
-	if GameManager.current_level == 6:
-		_target_zoom = _get_min_zoom()
-	else:
-		_target_zoom = (_get_min_zoom() + zoom_max) * 0.20
+	# Always start fully zoomed out so the player can survey the whole
+	# accessible area immediately. They can scroll-wheel in for combat.
+	# (The boss level already needs this so its T-arena fits on screen.)
+	_target_zoom = _get_min_zoom()
 	zoom = Vector2(_target_zoom, _target_zoom)
 
 func _unhandled_input(event: InputEvent) -> void:
