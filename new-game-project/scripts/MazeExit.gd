@@ -1,5 +1,5 @@
 # =============================================================================
-# MazeExit.gd  (Level 4 escape goal)
+# MazeExit.gd  (Level 3 / 6 escape goal — both mazes share it)
 # Attached to the Area2D created by MazeLevel.gd. Emits `escaped` when the
 # soldier (group "soldiers") steps inside. MazeLevel re-emits it on its own
 # `escaped` signal so Main.gd can wire mission-win to a single source.

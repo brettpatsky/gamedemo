@@ -18,7 +18,13 @@
 # =============================================================================
 extends Node2D
 
-const Balance = preload("res://scripts/BalanceConfig.gd")
+const Balance      = preload("res://scripts/BalanceConfig.gd")
+# Preload sidesteps Godot's `class_name` re-index lag — without it the LSP
+# can't resolve AmbientLayer in _spawn_ambient_effects until you reload the
+# whole project. The const intentionally shadows the global class_name (both
+# point at the same script), so the warning is silenced explicitly.
+@warning_ignore("shadowed_global_identifier")
+const AmbientLayer = preload("res://scripts/AmbientLayer.gd")
 
 @export var squad_size:    int  = 6
 @export var map_seed:      int  = 0
@@ -28,11 +34,11 @@ const Balance = preload("res://scripts/BalanceConfig.gd")
 
 # Level 1 — hand-authored tutorial corridor (six puzzles + parent room).
 const TUTORIAL_1_SCENE_PATH := "res://scenes/tutorials/tutorial_1.tscn"
-# Level 4 — first hand-authored maze (the original 22×15).
+# Level 3 — first hand-authored maze (the original 22×15).
 const MAZE_SCENE_PATH := "res://scenes/mazes/maze_1.tscn"
-# Level 5 — larger 44×30 maze with multiple paths to the exit.
+# Level 6 — larger 44×30 maze with multiple paths to the exit.
 const MAZE_2_SCENE_PATH := "res://scenes/mazes/maze_2.tscn"
-# Level 6 — The Weeping Heart boss arena.
+# Level 7 — The Weeping Heart boss arena.
 const BOSS_ARENA_SCENE_PATH := "res://scenes/bosses/boss_arena.tscn"
 
 @onready var map_gen:    Node        = $GameViewport/SubViewport/MapGenerator
@@ -54,10 +60,11 @@ func _ready() -> void:
 	$GameViewport.set_position(Vector2.ZERO)
 	$GameViewport.set_size(Vector2(vp_size.x, vp_size.y - HUD_HEIGHT))
 
-	# Level 1 swaps MapGenerator for the tutorial corridor (full squad of 6).
-	# Levels 5 and 6 swap for the hand-authored mazes (single soldier, the
-	# corridors are 1 tile wide). Level 7 swaps for the Heart boss arena
-	# (full squad). Levels 2-4 keep the procedural MapGenerator.
+	# Level dispatch — new order:
+	#   1 Tutorial · 2 Eliminate · 3 Maze 1 · 4 Structures · 5 Escort · 6 Maze 2 · 7 Boss
+	# Mazes (3 + 6) swap MapGenerator for hand-authored 1-tile corridors and
+	# run with a single soldier. Boss (7) swaps for the Heart arena with the
+	# full squad. Levels 2 / 4 / 5 keep the procedural MapGenerator.
 	var effective_squad_size: int = squad_size
 	if GameManager.current_level == 1:
 		var old: Node = map_gen
@@ -67,7 +74,7 @@ func _ready() -> void:
 		var camera: Node = get_tree().get_first_node_in_group("main_camera")
 		if camera and camera.has_method("refresh_map_bounds"):
 			camera.refresh_map_bounds()
-	elif GameManager.current_level == 5:
+	elif GameManager.current_level == 3:
 		var old: Node = map_gen
 		map_gen = _spawn_alt_level(MAZE_SCENE_PATH)
 		old.remove_from_group("map_generator")
@@ -123,8 +130,8 @@ func _ready() -> void:
 	if not applied_fragments.is_empty():
 		hud.show_toast("MEMORIES ACTIVE — %s" % ", ".join(applied_fragments),
 				Color(0.75, 0.95, 1.0), 3.5)
-	# Maze levels start with a single soldier at the entrance — no formation snap.
-	if GameManager.current_level != 5 and GameManager.current_level != 6:
+	# Maze levels (3 + 6) start with a single soldier at the entrance — no formation snap.
+	if GameManager.current_level != 3 and GameManager.current_level != 6:
 		squad_ctrl.snap_to_formation()
 	# Boss mission gets a heavier loadout: extra rifle ammo for sustained Phase 1
 	# fire and more grenades to crack the orbiting Memory Totems in Phase 2.
@@ -140,11 +147,11 @@ func _ready() -> void:
 	hud.show_objective(GameManager.current_level)
 
 # ---------------------------------------------------------------------------
-# Maze click handler (levels 5 and 6): SubViewportContainer._gui_input consumes
+# Maze click handler (levels 3 and 6): SubViewportContainer._gui_input consumes
 # mouse events before _unhandled_input fires, so we intercept in _input (which
 # runs first). Action-based so the gamepad "A" button also triggers a move order.
 func _input(event: InputEvent) -> void:
-	if GameManager.current_level != 5 and GameManager.current_level != 6:
+	if GameManager.current_level != 3 and GameManager.current_level != 6:
 		return
 	if not event.is_action_pressed("squad_move"):
 		return
@@ -184,7 +191,11 @@ func _apply_boss_loadout() -> void:
 # have weather + birds + wandering critters. Purely visual; no gameplay
 # effect. Tutorial / mazes / boss skip this entirely.
 func _spawn_ambient_effects() -> void:
-	if GameManager.current_level < 2 or GameManager.current_level > 4:
+	# Only fire on the procedural-map missions (Eliminate / Structures /
+	# Escort = levels 2, 4, 5 in the new order). Tutorial / mazes / boss
+	# have their own hand-authored feel.
+	var lv: int = GameManager.current_level
+	if lv != 2 and lv != 4 and lv != 5:
 		return
 	# Randomise per mission load so the same level feels different across
 	# runs. Four options, uniform distribution — tweak the weights here if
@@ -225,11 +236,12 @@ func _spawn_squad(count: int) -> void:
 		push_warning("[Main] No living kids in RunState — squad will be empty")
 		return
 	var slots_to_spawn: Array[int] = living.slice(0, count)
-	# Maze missions only spawn one kid, and each maze frees a specific kid's
-	# parent. Prefer that kid so the cage actually opens; fall back to the
-	# first living kid if they've died earlier in the run (cage stays shut,
-	# mission still winnable via the maze exit).
-	if count == 1 and (GameManager.current_level == 5 or GameManager.current_level == 6):
+	# Maze missions (level 3 = Maze 1, level 6 = Maze 2) only spawn one kid,
+	# and each maze frees a specific kid's parent. Prefer that kid so the cage
+	# opens; fall back to the first living kid if they've died earlier in
+	# the run (cage stays shut, mission still winnable via the maze exit).
+	# Slot = level - 1: Maze 1 → Kid 3 (slot 2), Maze 2 → Kid 6 (slot 5).
+	if count == 1 and (GameManager.current_level == 3 or GameManager.current_level == 6):
 		var preferred_slot: int = GameManager.current_level - 1
 		if preferred_slot >= 0 and preferred_slot < RunState.SQUAD_SIZE \
 				and RunState.kids_alive[preferred_slot]:
@@ -243,7 +255,7 @@ func _spawn_squad(count: int) -> void:
 		var carry_hp: int = RunState.get_carry_hp(slot)
 		if carry_hp > 0 and soldier.has_method("set_carried_hp"):
 			soldier.set_carried_hp(carry_hp)
-		if GameManager.current_level == 5 or GameManager.current_level == 6:
+		if GameManager.current_level == 3 or GameManager.current_level == 6:
 			soldier.maze_mode = true
 		soldier.add_to_group("soldiers")
 		_subviewport.add_child(soldier)
@@ -273,7 +285,18 @@ func _setup_objective() -> void:
 			# enemies_alive counter reaches zero (see GameManager.on_enemy_died,
 			# which is hard-coded to check level == 2).
 			GameManager.mission_complete.connect(_on_mission_win)
-		3:
+		3, 6:
+			# Maze escape (Maze 1 = level 3, Maze 2 = level 6) — reaching the
+			# exit Area2D wins the mission. Same wiring works for both maze
+			# layouts since they share the API.
+			if map_gen and map_gen.has_signal("escaped"):
+				map_gen.escaped.connect(_on_mission_win)
+			var exit_zone: Node = map_gen.get_objective_node("maze_exit")
+			if exit_zone and hud.has_method("set_maze_exit"):
+				hud.set_maze_exit(exit_zone)
+		4:
+			# Destroy Structures — mission ends when every fortified building
+			# has been levelled. Each destruction spawns a reinforcement wave.
 			var structures = map_gen.get_objective_node("fortified_structure")
 			if structures is Array and not structures.is_empty():
 				var remaining := [structures.size()]
@@ -290,7 +313,8 @@ func _setup_objective() -> void:
 						if remaining[0] <= 0:
 							_on_mission_win()
 					)
-		4:
+		5:
+			# Escort VIP — walk the NPC from their shelter to the extraction zone.
 			var zone: Node = map_gen.get_objective_node("extraction_zone")
 			var npc:  Node = map_gen.get_objective_node("escort_npc")
 			if zone:
@@ -314,14 +338,6 @@ func _setup_objective() -> void:
 							if is_instance_valid(other):
 								other.queue_free()
 					)
-		5, 6:
-			# Maze escape — reaching the exit Area2D wins the mission. Same
-			# wiring works for both maze layouts since they share the API.
-			if map_gen and map_gen.has_signal("escaped"):
-				map_gen.escaped.connect(_on_mission_win)
-			var exit_zone: Node = map_gen.get_objective_node("maze_exit")
-			if exit_zone and hud.has_method("set_maze_exit"):
-				hud.set_maze_exit(exit_zone)
 		7:
 			# Boss arena — defeating the Heart wins the mission.
 			if map_gen and map_gen.has_signal("boss_defeated"):

@@ -275,9 +275,9 @@ func show_objective(level: int) -> void:
 	var texts := {
 		1: "OBJECTIVE: Solve the six trials and free Kid 1's parent",
 		2: "OBJECTIVE: Eliminate all enemies",
-		3: "OBJECTIVE: Destroy the fortified structure",
-		4: "OBJECTIVE: Escort the NPC to extraction",
-		5: "OBJECTIVE: Escape the maze",
+		3: "OBJECTIVE: Escape the maze",
+		4: "OBJECTIVE: Destroy the fortified structure",
+		5: "OBJECTIVE: Escort the NPC to extraction",
 		6: "OBJECTIVE: Escape the ruined catacombs",
 		7: "OBJECTIVE: Shatter the Weeping Heart",
 	}
@@ -288,16 +288,16 @@ func show_objective(level: int) -> void:
 	if level == 1 and not RunState.kids_alive[0]:
 		text = "OBJECTIVE: Kid 1 lost — RESET RUN (F12) to retry the tutorial"
 	_objective_label.text = text
-	if level == 4:
+	# Escort label only on the Escort mission (now level 5).
+	if level == 5:
 		_escort_label.show()
 	else:
 		_escort_label.hide()
-	# Tutorial (3 dummies after Puzzle 1), mazes (no enemies), and the boss
-	# (own health bar) all hide the generic ENEMIES counter — only Level 2,
-	# the Eliminate-Enemies mission, surfaces it as the primary readout.
-	# Levels 3 and 4 (structures / escort) still show it as a side stat.
+	# Tutorial (3 dummies), mazes (no enemies), and the boss (own health bar)
+	# all hide the generic ENEMIES counter — only the procedural missions
+	# (Eliminate / Structures / Escort = 2 / 4 / 5) show it.
 	if _enemy_label:
-		_enemy_label.visible = level == 2 or level == 3 or level == 4
+		_enemy_label.visible = level == 2 or level == 4 or level == 5
 
 func update_escort_health(current: int, max_hp: int) -> void:
 	_escort_label.text = "ESCORT HEALTH: %d / %d" % [current, max_hp]
@@ -658,15 +658,15 @@ func _draw_enemy_arrow() -> void:
 	var origin: Vector2 = squad_ctrl.get_centroid()
 
 	var target: Node2D = null
-	if GameManager.current_level == 4:
-		# Point at the trapped/unfreed NPC, then at the extraction zone once
-		# they've linked up with the squad.
+	if GameManager.current_level == 5:
+		# Escort mission — point at the trapped/unfreed NPC, then at the
+		# extraction zone once they've linked up with the squad.
 		if _escort_joined:
 			target = _extraction_zone if is_instance_valid(_extraction_zone) else null
 		else:
 			target = _escort_npc if is_instance_valid(_escort_npc) else null
-	elif GameManager.current_level == 5 or GameManager.current_level == 6:
-		# Maze escape — always point to the exit.
+	elif GameManager.current_level == 3 or GameManager.current_level == 6:
+		# Maze escape (Maze 1 = level 3, Maze 2 = level 6) — always point to the exit.
 		target = _maze_exit if is_instance_valid(_maze_exit) else null
 	elif GameManager.current_level == 7:
 		# Boss fight — entire arena fits on-screen, so no enemy arrow is needed.

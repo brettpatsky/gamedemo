@@ -1,6 +1,6 @@
 # =============================================================================
 # MazeLevel2.gd
-# Level 5 — the larger, more elaborate maze. Same MapGenerator-compatible API
+# Level 6 — the larger, more elaborate maze. Same MapGenerator-compatible API
 # as MazeLevel.gd, just a different MAZE_LAYOUT (44×30 cells ≈ 4× the original
 # 22×15 grid, with a 6×6 corridor backbone and several strategic blockages so
 # multiple distinct paths exist between spawn (1,1) and exit (42,28).

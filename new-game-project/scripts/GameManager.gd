@@ -155,8 +155,8 @@ func use_revive() -> bool:
 
 # ---------------------------------------------------------------------------
 # Call when an enemy dies; checks win condition for Level 2 (Eliminate Enemies).
-# Level 1 is the tutorial (wins on parent rescue), 3–4 have separate
-# objectives (structures / escort), 5–6 are maze escapes, 7 is the boss.
+# Level 1 is the tutorial (wins on parent rescue), 3 / 6 are maze escapes,
+# 4 / 5 have separate objectives (structures / escort), 7 is the boss.
 # ---------------------------------------------------------------------------
 func on_enemy_died() -> void:
 	enemies_alive -= 1

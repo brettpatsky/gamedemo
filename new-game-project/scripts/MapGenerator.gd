@@ -70,16 +70,17 @@ func generate(seed_value: int = 0) -> void:
 	_spawn_boundary_walls()
 	_bake_navigation()
 	# Escort mission picks the NPC spot first so enemy spawn can avoid it.
-	# Level 1 is the hand-authored tutorial (TutorialLevel1) and never reaches
-	# MapGenerator. Level 2 is the open-field Eliminate-Enemies mission (no
-	# special objective beyond _spawn_enemies). 3/4 are structures / escort.
+	# Level numbers reflect the new mission order:
+	#   1 Tutorial · 2 Eliminate · 3 Maze 1 · 4 Structures · 5 Escort · 6 Maze 2 · 7 Boss
+	# Only 2 / 4 / 5 reach MapGenerator — the rest swap to hand-authored scenes.
 	match GameManager.current_level:
-		3: _spawn_fortified_structure()
-		4: _spawn_escort_mission()
-	# Procedural missions 2-4 each also place that mission's parent cage and
-	# themed memory fragment in the outer ring. Tutorial / mazes / boss handle
-	# their own placement; this only runs for levels MapGenerator owns.
-	if GameManager.current_level >= 2 and GameManager.current_level <= 4:
+		4: _spawn_fortified_structure()
+		5: _spawn_escort_mission()
+	# Procedural missions (2, 4, 5) also place that mission's parent cage
+	# and themed memory fragment in the outer ring. Tutorial / mazes / boss
+	# handle their own placement; this only runs for levels MapGenerator owns.
+	var lv: int = GameManager.current_level
+	if lv == 2 or lv == 4 or lv == 5:
 		_spawn_mission_parent_and_fragment()
 	_spawn_enemies()
 
@@ -717,7 +718,7 @@ func _spawn_mission_parent_and_fragment() -> void:
 		_objective_nodes["memory_fragment"] = frag
 
 # ---------------------------------------------------------------------------
-# Level 2 — spawn 5 fortified structures spread across the map.
+# Level 4 — spawn 5 fortified structures spread across the map.
 # ---------------------------------------------------------------------------
 func _spawn_fortified_structure() -> void:
 	var scene: PackedScene = load("res://scenes/fortified_structure.tscn")
@@ -759,7 +760,7 @@ func _spawn_fortified_structure() -> void:
 	_objective_nodes["fortified_structure"] = spawned
 
 # ---------------------------------------------------------------------------
-# Level 3 — NPC begins penned inside a small shelter of destructible walls,
+# Level 5 — NPC begins penned inside a small shelter of destructible walls,
 # placed away from the squad spawn so the player must travel to the rescue
 # point. A surrounding safe radius keeps enemies from spawning inside the
 # shelter — only the wall is between the NPC and incoming fire.

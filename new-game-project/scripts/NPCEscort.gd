@@ -1,5 +1,5 @@
 # =============================================================================
-# NPCEscort.gd  (Level 3 objective)
+# NPCEscort.gd  (Level 5 objective)
 # A friendly NPC that must survive and reach the extraction zone.
 # - "soldiers" group: enemies detect and target it automatically.
 # - "escort_npc" group: ExtractionZone watches for this group.

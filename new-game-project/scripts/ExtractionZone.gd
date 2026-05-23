@@ -1,5 +1,5 @@
 # =============================================================================
-# ExtractionZone.gd  (Level 3 objective marker)
+# ExtractionZone.gd  (Level 5 objective marker)
 # When the escort NPC ("escort_npc" group) enters this zone, npc_extracted
 # fires. Main.gd connects this to mission-win.
 # =============================================================================

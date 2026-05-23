@@ -95,10 +95,10 @@ func _start_mission(level: int) -> void:
 
 func _on_mission_1_pressed() -> void: _start_mission(1)   # Tutorial — The Trials
 func _on_mission_2_pressed() -> void: _start_mission(2)   # Eliminate Enemies
-func _on_mission_3_pressed() -> void: _start_mission(3)   # Destroy Structures
-func _on_mission_4_pressed() -> void: _start_mission(4)   # Escort VIP
-func _on_mission_5_pressed() -> void: _start_mission(5)   # Escape (maze 1)
-func _on_mission_6_pressed() -> void: _start_mission(6)   # Ruined Catacombs (maze 2)
+func _on_mission_3_pressed() -> void: _start_mission(3)   # Escape (Maze 1)
+func _on_mission_4_pressed() -> void: _start_mission(4)   # Destroy Structures
+func _on_mission_5_pressed() -> void: _start_mission(5)   # Escort VIP
+func _on_mission_6_pressed() -> void: _start_mission(6)   # The Ruined Catacombs (Maze 2)
 func _on_mission_7_pressed() -> void: _start_mission(7)   # The Weeping Heart (boss)
 
 func _on_help_pressed() -> void:

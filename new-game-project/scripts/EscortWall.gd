@@ -1,5 +1,5 @@
 # =============================================================================
-# EscortWall.gd  (Level 3 — destructible barrier around the escort NPC)
+# EscortWall.gd  (Level 5 — destructible barrier around the escort NPC)
 # A small fortification surrounding the trapped NPC. When any wall is shot
 # down, MapGenerator unseals the safe area and releases the NPC so it can
 # follow the squad.

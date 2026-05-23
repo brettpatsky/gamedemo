@@ -1,5 +1,5 @@
 # =============================================================================
-# FortifiedStructure.gd  (Level 2 objective)
+# FortifiedStructure.gd  (Level 4 objective — Destroy Structures)
 # A heavily armoured static building. The squad must destroy it to win.
 # Main.gd connects to the structure_destroyed signal after map generation.
 # =============================================================================

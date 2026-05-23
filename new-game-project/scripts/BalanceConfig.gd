@@ -117,7 +117,7 @@ const BULLET_DAMAGE:       int   = 1
 const BULLET_MAX_DISTANCE: float = 1500.0
 
 # -----------------------------------------------------------------------------
-# Boss — Heartstone (Level 6)
+# Boss — Heartstone (Level 7)
 # -----------------------------------------------------------------------------
 const BOSS_MAX_HEALTH:        int = 360
 const BOSS_PHASE_2_THRESHOLD: int = 240
