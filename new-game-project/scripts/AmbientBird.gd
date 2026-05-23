@@ -35,8 +35,26 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var flap: float = sin(_flap_phase) * 5.0
-	var col := Color(0.08, 0.08, 0.10, 0.75)
+	# Ground shadow — flattened ellipse a fixed offset BELOW the bird so the
+	# eye reads "this thing is above the ground". The shadow subtly pulses
+	# with the flap phase: wings-down (bird closer to ground) → tighter,
+	# darker shadow; wings-up (bird lifting) → wider, fainter. Drawn first
+	# so the bird silhouette renders on top of it.
+	const SHADOW_Y    := 30.0
+	const SHADOW_RX   := 7.5
+	const SHADOW_RY   := 2.5
+	var lift: float = (sin(_flap_phase) + 1.0) * 0.5   # 0..1
+	var rx: float = SHADOW_RX * (1.0 + lift * 0.25)
+	var ry: float = SHADOW_RY * (1.0 + lift * 0.25)
+	var shadow_col := Color(0.03, 0.03, 0.05, 0.32 - lift * 0.10)
+	var shadow_pts := PackedVector2Array()
+	for i in 16:
+		var a: float = TAU * float(i) / 16.0
+		shadow_pts.append(Vector2(cos(a) * rx, SHADOW_Y + sin(a) * ry))
+	draw_colored_polygon(shadow_pts, shadow_col)
+
 	# V-shape silhouette — wings sweep up/down with the flap phase.
+	var col := Color(0.08, 0.08, 0.10, 0.75)
 	var pts := PackedVector2Array([
 		Vector2(-10, flap),
 		Vector2( -3, 0),
