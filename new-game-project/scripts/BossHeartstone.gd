@@ -127,7 +127,7 @@ func _process(delta: float) -> void:
 # =============================================================================
 # DAMAGE
 # =============================================================================
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, _element: int = 0) -> void:
 	if _destroyed:
 		return
 	if not _activated:

@@ -129,6 +129,12 @@ func set_carried_hp(hp: int) -> void:
 func get_health() -> int:
 	return _health
 
+# Element classification (Fire / Ice / Lightning) is fixed by slot — see
+# Elements.SLOT_ELEMENTS. Used by _do_shoot to colour-stamp bullets and by
+# Enemy.take_damage to apply the soft counter multiplier.
+func get_element() -> int:
+	return Elements.of_slot(slot_index)
+
 # Public helpers used by FragmentEffects to apply between-mission rewards.
 # All three are safe to call right after the soldier has been added to the
 # scene tree (_ready has run synchronously up to its first await by then).
@@ -337,13 +343,16 @@ func arm_as_bomb(target: Vector2) -> void:
 	sprite.modulate = Color(1.0, 0.4, 0.4)
 	footstep.play()
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, _element: int = 0) -> void:
 	if _state == State.DEAD:
 		return
 	if GameManager.god_mode:
 		return
 	# Snack Bar (fragment) soaks `damage_reduction` HP off each hit, minimum 0
 	# so trivial bullets become no-ops rather than negative damage = heal.
+	# (Element is accepted for signature compatibility with Bullet._try_hit
+	# but soldiers don't have weakness/resistance — friendly fire is rare
+	# and the element pattern is intentionally enemy-only for now.)
 	var net: int = maxi(amount - damage_reduction, 0)
 	if net <= 0:
 		return
@@ -544,12 +553,16 @@ func _do_shoot() -> void:
 		# damage_bonus and range_mult come from FragmentEffects — Lost Marble
 		# bumps damage, Brother's Cap bumps range. Both stack with whatever
 		# base values the kid's tscn (or BalanceConfig) provides.
+		# Bullet colour is element-driven so the player reads Fire/Ice/Lightning
+		# at a glance; the per-kid bullet_color is no longer used for projectiles.
+		var elem: int = get_element()
+		var elem_col: Color = Elements.color_of(elem)
 		if _weapon == WeaponType.AUTO:
 			bullet.set_stats(rifle_damage + damage_bonus, rifle_speed,
-					rifle_distance * range_mult, bullet_color)
+					rifle_distance * range_mult, elem_col, elem)
 		else:
 			bullet.set_stats(pistol_damage + damage_bonus, pistol_speed,
-					pistol_distance * range_mult, bullet_color)
+					pistol_distance * range_mult, elem_col, elem)
 		GameManager.record_shot(slot_index)
 
 func _throw_grenade(target: Vector2) -> void:

@@ -28,6 +28,9 @@ var speed:        float
 var damage:       int
 var max_distance: float
 var color:        Color = Color.YELLOW
+# Elemental tag — defaults to NONE so enemy bullets and tests that bypass
+# set_stats keep the old neutral-damage behaviour.
+var element:      int   = 0   # Elements.E.NONE
 
 # ---------------------------------------------------------------------------
 # State
@@ -51,11 +54,12 @@ func initialise(direction: Vector2, shooter: Node2D) -> void:
 # Applies the shooter's terrain-elevation range modifier here so high-ground
 # bullets fly further and valley-fired bullets fly shorter — _shooter is set
 # in initialise() which Soldier/Enemy always call before set_stats().
-func set_stats(p_damage: int, p_speed: float, p_distance: float, p_color: Color) -> void:
+func set_stats(p_damage: int, p_speed: float, p_distance: float, p_color: Color, p_element: int = 0) -> void:
 	damage       = p_damage
 	speed        = p_speed
 	max_distance = p_distance * _elevation_range_mult()
 	color        = p_color
+	element      = p_element
 	queue_redraw()
 
 func _elevation_range_mult() -> float:
@@ -118,7 +122,7 @@ func _try_hit(target: Node2D) -> void:
 	if _shooter != null and _shooter.is_in_group("soldiers") and target.is_in_group("soldiers"):
 		return
 	if target.has_method("take_damage"):
-		target.take_damage(damage)
+		target.take_damage(damage, element)
 		if _shooter != null and _shooter.has_method("on_bullet_hit"):
 			_shooter.on_bullet_hit(target)
 		_spawn_hit_particles()

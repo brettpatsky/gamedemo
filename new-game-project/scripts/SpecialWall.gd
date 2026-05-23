@@ -35,7 +35,7 @@ func _ready() -> void:
 	collision_mask  = 0
 	queue_redraw()
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, _element: int = 0) -> void:
 	if _destroyed or amount < min_damage_to_register:
 		return
 	_health -= amount

@@ -58,7 +58,7 @@ func _on_body_entered(body: Node2D) -> void:
 
 # Grenades / sacrifice broadcast take_damage to the "enemies" group. Accepting
 # damage here lets potions clear incoming projectiles, exactly per the design.
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, _element: int = 0) -> void:
 	_hp -= amount
 	if _hp <= 0:
 		queue_free()

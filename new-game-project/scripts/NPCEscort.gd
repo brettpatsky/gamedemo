@@ -126,7 +126,7 @@ func has_joined_squad() -> bool:
 func get_health() -> int:
 	return _health
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, _element: int = 0) -> void:
 	# Invulnerable inside the shelter — a stray enemy shot before the squad
 	# arrives shouldn't be able to kill the NPC before they can be freed.
 	if _dead or not _freed:

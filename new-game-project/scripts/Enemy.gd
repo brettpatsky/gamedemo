@@ -39,6 +39,14 @@ var bullet_damage:   int
 # barrage. Default 0 means "no protection"; set BEFORE add_child to use it.
 @export var spawn_protection: float  = 0.0
 
+# Soft elemental counters. NONE means "no preference" for either side; the
+# random init in _ready picks one weakness and one (different) resistance
+# from {FIRE, ICE, LIGHTNING} for every non-dummy enemy so the player feels
+# the system across normal mob spawns. Override per-instance via Inspector
+# or by setting before add_child for hand-placed encounters.
+@export var weakness:   int = 0   # Elements.E.NONE
+@export var resistance: int = 0   # Elements.E.NONE
+
 @onready var nav_agent:  NavigationAgent2D   = $NavigationAgent2D
 @onready var sprite:     AnimatedSprite2D    = $AnimatedSprite2D
 @onready var health_bar: ProgressBar         = $HealthBar
@@ -89,6 +97,14 @@ func _ready() -> void:
 	health_bar.max_value = max_health
 	health_bar.value     = _health
 	_spawn_protection_timer = spawn_protection
+	# Randomise weakness + resistance for combat enemies if the spawner
+	# didn't override them. Tutorial dummies stay neutral so Puzzle 1 is
+	# pure target practice without elemental noise.
+	if not dummy_mode and weakness == Elements.E.NONE and resistance == Elements.E.NONE:
+		var pool: Array[int] = [Elements.E.FIRE, Elements.E.ICE, Elements.E.LIGHTNING]
+		pool.shuffle()
+		weakness   = pool[0]
+		resistance = pool[1]
 
 	if bullet_scene == null:
 		bullet_scene = load("res://scenes/bullet.tscn")
@@ -349,7 +365,7 @@ func _play_anim(anim_name: String) -> void:
 # PUBLIC — damage / death
 # =============================================================================
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, element: int = 0) -> void:
 	if _state == State.DEAD:
 		return
 	# Reinforcements get a brief invulnerability so an in-flight grenade or
@@ -357,7 +373,10 @@ func take_damage(amount: int) -> void:
 	# delete them before the player even sees them appear.
 	if _spawn_protection_timer > 0.0:
 		return
-	_health -= amount
+	# Element multiplier — soft ×2 / ×0.5. NONE bypasses entirely so grenades
+	# and sacrifice still hit for their advertised damage.
+	var net: int = Elements.apply_damage(amount, element, weakness, resistance)
+	_health -= net
 	health_bar.value = _health
 	if _health <= 0:
 		_die()

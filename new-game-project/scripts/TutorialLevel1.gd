@@ -25,7 +25,7 @@ const _MEMORY_FRAGMENT_SCENE: PackedScene = preload("res://scenes/memory_fragmen
 const TILE             := 64
 const ROOM_W_TILES     := 10
 const ROOM_H_TILES     := 12
-const NUM_ROOMS        := 7    # 6 puzzles + final room
+const NUM_ROOMS        := 8    # 7 puzzles + final room
 const WALL_THICKNESS   := 1
 const DOORWAY_ROW_TOP  := 4    # interior row indices (0..ROOM_H_TILES-1)
 const DOORWAY_ROW_BOT  := 7    # 4-tile gap so a 1×6 vertical line streams through
@@ -45,13 +45,31 @@ const MAP_H       := MAP_H_TILES * TILE
 @onready var nav_region: NavigationRegion2D = $NavigationRegion2D
 
 # Per-puzzle solve state (kept so signal handlers can no-op on duplicate fires).
-var _solved: Array[bool] = [false, false, false, false, false, false]
+# Indices: 0=combat, 1=grenade wall, 2=formation, 3=plates, 4=identity,
+# 5=elements, 6=final trial (sacrifice + revive).
+var _solved: Array[bool] = [false, false, false, false, false, false, false]
 var _formation_active: int = 0
 var _plate_active:     int = 0
-# Puzzle 6 needs BOTH the ward broken via Sacrifice AND a kid revived. Track
-# each event so the gate opens regardless of which the player triggers first.
-var _puzzle_6_wall_broken:  bool = false
-var _puzzle_6_revive_done:  bool = false
+var _braziers_lit:     int = 0
+# Final Trial (puzzle 6) needs BOTH the ward broken via Sacrifice AND a kid
+# revived. Track each event so the gate opens regardless of which fires first.
+var _final_wall_broken:  bool = false
+var _final_revive_done:  bool = false
+
+# Gate refs for the multi-zone puzzles. Storing them as members instead of
+# capturing them in the per-zone signal lambdas avoids "Lambda capture
+# freed" spam: once the gate is opened (fade + queue_free), any further
+# state_changed emits (soldiers wandering across already-lit zones) would
+# pass the freed PuzzleGate into the lambda. Member access via `self` is
+# fine because nulling them is explicit.
+var _formation_gate: PuzzleGate = null
+var _plates_gate:    PuzzleGate = null
+var _elements_gate:  PuzzleGate = null
+
+# Dedup set for wall placement. Perimeter and divider loops would otherwise
+# spawn two walls at every corner and every doorway-stub tile, producing
+# coincident outlines that break the nav-polygon convex partition.
+var _wall_tiles: Dictionary = {}
 
 # References Main.gd queries via get_objective_node.
 var _parent_cage:      Node = null
@@ -145,6 +163,14 @@ func _build_walls() -> void:
 			_place_wall(divider_x, y)
 
 func _place_wall(tile_x: int, tile_y: int) -> void:
+	# Dedup: perimeter and divider loops both want to occupy corners and the
+	# y=0 / y=MAP_H_TILES-1 ends of every divider column. Two walls at the
+	# same position would write coincident nav outlines, which fails the
+	# convex partition and breaks navigation entirely.
+	var key := Vector2i(tile_x, tile_y)
+	if _wall_tiles.has(key):
+		return
+	_wall_tiles[key] = true
 	var rock: Node2D = _ROCK_SCENE.instantiate()
 	rock.position = Vector2(
 		tile_x * TILE + TILE * 0.5,
@@ -193,6 +219,7 @@ func _build_rooms() -> void:
 	_build_room_formation()
 	_build_room_pressure_plates()
 	_build_room_identity()
+	_build_room_elements()
 	_build_room_sacrifice()
 	_build_room_final()
 
@@ -254,7 +281,7 @@ func _build_room_grenade_wall() -> void:
 func _build_room_formation() -> void:
 	_add_sign(_room_position(2, 1, 0),
 			"3.  FORMATION\nPress F or click a formation\nLight all 5 circles together")
-	var gate := _spawn_gate(2)
+	_formation_gate = _spawn_gate(2)
 	var centre := _room_centre(2)
 	var radius := 110.0
 	for i in 5:
@@ -264,20 +291,23 @@ func _build_room_formation() -> void:
 		zone.style  = TriggerZone.Style.CIRCLE
 		zone.position = centre + Vector2(cos(angle), sin(angle)) * radius
 		add_child(zone)
+		# Member ref avoids capturing the gate — see _formation_gate doc.
 		zone.state_changed.connect(func(pressed: bool) -> void:
 			if _solved[2]:
 				return
 			_formation_active += (1 if pressed else -1)
 			if _formation_active >= 5:
 				_solved[2] = true
-				gate.open()
+				if _formation_gate:
+					_formation_gate.open()
+					_formation_gate = null
 		)
 
 # Room 3 — three pressure plates spread to the corners. Split into 3 groups.
 func _build_room_pressure_plates() -> void:
 	_add_sign(_room_position(3, 1, 0),
 			"4.  SPLIT\nPress G to add a group\n1/2/3 to select\nAll 3 plates at once")
-	var gate := _spawn_gate(3)
+	_plates_gate = _spawn_gate(3)
 	var positions := [
 		_room_position(3, 2, 2),
 		_room_position(3, ROOM_W_TILES - 3, 2),
@@ -289,21 +319,23 @@ func _build_room_pressure_plates() -> void:
 		plate.style  = TriggerZone.Style.PLATE
 		plate.position = pos
 		add_child(plate)
+		# Member ref avoids capturing the gate — see _plates_gate doc.
 		plate.state_changed.connect(func(pressed: bool) -> void:
 			if _solved[3]:
 				return
 			_plate_active += (1 if pressed else -1)
 			if _plate_active >= 3:
 				_solved[3] = true
-				gate.open()
+				if _plates_gate:
+					_plates_gate.open()
+					_plates_gate = null
 		)
 
-# Room 4 — only Kid 1 may stand on the marked tile. Solving this puzzle also
-# unlocks the Sacrifice weapon and the Revive button, both of which were
-# locked at mission start (see Main.gd's level-1 branch).
+# Room 4 — only Kid 1 may stand on the marked tile. No feature unlock here;
+# Sacrifice + Revive get unlocked one room later (after the Elements puzzle).
 func _build_room_identity() -> void:
 	_add_sign(_room_position(4, 1, 0),
-			"5.  IDENTITY\nOnly Kid 1 can stand on the marked tile\n(unlocks the final trial's powers)")
+			"5.  IDENTITY\nOnly Kid 1 can stand on the marked tile")
 	var gate := _spawn_gate(4)
 	var zone := TriggerZone.new()
 	zone.radius = 40.0
@@ -316,11 +348,41 @@ func _build_room_identity() -> void:
 			return
 		_solved[4] = true
 		gate.open()
-		_unlock_final_trial_features()
 	)
 
+# Room 5 — three element braziers in a line: Fire, Ice, Lightning. Each
+# only lights when hit by a matching-element bullet. Forces the player to
+# coordinate which group is firing on which brazier. Solving also unlocks
+# Sacrifice + Revive for the Final Trial (one room later).
+func _build_room_elements() -> void:
+	_add_sign(_room_position(5, 1, 0),
+			"6.  ELEMENTS\nEach kid fires Fire / Ice / Lightning\nLight every brazier with the matching element")
+	_elements_gate = _spawn_gate(5)
+	# Spread three braziers across the room so the player can shoot them
+	# from different angles without one shot hitting two at once.
+	var elems: Array[int] = [Elements.E.FIRE, Elements.E.ICE, Elements.E.LIGHTNING]
+	var col_offsets: Array[int] = [2, 5, 8]
+	for i in 3:
+		var brazier := ElementBrazier.new()
+		brazier.required_element = elems[i]
+		brazier.position = _room_position(5, col_offsets[i], ROOM_HALF_H_TILES)
+		add_child(brazier)
+		# Member ref avoids capturing the gate — see _elements_gate doc.
+		brazier.lit.connect(func(_e: int) -> void:
+			if _solved[5]:
+				return
+			_braziers_lit += 1
+			if _braziers_lit >= 3:
+				_solved[5] = true
+				if _elements_gate:
+					_elements_gate.open()
+					_elements_gate = null
+				_unlock_final_trial_features()
+		)
+
 # Unlocks Sacrifice (weapon) and Revive (HUD button) and announces it.
-# Called when the player solves Puzzle 5; idempotent so re-entry is safe.
+# Called when the player solves the Elements puzzle; idempotent so re-entry
+# is safe.
 func _unlock_final_trial_features() -> void:
 	GameManager.set_sacrifice_enabled(true)
 	GameManager.set_revive_enabled(true)
@@ -329,50 +391,50 @@ func _unlock_final_trial_features() -> void:
 		hud.show_toast("SACRIFICE & REVIVE UNLOCKED",
 				Color(1.0, 0.85, 0.5), 3.5)
 
-# Room 5 — FINAL TRIAL: blood ward + revive. Player must spend a kid via
+# Room 6 — FINAL TRIAL: blood ward + revive. Player must spend a kid via
 # Sacrifice to break the ward AND bring that kid back with the Revive heart.
 # Either event can fire first; the gate opens when both have happened.
 func _build_room_sacrifice() -> void:
-	_add_sign(_room_position(5, 1, 0),
-			"6.  FINAL TRIAL\nBreak the ward with Sacrifice\nThen Revive (♥) the fallen kid")
+	_add_sign(_room_position(6, 1, 0),
+			"7.  FINAL TRIAL\nBreak the ward with Sacrifice\nThen Revive (♥) the fallen kid")
 	var wall := SpecialWall.new()
 	wall.width                  = 96.0
 	wall.height                 = 96.0
 	wall.max_health             = 15      # sacrifice deals 15 → one-shot
 	wall.min_damage_to_register = 13      # grenade deals 12 → filtered out
 	wall.hint_text              = "Blood Ward — only Sacrifice breaks it"
-	wall.position = _room_position(5, ROOM_HALF_W_TILES, ROOM_HALF_H_TILES)
+	wall.position = _room_position(6, ROOM_HALF_W_TILES, ROOM_HALF_H_TILES)
 	add_child(wall)
 
-	var gate := _spawn_gate(5)
+	var gate := _spawn_gate(6)
 	wall.destroyed.connect(func() -> void:
-		_puzzle_6_wall_broken = true
+		_final_wall_broken = true
 		_try_solve_final_trial(gate)
 	)
 	# Any revive within this mission counts — the player has to spend their
 	# one potion here because they only just got it back, and there's nowhere
 	# else in the tutorial where a kid can die.
 	GameManager.soldier_revived.connect(func(_s: Node) -> void:
-		_puzzle_6_revive_done = true
+		_final_revive_done = true
 		_try_solve_final_trial(gate)
 	)
 
 func _try_solve_final_trial(gate: PuzzleGate) -> void:
-	if _solved[5]:
+	if _solved[6]:
 		return
-	if not _puzzle_6_wall_broken or not _puzzle_6_revive_done:
+	if not _final_wall_broken or not _final_revive_done:
 		return
-	_solved[5] = true
+	_solved[6] = true
 	gate.open()
 
-# Room 6 — parent cage and the School Photo artifact.
+# Room 7 — parent cage and the School Photo artifact.
 func _build_room_final() -> void:
-	_add_sign(_room_position(6, 1, 0),
+	_add_sign(_room_position(7, 1, 0),
 			"Free your parent.\nCollect the photo to keep its memory.")
 	var cage: Node2D = _PARENT_CAGE_SCENE.instantiate()
 	if "child_slot" in cage:
 		cage.set("child_slot", 0)
-	cage.position = _room_position(6, ROOM_HALF_W_TILES - 2, ROOM_HALF_H_TILES)
+	cage.position = _room_position(7, ROOM_HALF_W_TILES - 2, ROOM_HALF_H_TILES)
 	add_child(cage)
 	_parent_cage = cage
 
@@ -381,7 +443,7 @@ func _build_room_final() -> void:
 		frag.set("fragment_id", "school_photo")
 	if "display_name" in frag:
 		frag.set("display_name", "School Photo")
-	frag.position = _room_position(6, ROOM_HALF_W_TILES + 2, ROOM_HALF_H_TILES)
+	frag.position = _room_position(7, ROOM_HALF_W_TILES + 2, ROOM_HALF_H_TILES)
 	add_child(frag)
 	_memory_fragment = frag
 

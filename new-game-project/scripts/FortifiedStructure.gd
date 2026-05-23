@@ -21,7 +21,7 @@ func _ready() -> void:
 	health_bar.value     = _health
 	queue_redraw()
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, _element: int = 0) -> void:
 	if _destroyed:
 		return
 	_health -= amount
