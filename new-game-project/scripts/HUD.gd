@@ -69,6 +69,24 @@ const GROUP_COLORS: Array[Color] = [
 var _soldier_stat_labels: Array[Label] = []
 var _group_buttons: Array[Button] = []
 
+# Pause UI — toggle button (mouse / touch) + overlay + input listener.
+# The overlay is purely visual (MOUSE_FILTER_IGNORE) so other HUD buttons
+# stay clickable while paused. Game-world processing halts via
+# get_tree().paused; the HUD itself runs PROCESS_MODE_ALWAYS so the toggle
+# button and the pause_game action keep working.
+var _paused:         bool      = false
+var _pause_button:   Button    = null
+var _pause_overlay:  ColorRect = null
+
+# Status modal — STATUS button (mouse) + dim overlay + centred card listing
+# the per-soldier hit/shots/accuracy figures that used to live in the bottom
+# panel. Toggled by the STATUS button or by hud_activate while the focus is
+# on the STATUS button. Modal labels are wired into _soldier_stat_labels so
+# _refresh_soldier_stats keeps populating them.
+var _status_button:  Button    = null
+var _status_overlay: ColorRect = null
+var _status_visible: bool      = false
+
 # "Group X is under attack" notification — shown at top-centre, auto-hides after a few seconds.
 var _under_attack_label: Label = null
 var _under_attack_timer: float = 0.0
@@ -113,11 +131,16 @@ var _sacrifice_avail:   int = 0
 # =============================================================================
 func _ready() -> void:
 	add_to_group("hud")
+	# Stay processing while the tree is paused so the pause button stays
+	# clickable and _unhandled_input can still hear the pause_game action.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 
 	_wire_weapon_buttons()
 	_wire_formation_buttons()
 	_wire_group_section()
-	_wire_soldier_stats_grid()
+	_hide_bottom_stats_grid()
+	_build_pause_ui()
+	_build_status_ui()
 
 	retry_button.pressed.connect(_on_retry_pressed)
 	_next_level_button.pressed.connect(_on_next_level_pressed)
@@ -222,14 +245,9 @@ func _wire_group_section() -> void:
 	if _group_cycle_button:
 		_group_cycle_button.pressed.connect(_on_group_cycle_pressed)
 
-func _wire_soldier_stats_grid() -> void:
-	_soldier_stat_labels.clear()
-	if _soldier_stats_grid == null:
-		return
-	for child in _soldier_stats_grid.get_children():
-		if child is Label:
-			(child as Label).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			_soldier_stat_labels.append(child)
+func _hide_bottom_stats_grid() -> void:
+	if _soldier_stats_grid:
+		_soldier_stats_grid.hide()
 
 # =============================================================================
 # PUBLIC UPDATE API — called by SquadController and GameManager
@@ -711,17 +729,244 @@ func _draw_enemy_arrow() -> void:
 # MISSION-END BUTTONS
 # =============================================================================
 func _on_retry_pressed() -> void:
+	# Make sure a paused-state doesn't leak into the new scene.
+	if _paused:
+		_toggle_pause()
 	var main: Node = get_tree().get_first_node_in_group("main_scene")
 	if main and main.has_method("restart"):
 		main.restart()
 
 func _on_next_level_pressed() -> void:
+	if _paused:
+		_toggle_pause()
 	var main: Node = get_tree().get_first_node_in_group("main_scene")
 	if main and main.has_method("advance_level"):
 		main.advance_level()
 
 func _on_menu_pressed() -> void:
+	if _paused:
+		_toggle_pause()
 	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+
+# =============================================================================
+# PAUSE
+# =============================================================================
+# Builds the bottom-right PAUSE button (sized to match GOD / MAIN MENU) and
+# the centred dim-and-text overlay. Overlay uses MOUSE_FILTER_IGNORE so it's
+# purely visual — other HUD buttons stay clickable while paused.
+func _build_pause_ui() -> void:
+	_pause_button = Button.new()
+	_pause_button.text = "PAUSE"
+	_pause_button.anchor_left   = 1.0
+	_pause_button.anchor_top    = 1.0
+	_pause_button.anchor_right  = 1.0
+	_pause_button.anchor_bottom = 1.0
+	# Tucked just to the left of the GOD button (which sits at offset_left
+	# = -215). 5 px gap between them.
+	_pause_button.offset_left   = -290.0
+	_pause_button.offset_top    = -63.0
+	_pause_button.offset_right  = -220.0
+	_pause_button.offset_bottom = -27.0
+	_pause_button.add_theme_font_size_override("font_size", 18)
+	_pause_button.pressed.connect(_on_pause_pressed)
+	add_child(_pause_button)
+
+	_pause_overlay = ColorRect.new()
+	_pause_overlay.color = Color(0, 0, 0, 0.55)
+	_pause_overlay.anchor_left   = 0.0
+	_pause_overlay.anchor_top    = 0.0
+	_pause_overlay.anchor_right  = 1.0
+	_pause_overlay.anchor_bottom = 1.0
+	_pause_overlay.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+	_pause_overlay.hide()
+
+	var label := Label.new()
+	label.text = "PAUSED\n\nClick PAUSE, press Esc, or press START to resume"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	label.anchor_left   = 0.0
+	label.anchor_top    = 0.0
+	label.anchor_right  = 1.0
+	label.anchor_bottom = 1.0
+	label.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", 44)
+	label.add_theme_color_override("font_color", Color(1, 1, 1))
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	label.add_theme_constant_override("outline_size", 6)
+	_pause_overlay.add_child(label)
+	add_child(_pause_overlay)
+
+func _on_pause_pressed() -> void:
+	_toggle_pause()
+
+func _toggle_pause() -> void:
+	_paused = not _paused
+	get_tree().paused = _paused
+	if _pause_overlay:
+		_pause_overlay.visible = _paused
+	if _pause_button:
+		_pause_button.text = "RESUME" if _paused else "PAUSE"
+
+# Listens for the pause_game action (Esc keyboard / Start gamepad) at all
+# times — HUD has process_mode = ALWAYS so input flows even when paused.
+# Also handles the gamepad-only HUD navigation actions (LB cycles focus
+# through visible HUD buttons, LT activates the focused one) and the
+# revive shortcut (R / X) which fires the same handler as the heart button.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("pause_game"):
+		_toggle_pause()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("revive_squad"):
+		_on_revive_pressed()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("hud_focus_next"):
+		_focus_next_hud_button()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("hud_activate"):
+		_activate_focused_hud_button()
+		get_viewport().set_input_as_handled()
+
+# =============================================================================
+# STATUS MODAL  (per-soldier hit / shots / accuracy panel)
+# =============================================================================
+# STATUS button sits at the bottom-right, just left of PAUSE. Clicking it
+# (or hud_activate while it's focused) toggles a dim-and-card overlay that
+# shows the six soldier stat cells in a 3-column grid. Labels are stored in
+# _soldier_stat_labels so the existing _refresh_soldier_stats() keeps them
+# live every frame.
+func _build_status_ui() -> void:
+	_status_button = Button.new()
+	_status_button.text = "STATUS"
+	_status_button.anchor_left   = 1.0
+	_status_button.anchor_top    = 1.0
+	_status_button.anchor_right  = 1.0
+	_status_button.anchor_bottom = 1.0
+	# PAUSE sits at offset_left = -290 → -220. STATUS goes immediately to its
+	# left with a 5 px gap.
+	_status_button.offset_left   = -365.0
+	_status_button.offset_top    = -63.0
+	_status_button.offset_right  = -295.0
+	_status_button.offset_bottom = -27.0
+	_status_button.add_theme_font_size_override("font_size", 18)
+	_status_button.pressed.connect(_toggle_status_modal)
+	add_child(_status_button)
+
+	_status_overlay = ColorRect.new()
+	_status_overlay.color = Color(0, 0, 0, 0.55)
+	_status_overlay.anchor_left   = 0.0
+	_status_overlay.anchor_top    = 0.0
+	_status_overlay.anchor_right  = 1.0
+	_status_overlay.anchor_bottom = 1.0
+	# Catches clicks outside the card so the overlay can dismiss the modal.
+	_status_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_status_overlay.gui_input.connect(_on_status_overlay_input)
+	_status_overlay.hide()
+	add_child(_status_overlay)
+
+	var card := PanelContainer.new()
+	card.set_anchors_preset(Control.PRESET_CENTER)
+	card.position = Vector2(-230, -160)
+	card.custom_minimum_size = Vector2(460, 320)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	_status_overlay.add_child(card)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 20)
+	margin.add_theme_constant_override("margin_right", 20)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	card.add_child(margin)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 14)
+	margin.add_child(vb)
+
+	var title := Label.new()
+	title.text = "SQUAD STATUS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_color_override("font_color", Color(1.0, 0.92, 0.7))
+	vb.add_child(title)
+
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 24)
+	grid.add_theme_constant_override("v_separation", 12)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vb.add_child(grid)
+
+	_soldier_stat_labels.clear()
+	for i in 6:
+		var lbl := Label.new()
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_size_override("font_size", 16)
+		lbl.custom_minimum_size = Vector2(120, 44)
+		lbl.text = "S%d\n0/0  --%%" % (i + 1)
+		grid.add_child(lbl)
+		_soldier_stat_labels.append(lbl)
+
+	var close_btn := Button.new()
+	close_btn.text = "  Close  "
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close_btn.add_theme_font_size_override("font_size", 18)
+	close_btn.pressed.connect(_toggle_status_modal)
+	vb.add_child(close_btn)
+
+func _toggle_status_modal() -> void:
+	_status_visible = not _status_visible
+	if _status_overlay:
+		_status_overlay.visible = _status_visible
+
+func _on_status_overlay_input(event: InputEvent) -> void:
+	# Dismiss when the user clicks the dim area outside the card.
+	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
+		_toggle_status_modal()
+
+# =============================================================================
+# CONTROLLER HUD NAVIGATION  (LB = next focus, LT = activate)
+# =============================================================================
+# Walks the HUD tree and returns every visible, non-disabled Button in
+# top-to-bottom order. Used by LB to cycle focus and by LT to activate the
+# currently focused button.
+func _gather_focusable_hud_buttons() -> Array[Button]:
+	var out: Array[Button] = []
+	_collect_buttons_recursive(self, out)
+	return out
+
+func _collect_buttons_recursive(node: Node, out: Array[Button]) -> void:
+	for child in node.get_children():
+		if child is CanvasItem and not (child as CanvasItem).visible:
+			continue
+		if child is Button:
+			var btn := child as Button
+			if not btn.disabled:
+				out.append(btn)
+		_collect_buttons_recursive(child, out)
+
+func _focus_next_hud_button() -> void:
+	var buttons: Array[Button] = _gather_focusable_hud_buttons()
+	if buttons.is_empty():
+		return
+	var current: Control = get_viewport().gui_get_focus_owner()
+	var idx: int = -1
+	if current is Button:
+		idx = buttons.find(current)
+	var next_idx: int = (idx + 1) % buttons.size()
+	buttons[next_idx].grab_focus()
+
+func _activate_focused_hud_button() -> void:
+	var current: Control = get_viewport().gui_get_focus_owner()
+	if not (current is Button):
+		return
+	var btn := current as Button
+	if btn.disabled:
+		return
+	# Toggle buttons must flip their own state before firing the toggled
+	# signal — `pressed` alone won't update button_pressed visually.
+	if btn.toggle_mode:
+		btn.button_pressed = not btn.button_pressed
+		btn.toggled.emit(btn.button_pressed)
+	btn.pressed.emit()
 
 # GOD mode — toggles squad-wide invulnerability via GameManager.god_mode.
 # Soldier.take_damage() early-returns when the flag is on. The button stays

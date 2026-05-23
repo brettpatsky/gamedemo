@@ -20,10 +20,12 @@ const RNG_MAX: float = 1500.0
 @onready var _help_popup: ColorRect = $HelpPopup
 
 var _run_status_label: Label = null
+var _run_state_overlay: ColorRect = null
+var _run_state_visible: bool = false
 
 func _ready() -> void:
 	GameManager.score = 0
-	_build_debug_panel()
+	_build_run_state_modal()
 	RunState.run_reset.connect(_on_run_reset)
 	RunState.kid_lost.connect(func(_slot: int) -> void: _refresh_run_view())
 	RunState.parent_freed.connect(func(_slot: int) -> void: _refresh_run_view())
@@ -111,23 +113,59 @@ func _on_exit_pressed() -> void:
 	get_tree().quit()
 
 # =============================================================================
-# Debug / run-status panel — pinned to the bottom-left of the title screen so
-# it stays clear of the title text and the mission buttons. Slightly
-# transparent so it doesn't fully hide the bio cards underneath. Built in
-# code so the .tscn stays untouched while the design is still in flux.
-# Remove (or gate behind a debug flag) before shipping.
+# Run-state modal — hidden by default; surfaced by the RUN STATE button in
+# the top-right (built here to match the Help / Exit row). Click outside the
+# card or hit Close to dismiss. Built in code so the .tscn stays untouched.
 # =============================================================================
-func _build_debug_panel() -> void:
-	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	panel.position = Vector2(20, -270)
-	panel.custom_minimum_size = Vector2(320, 250)
-	panel.modulate.a = 0.92
-	add_child(panel)
+func _build_run_state_modal() -> void:
+	# Toggle button — slotted left of the existing Help / Exit pair (HelpButton
+	# sits at offset_left = -230, offset_right = -140 in the scene).
+	var toggle_btn := Button.new()
+	toggle_btn.text = "Run State"
+	toggle_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	toggle_btn.offset_left   = -370.0
+	toggle_btn.offset_top    =   30.0
+	toggle_btn.offset_right  = -240.0
+	toggle_btn.offset_bottom =   74.0
+	toggle_btn.add_theme_font_size_override("font_size", 22)
+	toggle_btn.pressed.connect(_toggle_run_state_modal)
+	add_child(toggle_btn)
+
+	# Dim overlay — full screen, click outside the card dismisses.
+	_run_state_overlay = ColorRect.new()
+	_run_state_overlay.color = Color(0, 0, 0, 0.7)
+	_run_state_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_run_state_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_run_state_overlay.gui_input.connect(_on_run_state_overlay_input)
+	_run_state_overlay.hide()
+	add_child(_run_state_overlay)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_run_state_overlay.add_child(center)
+
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(420, 0)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(card)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 22)
+	margin.add_theme_constant_override("margin_right", 22)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	card.add_child(margin)
 
 	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 6)
-	panel.add_child(vb)
+	vb.add_theme_constant_override("separation", 10)
+	margin.add_child(vb)
+
+	var title := Label.new()
+	title.text = "Run State"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_color_override("font_color", Color(0.116, 0.571, 0.855))
+	vb.add_child(title)
 
 	_run_status_label = Label.new()
 	_run_status_label.add_theme_font_size_override("font_size", 14)
@@ -135,8 +173,25 @@ func _build_debug_panel() -> void:
 
 	var reset_btn := Button.new()
 	reset_btn.text = "RESET RUN  (F12)"
+	reset_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	reset_btn.pressed.connect(_on_reset_run_pressed)
 	vb.add_child(reset_btn)
+
+	var close_btn := Button.new()
+	close_btn.text = "  Close  "
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close_btn.add_theme_font_size_override("font_size", 18)
+	close_btn.pressed.connect(_toggle_run_state_modal)
+	vb.add_child(close_btn)
+
+func _toggle_run_state_modal() -> void:
+	_run_state_visible = not _run_state_visible
+	if _run_state_overlay:
+		_run_state_overlay.visible = _run_state_visible
+
+func _on_run_state_overlay_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
+		_toggle_run_state_modal()
 
 func _refresh_run_view() -> void:
 	_refresh_run_status_label()

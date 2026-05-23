@@ -826,33 +826,33 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 
 [node name="Card" type="PanelContainer" parent="HelpPopup/CenterContainer"]
-custom_minimum_size = Vector2(620, 0)
+custom_minimum_size = Vector2(560, 0)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_fgkus")
 
 [node name="Margin" type="MarginContainer" parent="HelpPopup/CenterContainer/Card"]
 layout_mode = 2
-theme_override_constants/margin_left = 28
-theme_override_constants/margin_top = 24
-theme_override_constants/margin_right = 28
-theme_override_constants/margin_bottom = 24
+theme_override_constants/margin_left = 22
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 22
+theme_override_constants/margin_bottom = 16
 
 [node name="VBox" type="VBoxContainer" parent="HelpPopup/CenterContainer/Card/Margin"]
 layout_mode = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 8
 
 [node name="Title" type="Label" parent="HelpPopup/CenterContainer/Card/Margin/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.116, 0.571, 0.855, 1)
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 24
 text = "Controls"
 horizontal_alignment = 1
 
 [node name="Body" type="Label" parent="HelpPopup/CenterContainer/Card/Margin/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.9, 0.95, 1)
-theme_override_font_sizes/font_size = 18
-theme_override_constants/line_spacing = 6
+theme_override_font_sizes/font_size = 14
+theme_override_constants/line_spacing = 3
 text = "MOUSE & KEYBOARD
   Left Click — Move active squad to clicked point
   Right Click — Fire weapon (hold for auto-fire)
@@ -861,13 +861,17 @@ text = "MOUSE & KEYBOARD
   F — Cycle formation (2×3, 3×2, line, column, pentagram)
   G — Split squad into 1 / 2 / 3 groups
   1 / 2 / 3 — Select which group receives orders
+  R — Revive last fallen soldier
+  Esc — Pause / resume
 
 GAMEPAD
   Left Stick — Aim the reticle (moves the cursor)
   Right Stick — Pan camera
-  A — Click / Move    |    X — Fire (hold for auto-fire)
-  Y — Cycle weapon    |    B — Cycle formation
-  Start — Split squad    |    D-Pad ← ↑ → — Select group 1 / 2 / 3"
+  A — Click / Move    |    RT or RB — Fire (hold for auto-fire)
+  Y — Cycle weapon    |    B — Cycle formation    |    X — Revive
+  D-Pad Up — Split squad    |    D-Pad ← ↓ → — Select group 1 / 2 / 3
+  Start — Pause / resume
+  LB — Cycle focus through HUD buttons    |    LT — Activate focused button"
 
 [node name="CloseButton" type="Button" parent="HelpPopup/CenterContainer/Card/Margin/VBox"]
 layout_mode = 2
