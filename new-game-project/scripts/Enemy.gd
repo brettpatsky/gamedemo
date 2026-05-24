@@ -1,8 +1,9 @@
 # =============================================================================
-# Enemy.gd  (FIXED)
-# Fix 1: CollisionShape2D.disabled now uses set_deferred() — Godot forbids
-#         changing physics state mid-frame during a collision callback.
-# Fix 2: Same pattern applied to DetectionArea's child CollisionShape2D.
+# Enemy.gd
+# Procedural-enemy actor — PATROL / ALERT / ATTACK state machine with
+# strafing in ATTACK, RVO avoidance for movement, and a sight-radius gate
+# that pulses every nearby patrolling enemy into ALERT when one spots the
+# squad. All stats live in BalanceConfig under the ENEMY_* prefix.
 # =============================================================================
 extends CharacterBody2D
 
@@ -391,8 +392,8 @@ func _die() -> void:
 	# runs, and the arrow keeps pointing at a dead body.
 	remove_from_group("enemies")
 
-	# FIX: use set_deferred so Godot applies the change AFTER the physics
-	# step finishes — changing collision mid-step causes the flush error.
+	# set_deferred so Godot applies the change AFTER the physics step
+	# finishes — changing collision mid-step throws the flush error.
 	$CollisionShape2D.set_deferred("disabled", true)
 	$DetectionArea/CollisionShape2D.set_deferred("disabled", true)
 

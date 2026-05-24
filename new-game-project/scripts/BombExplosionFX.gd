@@ -1,7 +1,12 @@
 # BombExplosionFX.gd
-# Short-lived visual for the SACRIFICE weapon detonation. Spawned by Soldier._explode().
-# Draws an expanding shockwave + fireball, then queue_frees itself.
+# Short-lived visual for the SACRIFICE weapon detonation. Spawned by
+# Soldier._explode() with the damage radius + duration. Draws an expanding
+# shockwave + fireball + damage-radius marker, then queue_frees itself.
+# All colours / size multipliers / timings are tunable in BalanceConfig under
+# the BOMB_FX_* prefix.
 extends Node2D
+
+const Balance = preload("res://scripts/BalanceConfig.gd")
 
 var _radius:   float = 0.0
 var _duration: float = 0.65
@@ -24,27 +29,41 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	var t: float = clampf(_elapsed / _duration, 0.0, 1.0)
 
-	# Bright white flash — covers full radius instantly then vanishes in the first 20% of time.
-	var flash_t: float = clampf(t / 0.2, 0.0, 1.0)
-	var flash_alpha: float = lerpf(0.9, 0.0, flash_t)
+	# Bright white flash — full radius, gone after FLASH_PORTION of the duration.
+	var flash_t: float = clampf(t / Balance.BOMB_FX_FLASH_PORTION, 0.0, 1.0)
+	var flash_alpha: float = lerpf(Balance.BOMB_FX_FLASH_ALPHA_START, 0.0, flash_t)
 	if flash_alpha > 0.0:
-		draw_circle(Vector2.ZERO, _radius, Color(1.0, 0.95, 0.8, flash_alpha))
+		var flash := Balance.BOMB_FX_FLASH_COLOR
+		flash.a = flash_alpha
+		draw_circle(Vector2.ZERO, _radius, flash)
 
-	# Main fireball: expands from 40% to full radius, fades out.
-	var r: float = lerpf(_radius * 0.4, _radius, t)
-	var fill_alpha: float = lerpf(0.75, 0.0, t)
-	draw_circle(Vector2.ZERO, r, Color(1.0, 0.4, 0.05, fill_alpha))
+	# Main fireball: expands from FIREBALL_START_R_MULT * radius to full.
+	var r: float = lerpf(_radius * Balance.BOMB_FX_FIREBALL_START_R_MULT, _radius, t)
+	var fill_alpha: float = lerpf(Balance.BOMB_FX_FIREBALL_ALPHA_START, 0.0, t)
+	var fireball := Balance.BOMB_FX_FIREBALL_COLOR
+	fireball.a = fill_alpha
+	draw_circle(Vector2.ZERO, r, fireball)
 
-	# Outer shockwave ring: expands past the damage radius, fades.
-	var ring_r: float  = lerpf(_radius * 0.5, _radius * 1.35, t)
+	# Outer shockwave ring — expands past the damage radius, fades.
+	var ring_r: float = lerpf(
+			_radius * Balance.BOMB_FX_OUTER_RING_START_R_MULT,
+			_radius * Balance.BOMB_FX_OUTER_RING_END_R_MULT, t)
 	var ring_alpha: float = lerpf(1.0, 0.0, t)
-	draw_arc(Vector2.ZERO, ring_r, 0.0, TAU, 64, Color(1.0, 0.85, 0.2, ring_alpha), 5.0)
+	var outer := Balance.BOMB_FX_OUTER_RING_COLOR
+	outer.a = ring_alpha
+	draw_arc(Vector2.ZERO, ring_r, 0.0, TAU, 64, outer, Balance.BOMB_FX_OUTER_RING_WIDTH)
 
-	# Second inner ring slightly behind the outer one.
-	var inner_r: float = lerpf(_radius * 0.3, _radius * 1.1, t)
-	draw_arc(Vector2.ZERO, inner_r, 0.0, TAU, 48, Color(1.0, 0.55, 0.1, ring_alpha * 0.7), 3.0)
+	# Inner shockwave ring — trails the outer, lower alpha.
+	var inner_r: float = lerpf(
+			_radius * Balance.BOMB_FX_INNER_RING_START_R_MULT,
+			_radius * Balance.BOMB_FX_INNER_RING_END_R_MULT, t)
+	var inner := Balance.BOMB_FX_INNER_RING_COLOR
+	inner.a = ring_alpha * Balance.BOMB_FX_INNER_RING_ALPHA_MULT
+	draw_arc(Vector2.ZERO, inner_r, 0.0, TAU, 48, inner, Balance.BOMB_FX_INNER_RING_WIDTH)
 
-	# Damage-radius marker ring — stays fixed, fades out, so the player can clearly
-	# see the exact area that was damaged.
-	var edge_alpha: float = lerpf(0.8, 0.0, t)
-	draw_arc(Vector2.ZERO, _radius, 0.0, TAU, 64, Color(1.0, 1.0, 0.3, edge_alpha), 2.5)
+	# Damage-radius marker — stays at exact damage radius so the player can
+	# read what got hit.
+	var edge_alpha: float = lerpf(Balance.BOMB_FX_EDGE_ALPHA_START, 0.0, t)
+	var edge := Balance.BOMB_FX_EDGE_RING_COLOR
+	edge.a = edge_alpha
+	draw_arc(Vector2.ZERO, _radius, 0.0, TAU, 64, edge, Balance.BOMB_FX_EDGE_RING_WIDTH)

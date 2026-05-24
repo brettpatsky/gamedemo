@@ -3,26 +3,26 @@ extends CanvasLayer
 # =============================================================================
 # HUD.gd  —  attached to the root CanvasLayer of scenes/hud.tscn.
 #
-# All nodes live in the scene file; nothing is created in code.
+# Most nodes live in the scene file. The Pause overlay, Status modal, the
+# under-attack toast, and the boss-health/Void Embrace bars are all built
+# in code so the .tscn stays untouched while their layout iterates.
 #
-# Direct CanvasLayer children:
-#   MissionLabel      Label     (centre-anchored, hidden until mission ends)
-#   RetryButton       Button    (centre-anchored, hidden until mission ends)
-#   NextLevelButton   Button    (centre-anchored, hidden until mission won)
-#   MainMenuButton    Button    (top-right anchor)
+# Scene tree (top-level CanvasLayer children):
+#   MissionLabel      Label     (centre, shown on mission end)
+#   RetryButton       Button    (centre, shown on mission end)
+#   NextLevelButton   Button    (centre, shown on mission win)
+#   MainMenuButton    Button    (top-right)
+#   GodButton         Button    (bottom-right — debug invincibility toggle)
 #   ObjectiveLabel    Label     (top-left)
-#   EscortLabel       Label     (top-left, hidden unless escort mission)
+#   EscortLabel       Label     (top-left, escort mission only)
 #   EnemyLabel        Label     (top-left)
-#   ArrowNode         Control   (full-rect, MOUSE_FILTER_IGNORE — draws enemy arrow)
-#   BottomPanel       PanelContainer (bottom-full anchor, ~90 px)
-#     └─ MarginContainer
-#          └─ HBoxContainer (centred)
-#               ├─ WeaponGrid        GridContainer(2 cols)
-#               ├─ FormationGrid     GridContainer(3 cols)
-#               ├─ GroupSection      VBoxContainer
-#               │    ├─ GroupButton
-#               │    └─ GroupButtonsContainer
-#               └─ SoldierStatsGrid  GridContainer(3 cols)
+#   ArrowNode         Control   (full-rect, draws off-screen-enemy arrow)
+#   BottomPanel       PanelContainer (bottom-full)
+#     └─ MarginContainer → HBoxContainer
+#          ├─ WeaponGrid     GridContainer(2 cols)
+#          ├─ FormationGrid  GridContainer(3 cols, last cell = Revive)
+#          ├─ GroupSection   VBoxContainer (cycle btn + per-group btns)
+#          └─ SoldierStatsGrid  GridContainer (hidden — moved into the Status modal)
 # =============================================================================
 
 # ---------------------------------------------------------------------------

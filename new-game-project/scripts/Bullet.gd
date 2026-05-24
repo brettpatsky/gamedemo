@@ -69,33 +69,33 @@ func set_stats(p_damage: int, p_speed: float, p_distance: float, p_color: Color,
 
 # Spawns the element-coloured trail emitter once. Idempotent so repeated
 # set_stats calls don't pile up emitters. Particles render in WORLD space
-# (local_coords = false) so they don't follow the bullet — they hang back
-# along the path the bullet has already travelled, which reads as a trail.
+# (local_coords = false) so they hang back along the path the bullet has
+# already travelled. All numeric tunables live in Balance (BULLET_TRAIL_*).
 func _ensure_trail() -> void:
 	if _trail != null:
 		return
 	if element == 0:
 		return
 	var trail := CPUParticles2D.new()
-	trail.amount        = 18
-	trail.lifetime      = 0.35
+	trail.amount        = Balance.BULLET_TRAIL_AMOUNT
+	trail.lifetime      = Balance.BULLET_TRAIL_LIFETIME
 	trail.local_coords  = false
 	trail.emitting      = true
-	# Particles drift OPPOSITE to bullet travel, fanning out a touch.
+	# Drift OPPOSITE to bullet travel, fanning out a touch.
 	trail.direction     = -_direction if _direction != Vector2.ZERO else Vector2.LEFT
-	trail.spread        = 28.0
-	trail.initial_velocity_min = 40.0
-	trail.initial_velocity_max = 80.0
-	# Scale: start a bit puffy, shrink to nothing.
+	trail.spread        = Balance.BULLET_TRAIL_SPREAD
+	trail.initial_velocity_min = Balance.BULLET_TRAIL_VELOCITY_MIN
+	trail.initial_velocity_max = Balance.BULLET_TRAIL_VELOCITY_MAX
+	# Scale: puffy at spawn, shrinks to nothing.
 	var curve := Curve.new()
 	curve.add_point(Vector2(0.0, 1.0))
 	curve.add_point(Vector2(1.0, 0.15))
 	trail.scale_amount_curve = curve
-	trail.scale_amount_min   = 1.4
-	trail.scale_amount_max   = 2.6
+	trail.scale_amount_min   = Balance.BULLET_TRAIL_SCALE_MIN
+	trail.scale_amount_max   = Balance.BULLET_TRAIL_SCALE_MAX
 	# Colour: element tint, alpha fades to 0.
 	var grad := Gradient.new()
-	grad.set_color(0, Color(color.r, color.g, color.b, 0.95))
+	grad.set_color(0, Color(color.r, color.g, color.b, Balance.BULLET_TRAIL_START_ALPHA))
 	grad.set_color(1, Color(color.r, color.g, color.b, 0.0))
 	trail.color_ramp = grad
 	add_child(trail)

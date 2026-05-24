@@ -562,10 +562,11 @@ func _do_shoot() -> void:
 		bullet.global_position = global_position
 		bullet.initialise(dir, self)
 		# damage_bonus and range_mult come from FragmentEffects — Lost Marble
-		# bumps damage, Brother's Cap bumps range. Both stack with whatever
-		# base values the kid's tscn (or BalanceConfig) provides.
+		# bumps damage, Brother's Cap bumps range. Both stack with the kid's
+		# per-slot stats in BalanceConfig.
 		# Bullet colour is element-driven so the player reads Fire/Ice/Lightning
-		# at a glance; the per-kid bullet_color is no longer used for projectiles.
+		# at a glance; the per-kid bullet_color only shows on autodefend tracers
+		# and the bio-card name.
 		var elem: int = get_element()
 		var elem_col: Color = Elements.color_of(elem)
 		if _weapon == WeaponType.AUTO:

@@ -1,8 +1,8 @@
 # =============================================================================
-# CameraController.gd  (FIXED)
-# Fix: Camera was starting at (0,0) — the top-left corner of the map —
-#      which puts the viewport mostly off-screen to the top-left.
-#      Now centres on the map on _ready() so the play area is visible.
+# CameraController.gd
+# Top-down chase camera. Follows the squad centroid, supports keyboard /
+# right-stick panning + wheel zoom, clamps to the map rect, and starts
+# fully zoomed out so the player sees the whole arena on mission start.
 # =============================================================================
 extends Camera2D
 

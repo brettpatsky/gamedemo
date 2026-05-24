@@ -1,22 +1,19 @@
 # =============================================================================
-# MapGenerator.gd  (FIXED)
+# MapGenerator.gd
+# Procedural top-down map: noise-driven tile biomes, scattered obstacles,
+# boundary walls, a single-rectangle navigation polygon, and a per-mission
+# objective hook. Spawns enemies for procedural levels (2 / 4 / 5) and the
+# visual hill-shade overlay.
 #
-# FIX 1 — Navigation baking completely rewritten.
-#   The original approach added one outline polygon per passable tile.
-#   Godot's make_polygons_from_outlines() requires outlines to never share
-#   edges or overlap — thousands of adjacent tile-squares violate this
-#   instantly. The new approach uses a SINGLE large rectangle covering the
-#   whole map as the walkable area. Soldiers and enemies can walk anywhere;
-#   impassable tiles are visual only. This is standard practice for top-down
-#   games and works perfectly with NavigationAgent2D.
-#
-# FIX 2 — Camera target point exposed via get_map_centre().
-#   CameraController can call this to snap to the correct world position
-#   on startup rather than guessing from pixel maths.
+# Per-map sizing / density / noise frequency stays as @export so the .tscn
+# can vary them per-mission. Gameplay-affecting numbers (range / slope
+# multipliers, elevation thresholds) and hill-shade colours all live in
+# BalanceConfig under the TERRAIN_* / HILLSHADE_* prefixes.
 # =============================================================================
 extends Node2D
 
 const ObstacleClass = preload("res://scripts/Obstacle.gd")
+const Balance = preload("res://scripts/BalanceConfig.gd")
 
 @export var map_width:  int   = 55
 @export var map_height: int   = 50
@@ -24,20 +21,10 @@ const ObstacleClass = preload("res://scripts/Obstacle.gd")
 
 @export var water_threshold: float = 0.40
 @export var dirt_threshold:  float = 0.55
-@export var rock_threshold:  float = 0.80
 @export var noise_frequency: float = 0.05
 @export var elevation_frequency: float = 0.025  # lower freq = bigger hill/valley features
 @export var enemy_density:   int   = 30
 @export var tile_config:     TileConfig
-
-# Gameplay elevation thresholds used by get_range_modifier_at() — projectile
-# range is boosted past HILL_THRESHOLD and penalised below VALLEY_THRESHOLD.
-# The visual overlay uses its OWN continuous tinting (no thresholds) so peaks
-# and valleys blend smoothly rather than snapping at a band.
-const HILL_THRESHOLD:    float = 0.18
-const VALLEY_THRESHOLD:  float = -0.18
-const HILL_RANGE_MULT:   float = 1.35
-const VALLEY_RANGE_MULT: float = 0.70
 
 @onready var tile_map:   TileMapLayer       = $TileMapLayer
 @onready var nav_region: NavigationRegion2D = $NavigationRegion2D
@@ -110,21 +97,20 @@ func get_elevation_at(world_pos: Vector2) -> float:
 	return _elevation_noise.get_noise_2d(float(tile_pos.x), float(tile_pos.y))
 
 # Projectile range multiplier based on the shooter's footing.
-#   Hill   → HILL_RANGE_MULT   (bullets travel further)
-#   Valley → VALLEY_RANGE_MULT (bullets travel less)
+#   Hill   → Balance.HILL_RANGE_MULT   (bullets travel further)
+#   Valley → Balance.VALLEY_RANGE_MULT (bullets travel less)
 #   Flat   → 1.0
 func get_range_modifier_at(world_pos: Vector2) -> float:
 	var e := get_elevation_at(world_pos)
-	if e > HILL_THRESHOLD:
-		return HILL_RANGE_MULT
-	if e < VALLEY_THRESHOLD:
-		return VALLEY_RANGE_MULT
+	if e > Balance.HILL_THRESHOLD:
+		return Balance.HILL_RANGE_MULT
+	if e < Balance.VALLEY_THRESHOLD:
+		return Balance.VALLEY_RANGE_MULT
 	return 1.0
 
-# Movement-speed multiplier from terrain slope. Samples the elevation noise
-# directly ahead of the mover and compares with its current footing; uphill
-# steps slow the mover, downhill steps speed it up. Clamped to a ±25 % swing
-# so it tweaks pacing without making any tile a no-go zone.
+# Movement-speed multiplier from terrain slope. Uphill steps slow, downhill
+# steps speed up. Scale + clamp live in Balance (SLOPE_SPEED_*) so designers
+# can widen or tighten the swing without code changes.
 func get_slope_speed_mult(world_pos: Vector2, direction: Vector2) -> float:
 	if direction.length_squared() < 0.01:
 		return 1.0
@@ -134,8 +120,8 @@ func get_slope_speed_mult(world_pos: Vector2, direction: Vector2) -> float:
 	var here  := get_elevation_at(world_pos)
 	var ahead := get_elevation_at(world_pos + dir * float(tile_size))
 	var slope := ahead - here   # >0 = uphill, <0 = downhill
-	# Noise deltas across one tile are typically within ±0.2; scale to ±0.25.
-	return clampf(1.0 - slope * 1.25, 0.75, 1.25)
+	return clampf(1.0 - slope * Balance.SLOPE_SPEED_SCALE,
+			Balance.SLOPE_SPEED_MIN, Balance.SLOPE_SPEED_MAX)
 
 func get_spawn_positions(count: int) -> Array[Vector2]:
 	var result: Array[Vector2] = []
@@ -199,40 +185,57 @@ func _fill_tiles() -> void:
 			elif value < dirt_threshold:
 				atlas_coord = tile_config.dirt
 				_passable_cells.append(Vector2i(x, y))
-			elif value < rock_threshold:
+			else:
+				# High-noise cells use grass so the maze_rock sprite (atlas 20,8)
+				# never appears in procedural levels — it's reserved for actual maze
+				# scenes. These cells are passable; obstacle density handles them.
 				atlas_coord = tile_config.grass
 				_passable_cells.append(Vector2i(x, y))
-			else:
-				atlas_coord = tile_config.rock
 
 			tile_map.set_cell(Vector2i(x, y), tile_config.tileset_source_id, atlas_coord)
 
 # ---------------------------------------------------------------------------
-# Visual hill/valley overlay. Samples a low-frequency elevation noise across
-# every tile and draws a single batched polygon layer of tinted shading per
-# tile — bright/warm for hills, dark/cool for valleys. Purely cosmetic; no
-# gameplay effect. Implemented as one child Node2D so we can hand the noise
-# values into its _draw() once and let Godot handle batching.
+# Visual hill/valley overlay — three layers per tile, batched via a child
+# Node2D's _draw(). Purely cosmetic. All colours / thresholds / alphas live
+# in BalanceConfig (HILLSHADE_*) and are pushed onto the overlay below so
+# the inline script doesn't have to import Balance itself.
 # ---------------------------------------------------------------------------
 func _spawn_topography() -> void:
 	var overlay := Node2D.new()
 	overlay.name = "TopographyOverlay"
 	# Sit ON TOP of the tilemap (tilemap z_index = 0). Soldiers/enemies live
-	# under the sibling SquadController and render after MapGenerator's whole
-	# subtree, so they remain on top of this overlay regardless.
+	# under SquadController and render after MapGenerator's subtree, so they
+	# stay on top of this overlay regardless.
 	overlay.z_index = 0
 	overlay.show_behind_parent = false
 	overlay.set_script(_make_topography_script())
 	overlay.set("tile_size",  tile_size)
 	overlay.set("map_width",  map_width)
 	overlay.set("map_height", map_height)
+	# Push all visual tunables in from Balance. The inline script keeps its
+	# matching `var` fields and reads them directly in _draw().
+	overlay.set("hill_threshold",      Balance.HILL_THRESHOLD)
+	overlay.set("valley_threshold",    Balance.VALLEY_THRESHOLD)
+	overlay.set("light_x",             Balance.HILLSHADE_LIGHT_X)
+	overlay.set("light_y",             Balance.HILLSHADE_LIGHT_Y)
+	overlay.set("shade_intensity",     Balance.HILLSHADE_INTENSITY)
+	overlay.set("highlight_alpha",     Balance.HILLSHADE_HIGHLIGHT_ALPHA)
+	overlay.set("shadow_alpha",        Balance.HILLSHADE_SHADOW_ALPHA)
+	overlay.set("highlight_color",     Balance.HILLSHADE_HIGHLIGHT_COLOR)
+	overlay.set("shadow_color",        Balance.HILLSHADE_SHADOW_COLOR)
+	overlay.set("hill_tint",           Balance.HILLSHADE_HILL_TINT)
+	overlay.set("valley_tint",         Balance.HILLSHADE_VALLEY_TINT)
+	overlay.set("zone_max_alpha",      Balance.HILLSHADE_ZONE_MAX_ALPHA)
+	overlay.set("zone_falloff",        Balance.HILLSHADE_ZONE_FALLOFF)
+	overlay.set("drop_shadow_color",   Balance.HILLSHADE_DROP_SHADOW_COLOR)
+	overlay.set("drop_shadow_width",   Balance.HILLSHADE_DROP_SHADOW_WIDTH)
+	overlay.set("drop_shadow_alpha",   Balance.HILLSHADE_DROP_SHADOW_ALPHA)
 	# Snapshot the elevation field as a flat float array so _draw() doesn't
 	# touch the FastNoiseLite each frame.
 	var samples := PackedFloat32Array()
 	samples.resize(map_width * map_height)
-	# Water mask — overlay must not paint hillshade on water tiles (they're
-	# obvious from the blue colour and stippling them with light/shadow looks
-	# like a bad photo filter).
+	# Water mask — overlay must not paint hillshade on water tiles (the blue
+	# already reads as water; lighting it stripes badly).
 	var water_bytes := PackedByteArray()
 	water_bytes.resize(map_width * map_height)
 	for x in map_width:
@@ -247,18 +250,12 @@ func _spawn_topography() -> void:
 	add_child(overlay)
 
 # Inline script for the overlay node — three layers stacked:
-#
-#   1) Smooth hillshade via per-corner colours (shared at tile boundaries,
-#      so the gradient flows continuously across the map).
-#   2) Single-tier zone tint — warm orange past HILL_THRESHOLD, cool blue
-#      past VALLEY_THRESHOLD, neutral in between. Soft alpha ramp so the
-#      tint fades in over ZONE_FALLOFF rather than snapping at the edge.
-#   3) Per-edge dark drop-shadows on tiles whose N or W neighbour belongs to
-#      a higher band. NW-lit world → shadows fall SE off cliffs. Drawn as
-#      gradient bands (full alpha at the cliff, zero at the far side) so
-#      the cliff edge reads as "this is raised ground" rather than a line.
-#
-# Water tiles are skipped throughout so their blue isn't muddied.
+#   1) Smooth hillshade (per-corner colours so the gradient flows continuously).
+#   2) Zone tint that fades in past the hill / valley thresholds.
+#   3) Cliff drop-shadows along band transitions in the NW-lit direction.
+# All tunables (colours, alphas, thresholds, light direction, shadow width)
+# arrive as `var` fields populated by MapGenerator._spawn_topography() from
+# BalanceConfig.
 func _make_topography_script() -> GDScript:
 	var src := """
 extends Node2D
@@ -269,33 +266,23 @@ var map_height: int   = 0
 var elevation:  PackedFloat32Array
 var water_mask: PackedByteArray
 
-const HILL_THRESHOLD   := 0.18
-const VALLEY_THRESHOLD := -0.18
-
-const LIGHT_X         := -0.6
-const LIGHT_Y         := -0.6
-const SHADE_INTENSITY := 6.0
-const HIGHLIGHT_ALPHA := 0.55
-const SHADOW_ALPHA    := 0.65
-
-const HIGHLIGHT   := Color(1.00, 0.96, 0.78)   # warm sun-lit cream
-const SHADOW      := Color(0.02, 0.06, 0.14)   # cool shadow side
-const HILL_TINT   := Color(1.00, 0.78, 0.40)   # warm peak tint
-const VALLEY_TINT := Color(0.20, 0.40, 0.85)   # cool valley tint
-const ZONE_MAX_A  := 0.35
-const ZONE_FALLOFF := 0.30   # noise units over which the zone tint fades in
-
-# Cliff drop-shadow params. With light from NW, any tile whose NORTH or
-# WEST neighbour sits in a higher elevation band gets a gradient band on
-# its inside edge — full alpha at the cliff face, zero at the far side.
-const DROP_SHADOW_COL    := Color(0.02, 0.04, 0.10)
-const DROP_SHADOW_WIDTH  := 16.0
-const DROP_SHADOW_ALPHA  := 0.55
-
-func _tile_elev(x: int, y: int) -> float:
-	if x < 0 or x >= map_width or y < 0 or y >= map_height:
-		return 0.0
-	return elevation[x * map_height + y]
+# Pushed in from BalanceConfig — see MapGenerator._spawn_topography().
+var hill_threshold:    float = 0.18
+var valley_threshold:  float = -0.18
+var light_x:           float = -0.6
+var light_y:           float = -0.6
+var shade_intensity:   float = 6.0
+var highlight_alpha:   float = 0.55
+var shadow_alpha:      float = 0.65
+var highlight_color:   Color = Color(1.00, 0.96, 0.78)
+var shadow_color:      Color = Color(0.02, 0.06, 0.14)
+var hill_tint:         Color = Color(1.00, 0.78, 0.40)
+var valley_tint:       Color = Color(0.20, 0.40, 0.85)
+var zone_max_alpha:    float = 0.35
+var zone_falloff:      float = 0.30
+var drop_shadow_color: Color = Color(0.02, 0.04, 0.10)
+var drop_shadow_width: float = 16.0
+var drop_shadow_alpha: float = 0.55
 
 func _is_water(x: int, y: int) -> bool:
 	if x < 0 or x >= map_width or y < 0 or y >= map_height:
@@ -304,19 +291,17 @@ func _is_water(x: int, y: int) -> bool:
 		return false
 	return water_mask[x * map_height + y] != 0
 
-# Elevation band classification: -1 (valley), 0 (flat), 1 (hill).
-# Out-of-bounds reads as flat so edge tiles don't draw phantom shadows.
+# Elevation band: -1 (valley), 0 (flat), 1 (hill). Out-of-bounds = flat so
+# edge tiles don't draw phantom drop-shadows.
 func _classify_at(x: int, y: int) -> int:
 	if x < 0 or x >= map_width or y < 0 or y >= map_height:
 		return 0
 	var e: float = elevation[x * map_height + y]
-	if e > HILL_THRESHOLD: return 1
-	if e < VALLEY_THRESHOLD: return -1
+	if e > hill_threshold: return 1
+	if e < valley_threshold: return -1
 	return 0
 
-# Corner elevation = average of the (up to 4) tile centres that meet at this
-# corner. Corner (cx, cy) sits at the meeting point of tiles
-# (cx-1, cy-1), (cx, cy-1), (cx-1, cy), (cx, cy).
+# Corner elevation = average of the (up to 4) tile centres meeting at this corner.
 func _corner_elev(cx: int, cy: int) -> float:
 	var sum: float = 0.0
 	var n:   int   = 0
@@ -336,34 +321,33 @@ func _corner_color(cx: int, cy: int) -> Color:
 	var e:  float = _corner_elev(cx, cy)
 	var dx: float = _corner_elev(cx + 1, cy) - _corner_elev(cx - 1, cy)
 	var dy: float = _corner_elev(cx, cy + 1) - _corner_elev(cx, cy - 1)
-	var s:  float = -(dx * LIGHT_X + dy * LIGHT_Y) * SHADE_INTENSITY
+	var s:  float = -(dx * light_x + dy * light_y) * shade_intensity
 	s = clampf(s, -1.0, 1.0)
 
 	var shade_col: Color
 	if s >= 0.0:
-		shade_col = Color(HIGHLIGHT.r, HIGHLIGHT.g, HIGHLIGHT.b, s * HIGHLIGHT_ALPHA)
+		shade_col = Color(highlight_color.r, highlight_color.g, highlight_color.b, s * highlight_alpha)
 	else:
-		shade_col = Color(SHADOW.r, SHADOW.g, SHADOW.b, -s * SHADOW_ALPHA)
+		shade_col = Color(shadow_color.r, shadow_color.g, shadow_color.b, -s * shadow_alpha)
 
-	var zone_alpha: float = 0.0
-	var zone_col: Color = HILL_TINT
-	if e > HILL_THRESHOLD:
-		zone_alpha = clampf((e - HILL_THRESHOLD) / ZONE_FALLOFF, 0.0, 1.0) * ZONE_MAX_A
-		zone_col = HILL_TINT
-	elif e < VALLEY_THRESHOLD:
-		zone_alpha = clampf((VALLEY_THRESHOLD - e) / ZONE_FALLOFF, 0.0, 1.0) * ZONE_MAX_A
-		zone_col = VALLEY_TINT
+	var zone_a: float = 0.0
+	var zone_col: Color = hill_tint
+	if e > hill_threshold:
+		zone_a = clampf((e - hill_threshold) / zone_falloff, 0.0, 1.0) * zone_max_alpha
+		zone_col = hill_tint
+	elif e < valley_threshold:
+		zone_a = clampf((valley_threshold - e) / zone_falloff, 0.0, 1.0) * zone_max_alpha
+		zone_col = valley_tint
 
 	# Composite zone OVER hillshade.
 	var sa: float = shade_col.a
-	var za: float = zone_alpha
-	var out_a: float = sa + za * (1.0 - sa)
+	var out_a: float = sa + zone_a * (1.0 - sa)
 	if out_a <= 0.002:
 		return Color(0, 0, 0, 0)
 	var inv: float = 1.0 / out_a
-	var r: float = (shade_col.r * sa + zone_col.r * za * (1.0 - sa)) * inv
-	var g: float = (shade_col.g * sa + zone_col.g * za * (1.0 - sa)) * inv
-	var b: float = (shade_col.b * sa + zone_col.b * za * (1.0 - sa)) * inv
+	var r: float = (shade_col.r * sa + zone_col.r * zone_a * (1.0 - sa)) * inv
+	var g: float = (shade_col.g * sa + zone_col.g * zone_a * (1.0 - sa)) * inv
+	var b: float = (shade_col.b * sa + zone_col.b * zone_a * (1.0 - sa)) * inv
 	return Color(r, g, b, out_a)
 
 func _draw() -> void:
@@ -406,12 +390,10 @@ func _draw() -> void:
 			var cols := PackedColorArray([c00, c10, c11, c01])
 			draw_polygon(verts, cols)
 
-	# Pass 2 — cliff drop-shadows along band transitions. A tile whose
-	# NORTH or WEST neighbour is in a higher band gets a soft gradient
-	# band painted on its inside edge.
-	var shadow_near := DROP_SHADOW_COL
-	shadow_near.a = DROP_SHADOW_ALPHA
-	var shadow_far := DROP_SHADOW_COL
+	# Pass 2 — cliff drop-shadows along band transitions.
+	var shadow_near := drop_shadow_color
+	shadow_near.a = drop_shadow_alpha
+	var shadow_far := drop_shadow_color
 	shadow_far.a = 0.0
 	for x in map_width:
 		for y in map_height:
@@ -421,7 +403,7 @@ func _draw() -> void:
 			var tx: float = x * ts - half
 			var ty: float = y * ts - half
 			if _classify_at(x, y - 1) > z_here and not _is_water(x, y - 1):
-				var w: float = DROP_SHADOW_WIDTH
+				var w: float = drop_shadow_width
 				var verts_n := PackedVector2Array([
 					Vector2(tx,      ty),
 					Vector2(tx + ts, ty),
@@ -433,7 +415,7 @@ func _draw() -> void:
 				])
 				draw_polygon(verts_n, cols_n)
 			if _classify_at(x - 1, y) > z_here and not _is_water(x - 1, y):
-				var w: float = DROP_SHADOW_WIDTH
+				var w: float = drop_shadow_width
 				var verts_w := PackedVector2Array([
 					Vector2(tx,     ty),
 					Vector2(tx + w, ty),
@@ -573,17 +555,10 @@ func _spawn_obstacles() -> void:
 		rocks_placed += 1
 
 func _bake_navigation() -> void:
-	# -------------------------------------------------------------------------
-	# FIX: Use a single bounding rectangle as the nav polygon instead of one
-	# polygon per tile. The per-tile approach caused Godot's convex partition
-	# to fail because adjacent tile squares share edges, which is illegal.
-	#
-	# A single rectangle covering the entire map is valid and sufficient.
-	# NavigationAgent2D will path-find across the whole area. Impassable tiles
-	# (water, rock) are purely visual — for full obstacle avoidance you would
-	# add NavigationObstacle2D nodes on them, but for a top-down shooter the
-	# open nav mesh is fine and much more stable.
-	# -------------------------------------------------------------------------
+	# Single bounding rectangle as the walkable region. Per-tile outlines
+	# fail Godot's convex partition because adjacent tile squares share edges,
+	# so soldiers and enemies just path across the whole open area; impassable
+	# tiles (water, rock) are visual only.
 	var nav_poly := NavigationPolygon.new()
 
 	# Use the exact corners of the first and last visible tiles. map_to_local()
@@ -607,9 +582,8 @@ func _bake_navigation() -> void:
 		Vector2(tl.x, br.y)
 	])
 
-	# Directly assign vertices and polygon indices — avoids the deprecated
-	# make_polygons_from_outlines() call. Works because our shape is a simple
-	# convex quad (no triangulation needed).
+	# Direct vertex / polygon assignment — the shape is a convex quad so no
+	# triangulation is needed.
 	nav_poly.vertices = outline
 	nav_poly.add_polygon(PackedInt32Array([0, 1, 2, 3]))
 	nav_region.navigation_polygon = nav_poly
