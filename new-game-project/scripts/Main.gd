@@ -40,6 +40,14 @@ const MAZE_SCENE_PATH := "res://scenes/mazes/maze_1.tscn"
 const MAZE_2_SCENE_PATH := "res://scenes/mazes/maze_2.tscn"
 # Level 7 — The Weeping Heart boss arena.
 const BOSS_ARENA_SCENE_PATH := "res://scenes/bosses/boss_arena.tscn"
+# Hand-crafted alternatives to MapGenerator for levels 2 / 4 / 5. Used when
+# the player flips the "Map: Custom" toggle on the title screen. Each scene
+# uses HandcraftedMap.gd and is editable in the Godot editor.
+const HANDCRAFTED_MAP_PATHS := {
+	2: "res://scenes/handcrafted/mission_2_eliminate.tscn",
+	4: "res://scenes/handcrafted/mission_4_structures.tscn",
+	5: "res://scenes/handcrafted/mission_5_escort.tscn",
+}
 
 @onready var map_gen:    Node        = $GameViewport/SubViewport/MapGenerator
 @onready var squad_ctrl: Node2D      = $GameViewport/SubViewport/SquadController
@@ -97,6 +105,18 @@ func _ready() -> void:
 	elif GameManager.current_level == 7:
 		var old: Node = map_gen
 		map_gen = _spawn_alt_level(BOSS_ARENA_SCENE_PATH)
+		old.remove_from_group("map_generator")
+		old.queue_free()
+		var camera: Node = get_tree().get_first_node_in_group("main_camera")
+		if camera and camera.has_method("refresh_map_bounds"):
+			camera.refresh_map_bounds()
+	elif GameManager.use_handcrafted_maps and HANDCRAFTED_MAP_PATHS.has(GameManager.current_level):
+		# Player chose Custom maps on the title screen — swap the procedural
+		# MapGenerator for the hand-edited HandcraftedMap scene. Same
+		# interface; the scene supplies pre-baked tiles + obstacles + walls
+		# while mission spawning still runs as normal.
+		var old: Node = map_gen
+		map_gen = _spawn_alt_level(HANDCRAFTED_MAP_PATHS[GameManager.current_level])
 		old.remove_from_group("map_generator")
 		old.queue_free()
 		var camera: Node = get_tree().get_first_node_in_group("main_camera")

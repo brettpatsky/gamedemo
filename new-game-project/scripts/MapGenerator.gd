@@ -5,19 +5,20 @@
 # objective hook. Spawns enemies for procedural levels (2 / 4 / 5) and the
 # visual hill-shade overlay.
 #
-# Per-map sizing / density / noise frequency stays as @export so the .tscn
-# can vary them per-mission. Gameplay-affecting numbers (range / slope
-# multipliers, elevation thresholds) and hill-shade colours all live in
-# BalanceConfig under the TERRAIN_* / HILLSHADE_* prefixes.
+# Map dimensions come from BalanceConfig (MAP_AUTO_* / MAP_HANDCRAFTED_*).
+# Noise frequency / density / thresholds stay as @export so individual
+# scenes can still vary them. Gameplay range / slope / hill-shade constants
+# all live in BalanceConfig under the TERRAIN_* / HILLSHADE_* prefixes.
 # =============================================================================
 extends Node2D
+class_name MapGenerator
 
 const ObstacleClass = preload("res://scripts/Obstacle.gd")
 const Balance = preload("res://scripts/BalanceConfig.gd")
 
-@export var map_width:  int   = 55
-@export var map_height: int   = 50
-@export var tile_size:  int   = 64
+@export var map_width:  int = Balance.MAP_AUTO_WIDTH
+@export var map_height: int = Balance.MAP_AUTO_HEIGHT
+@export var tile_size:  int = Balance.MAP_AUTO_TILE_SIZE
 
 @export var water_threshold: float = 0.40
 @export var dirt_threshold:  float = 0.55

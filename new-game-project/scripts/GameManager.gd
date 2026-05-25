@@ -30,6 +30,13 @@ var score: int = 0
 var soldiers_alive: int = 0           # decremented by Soldier.die()
 var enemies_alive: int = 0            # decremented by Enemy.die()
 var current_level: int = 1            # persists across scene reloads (1–3)
+# Map source for procedural missions (2 / 4 / 5). When false, MapGenerator
+# builds a fresh random map each load (the original behaviour). When true,
+# the matching scenes/handcrafted/mission_X.tscn is loaded instead so the
+# player gets a hand-edited layout. Toggled by the title screen button;
+# session-local (resets to false on quit). Other levels are unaffected —
+# tutorial / mazes / boss always use their own hand-authored scenes.
+var use_handcrafted_maps: bool = false
 # Cheat: when true, Soldier.take_damage() is a no-op for the entire squad.
 # Toggled by the GOD button next to MAIN MENU on the HUD. Persists across
 # retries / next-level transitions so it stays on once enabled.

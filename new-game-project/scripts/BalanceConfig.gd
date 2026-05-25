@@ -12,9 +12,7 @@
 # Out of scope (kept on their owning scripts): scene geometry (arena
 # dimensions baked into tscn), formation tables (data shape, not a number),
 # tile coords, asset paths, and per-instance editor exports that one map or
-# scene needs but the rest of the game doesn't (e.g. MapGenerator's
-# map_width / tile_size — still @export so a future second procedural map
-# can have its own size without forking the config).
+# scene needs but the rest of the game doesn't.
 # =============================================================================
 extends Node
 
@@ -241,6 +239,22 @@ const PROJECTILE_RADIUS:       float = 12.0
 # actually clear the encounter — defaults would starve them.
 const LOADOUT_BOSS_RIFLE_POOL:   int = 600
 const LOADOUT_BOSS_GRENADE_AMMO: int = 15
+
+# =============================================================================
+# MAP DIMENSIONS
+# =============================================================================
+
+# Auto-generated (procedural) maps — tile size matches the world tileset
+# (spritesheet_tiles.png) which uses 64×64 atlas cells.
+const MAP_AUTO_WIDTH:     int = 55
+const MAP_AUTO_HEIGHT:    int = 50
+const MAP_AUTO_TILE_SIZE: int = 64
+
+# Handcrafted maps use the 32×32 fantasy tileset, so the grid is doubled to
+# keep the playable footprint the same as auto-generated levels.
+const MAP_HANDCRAFTED_WIDTH:     int = 110
+const MAP_HANDCRAFTED_HEIGHT:    int = 100
+const MAP_HANDCRAFTED_TILE_SIZE: int = 32
 
 # =============================================================================
 # TERRAIN — gameplay (range / slope) and visual hill-shade

@@ -22,10 +22,12 @@ const RNG_MAX: float = 1500.0
 var _run_status_label: Label = null
 var _run_state_overlay: ColorRect = null
 var _run_state_visible: bool = false
+var _map_mode_btn: Button = null
 
 func _ready() -> void:
 	GameManager.score = 0
 	_build_run_state_modal()
+	_build_map_mode_button()
 	RunState.run_reset.connect(_on_run_reset)
 	RunState.kid_lost.connect(func(_slot: int) -> void: _refresh_run_view())
 	RunState.parent_freed.connect(func(_slot: int) -> void: _refresh_run_view())
@@ -195,3 +197,30 @@ func _on_reset_run_pressed() -> void:
 
 func _on_run_reset() -> void:
 	_refresh_run_view()
+
+# =============================================================================
+# Map-mode toggle — sits left of the RUN STATE button. Switches the source for
+# missions 2 / 4 / 5 between MapGenerator (random each load) and the matching
+# scenes/handcrafted/mission_X.tscn (hand-edited in the Godot editor). Choice
+# is held on GameManager, so it survives scene reloads but resets on quit.
+# =============================================================================
+func _build_map_mode_button() -> void:
+	_map_mode_btn = Button.new()
+	_map_mode_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_map_mode_btn.offset_left   = -510.0
+	_map_mode_btn.offset_top    =   30.0
+	_map_mode_btn.offset_right  = -380.0
+	_map_mode_btn.offset_bottom =   74.0
+	_map_mode_btn.add_theme_font_size_override("font_size", 18)
+	_map_mode_btn.pressed.connect(_on_map_mode_pressed)
+	add_child(_map_mode_btn)
+	_refresh_map_mode_label()
+
+func _refresh_map_mode_label() -> void:
+	if _map_mode_btn == null:
+		return
+	_map_mode_btn.text = "Map: Custom" if GameManager.use_handcrafted_maps else "Map: Auto"
+
+func _on_map_mode_pressed() -> void:
+	GameManager.use_handcrafted_maps = not GameManager.use_handcrafted_maps
+	_refresh_map_mode_label()

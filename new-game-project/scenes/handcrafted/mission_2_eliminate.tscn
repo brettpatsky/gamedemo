@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://mqpwqddkamvs"]
+
+[ext_resource type="Script" uid="uid://bvpj2ijdfuxm3" path="res://scripts/HandcraftedMap.gd" id="1_handm2"]
+[ext_resource type="TileSet" uid="uid://5epmd5028ti" path="res://resources/handcrafted_tileset.tres" id="3_qjhl4"]
+[ext_resource type="Resource" uid="uid://dreypr0e4y7ma" path="res://resources/tile_config_default.tres" id="3_tilecfg"]
+
+[node name="HandcraftedMap" type="Node2D" unique_id=760455247 groups=["map_generator"]]
+script = ExtResource("1_handm2")
+tile_config = ExtResource("3_tilecfg")
+
+[node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=1738341574]
+tile_set = ExtResource("3_qjhl4")
+
+[node name="NavigationRegion2D" type="NavigationRegion2D" parent="." unique_id=837269874]
