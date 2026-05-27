@@ -1,0 +1,25 @@
+[gd_scene format=3 uid="uid://dp74unvu3oor3"]
+
+[ext_resource type="Texture2D" uid="uid://d370g5btsumgw" path="res://resources/topdown/Houses no shadows.png" id="1_jousp"]
+
+[node name="House" type="StaticBody2D" unique_id=708725042]
+
+[node name="CollisionPolygon2D" type="CollisionPolygon2D" parent="." unique_id=1270322493]
+position = Vector2(-99.7616, -47.128265)
+scale = Vector2(1.7268211, 1.8913267)
+polygon = PackedVector2Array(104, 264, 264, 264, 264, 344, 104, 344)
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=591541033]
+position = Vector2(216, 424)
+scale = Vector2(2, 2.016)
+texture = ExtResource("1_jousp")
+region_enabled = true
+region_rect = Rect2(117, 35.5, 149, 186)
+
+[node name="Sprite2D2" type="Sprite2D" parent="." unique_id=1575228472]
+z_index = 2
+position = Vector2(216, 360)
+scale = Vector2(2, 2.006)
+texture = ExtResource("1_jousp")
+region_enabled = true
+region_rect = Rect2(121, 32.5, 143, 130)

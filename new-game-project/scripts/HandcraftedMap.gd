@@ -133,9 +133,11 @@ func _editor_regenerate() -> void:
 	if tile_config == null:
 		tile_config = TileConfig.new()
 	if tile_map == null:
-		tile_map = get_node_or_null("TileMapLayer") as TileMapLayer
+		tile_map = get_node_or_null("TileMapLayer_ground") as TileMapLayer
+		if tile_map == null:
+			tile_map = get_node_or_null("TileMapLayer") as TileMapLayer
 	if tile_map == null or tile_map.tile_set == null:
-		push_warning("[HandcraftedMap] No TileMapLayer / tile_set — can't regenerate.")
+		push_warning("[HandcraftedMap] No TileMapLayer_ground / tile_set — can't regenerate.")
 		return
 
 	# Wipe previously generated obstacles / walls so repeated clicks don't pile up.

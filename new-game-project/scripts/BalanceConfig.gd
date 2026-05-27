@@ -250,8 +250,10 @@ const MAP_AUTO_WIDTH:     int = 55
 const MAP_AUTO_HEIGHT:    int = 50
 const MAP_AUTO_TILE_SIZE: int = 64
 
-# Handcrafted maps use the 32×32 fantasy tileset, so the grid is doubled to
-# keep the playable footprint the same as auto-generated levels.
+# Handcrafted maps use the 16×16 Caraka tileset displayed at 2× scale.
+# TileMapLayers are scaled Vector2(2,2) so each 16 px art cell renders at 32 px.
+# tile_size = 32 (the effective visual size) so camera/nav calculations match.
+# World footprint stays identical to auto-gen: 110×32×2 = 3520 px wide.
 const MAP_HANDCRAFTED_WIDTH:     int = 110
 const MAP_HANDCRAFTED_HEIGHT:    int = 100
 const MAP_HANDCRAFTED_TILE_SIZE: int = 32

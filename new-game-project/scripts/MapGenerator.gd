@@ -27,8 +27,8 @@ const Balance = preload("res://scripts/BalanceConfig.gd")
 @export var enemy_density:   int   = 30
 @export var tile_config:     TileConfig
 
-@onready var tile_map:   TileMapLayer       = $TileMapLayer
-@onready var nav_region: NavigationRegion2D = $NavigationRegion2D
+var tile_map:   TileMapLayer
+var nav_region: NavigationRegion2D
 
 var _noise           := FastNoiseLite.new()
 var _elevation_noise := FastNoiseLite.new()
@@ -44,6 +44,10 @@ var _enemy_exclusion_radius: int = 0
 # ---------------------------------------------------------------------------
 func _ready() -> void:
 	add_to_group("map_generator")
+	tile_map = get_node_or_null("TileMapLayer_ground") as TileMapLayer
+	if tile_map == null:
+		tile_map = get_node_or_null("TileMapLayer") as TileMapLayer
+	nav_region = get_node_or_null("NavigationRegion2D") as NavigationRegion2D
 	if tile_config == null:
 		tile_config = TileConfig.new()
 

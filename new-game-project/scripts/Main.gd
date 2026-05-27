@@ -40,13 +40,20 @@ const MAZE_SCENE_PATH := "res://scenes/mazes/maze_1.tscn"
 const MAZE_2_SCENE_PATH := "res://scenes/mazes/maze_2.tscn"
 # Level 7 — The Weeping Heart boss arena.
 const BOSS_ARENA_SCENE_PATH := "res://scenes/bosses/boss_arena.tscn"
-# Hand-crafted alternatives to MapGenerator for levels 2 / 4 / 5. Used when
-# the player flips the "Map: Custom" toggle on the title screen. Each scene
-# uses HandcraftedMap.gd and is editable in the Godot editor.
+# Hand-crafted alternatives to the default per-level scenes. Used when the
+# player flips the "Map: Custom" toggle on the title screen. Each scene uses
+# HandcraftedMap.gd and is editable in the Godot editor. When toggled on, these
+# REPLACE the level's default behaviour entirely — handcrafted versions of the
+# tutorial / mazes / boss won't have their scripted puzzles / exits / boss
+# fight; they're blank canvases for the level designer to populate themselves.
 const HANDCRAFTED_MAP_PATHS := {
+	1: "res://scenes/handcrafted/mission_1_tutorial.tscn",
 	2: "res://scenes/handcrafted/mission_2_eliminate.tscn",
+	3: "res://scenes/handcrafted/mission_3_maze1.tscn",
 	4: "res://scenes/handcrafted/mission_4_structures.tscn",
 	5: "res://scenes/handcrafted/mission_5_escort.tscn",
+	6: "res://scenes/handcrafted/mission_6_maze2.tscn",
+	7: "res://scenes/handcrafted/mission_7_boss.tscn",
 }
 
 @onready var map_gen:    Node        = $GameViewport/SubViewport/MapGenerator
@@ -70,11 +77,27 @@ func _ready() -> void:
 
 	# Level dispatch — new order:
 	#   1 Tutorial · 2 Eliminate · 3 Maze 1 · 4 Structures · 5 Escort · 6 Maze 2 · 7 Boss
-	# Mazes (3 + 6) swap MapGenerator for hand-authored 1-tile corridors and
-	# run with a single soldier. Boss (7) swaps for the Heart arena with the
-	# full squad. Levels 2 / 4 / 5 keep the procedural MapGenerator.
+	# Default behaviour: mazes (3 + 6) swap MapGenerator for hand-authored
+	# 1-tile corridors and run with a single soldier. Boss (7) swaps for the
+	# Heart arena with the full squad. Tutorial (1) swaps for the puzzle
+	# corridor. Levels 2 / 4 / 5 use the procedural MapGenerator. With
+	# `use_handcrafted_maps` toggled on, the handcrafted version takes
+	# precedence on any level that has one mapped in HANDCRAFTED_MAP_PATHS.
 	var effective_squad_size: int = squad_size
-	if GameManager.current_level == 1:
+	if GameManager.use_handcrafted_maps and HANDCRAFTED_MAP_PATHS.has(GameManager.current_level):
+		var old: Node = map_gen
+		map_gen = _spawn_alt_level(HANDCRAFTED_MAP_PATHS[GameManager.current_level])
+		old.remove_from_group("map_generator")
+		old.queue_free()
+		var camera: Node = get_tree().get_first_node_in_group("main_camera")
+		if camera and camera.has_method("refresh_map_bounds"):
+			camera.refresh_map_bounds()
+		# Mazes ship with a single-soldier rule baked into their gameplay —
+		# preserve that for handcrafted versions of mazes so squad size matches
+		# the rest of the maze pipeline (formation snap skipped, etc.).
+		if GameManager.current_level == 3 or GameManager.current_level == 6:
+			effective_squad_size = 1
+	elif GameManager.current_level == 1:
 		var old: Node = map_gen
 		map_gen = _spawn_alt_level(TUTORIAL_1_SCENE_PATH)
 		old.remove_from_group("map_generator")
@@ -105,18 +128,6 @@ func _ready() -> void:
 	elif GameManager.current_level == 7:
 		var old: Node = map_gen
 		map_gen = _spawn_alt_level(BOSS_ARENA_SCENE_PATH)
-		old.remove_from_group("map_generator")
-		old.queue_free()
-		var camera: Node = get_tree().get_first_node_in_group("main_camera")
-		if camera and camera.has_method("refresh_map_bounds"):
-			camera.refresh_map_bounds()
-	elif GameManager.use_handcrafted_maps and HANDCRAFTED_MAP_PATHS.has(GameManager.current_level):
-		# Player chose Custom maps on the title screen — swap the procedural
-		# MapGenerator for the hand-edited HandcraftedMap scene. Same
-		# interface; the scene supplies pre-baked tiles + obstacles + walls
-		# while mission spawning still runs as normal.
-		var old: Node = map_gen
-		map_gen = _spawn_alt_level(HANDCRAFTED_MAP_PATHS[GameManager.current_level])
 		old.remove_from_group("map_generator")
 		old.queue_free()
 		var camera: Node = get_tree().get_first_node_in_group("main_camera")
