@@ -49,12 +49,14 @@ const ROCK_TEXTURE := "res://resources/caraka/Props/Rock/rock.png"
 const BUSH_TEXTURE := "res://resources/caraka/Props/Bush.png"
 const FLOWER_TEXTURE := "res://resources/caraka/Props/Flower.png"
 
-# Tree.png is a 32×64 grid. Cols 0=spring, 1-2=summer, 3-5=fall, 6=winter.
-# Row 0 (y=0) = conifers, row 2 (y=128) = deciduous. Cols 8-14 repeat with variants.
+# Tree.png is a 32×64 grid. We use only the row 0 conifers — the row 2
+# deciduous trees render with a different proportion that doesn't match,
+# and conifers + rocks already provide enough visual variety.
+# Cols 0=spring, 1-2=summer, 3-5=fall, 6=winter. Cols 8+ are variant shapes.
 const TREE_REGIONS := {
-	Season.SPRING: [Rect2(0, 0, 32, 64), Rect2(256, 0, 32, 64), Rect2(0, 128, 32, 64)],
-	Season.SUMMER: [Rect2(32, 0, 32, 64), Rect2(64, 0, 32, 64), Rect2(32, 128, 32, 64)],
-	Season.FALL:   [Rect2(96, 0, 32, 64), Rect2(128, 0, 32, 64), Rect2(96, 128, 32, 64)],
+	Season.SPRING: [Rect2(0, 0, 32, 64), Rect2(256, 0, 32, 64)],
+	Season.SUMMER: [Rect2(32, 0, 32, 64), Rect2(64, 0, 32, 64)],
+	Season.FALL:   [Rect2(96, 0, 32, 64), Rect2(128, 0, 32, 64)],
 	Season.WINTER: [Rect2(192, 0, 32, 64), Rect2(448, 0, 32, 64)],
 }
 
