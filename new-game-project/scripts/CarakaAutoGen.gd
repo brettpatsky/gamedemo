@@ -60,8 +60,24 @@ func _ready() -> void:
 func _resolve_layers() -> void:
 	if _objects_layer == null:
 		_objects_layer = get_node_or_null("TileMapLayer_objects") as TileMapLayer
+		if _objects_layer == null:
+			_objects_layer = _create_layer("TileMapLayer_objects")
 	if _water_layer == null:
 		_water_layer = get_node_or_null("TileMapLayer_Overlay") as TileMapLayer
+		if _water_layer == null:
+			_water_layer = _create_layer("TileMapLayer_Overlay")
+
+# Creates a missing TileMapLayer child and saves it into the scene if running
+# in the editor. Lets us recover from accidental deletions (e.g. clicking
+# "Regenerate Random Map" from the HandcraftedMap parent, which wipes non-essential layers).
+func _create_layer(layer_name: String) -> TileMapLayer:
+	var layer := TileMapLayer.new()
+	layer.name = layer_name
+	add_child(layer)
+	if Engine.is_editor_hint():
+		var scene_root: Node = owner if owner else self
+		layer.owner = scene_root
+	return layer
 
 func _setup_tileset() -> void:
 	var ts: TileSet = load(TERRAIN_TILESET)
@@ -136,6 +152,8 @@ func _generate_terrain(seed_value: int) -> void:
 			else:
 				_terrain_grid[cell] = "grass"
 
+	_smooth_terrain(2)
+
 	if season != Season.WINTER:
 		_generate_paths(effective_seed)
 
@@ -169,10 +187,69 @@ func _generate_terrain(seed_value: int) -> void:
 		if not path_cells.is_empty():
 			_objects_layer.set_cells_terrain_connect(path_cells, season_set, 2, false)
 
-	# Water layer: seasonal water with auto-tiled shorelines
+	# Water layer: single static animated tile per cell — no auto-tiling.
+	# The dirt layer below has terrain-driven edges at the water boundary,
+	# so the shoreline appearance comes from the land side, not the water side.
+	# The water tile still animates (8 frames built into the tileset).
 	if _water_layer and not water_cells.is_empty():
-		var water_terrain: int = SEASON_WATER_TERRAIN[season]
-		_water_layer.set_cells_terrain_connect(water_cells, 6, water_terrain, false)
+		var water_src_id := _find_water_source_id()
+		if water_src_id >= 0:
+			# Atlas (8, 1) = solid fill water tile (original col=1 row=1, frame 0
+			# of its 8-frame animation. Animation playback handles the rest.)
+			var water_atlas := Vector2i(8, 1)
+			for cell in water_cells:
+				_water_layer.set_cell(cell, water_src_id, water_atlas)
+
+# Looks up the atlas source ID for the current season's water texture in the
+# loaded tileset. Returns -1 if not found (caller skips water painting).
+func _find_water_source_id() -> int:
+	var ts: TileSet = tile_map.tile_set
+	if ts == null:
+		return -1
+	var filename: String
+	match season:
+		Season.SPRING:           filename = "water - spring - shallow.png"
+		Season.SUMMER, Season.WINTER: filename = "water - summer - shallow.png"
+		Season.FALL:             filename = "water - fall - shallow.png"
+		_:                       filename = "water - summer - shallow.png"
+	for i in ts.get_source_count():
+		var src_id: int = ts.get_source_id(i)
+		var src: TileSetAtlasSource = ts.get_source(src_id) as TileSetAtlasSource
+		if src and src.texture and src.texture.resource_path.ends_with(filename):
+			return src_id
+	return -1
+
+# Cellular automata smoothing: remove isolated cells and smooth jagged boundaries.
+# For each pass, any cell with fewer than 3 same-type 4-neighbors flips to its
+# majority neighbor type. Reduces 1-cell pinches/spikes that auto-tiling struggles with.
+func _smooth_terrain(passes: int) -> void:
+	for p in passes:
+		var updates: Dictionary = {}
+		for x in map_width:
+			for y in map_height:
+				var cell := Vector2i(x, y)
+				var current: String = _terrain_grid.get(cell, "grass")
+				var counts: Dictionary = {"grass": 0, "dirt": 0, "water": 0}
+				var same := 0
+				for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var n: Vector2i = cell + off
+					if n.x < 0 or n.x >= map_width or n.y < 0 or n.y >= map_height:
+						continue
+					var nt: String = _terrain_grid.get(n, "grass")
+					counts[nt] = counts.get(nt, 0) + 1
+					if nt == current:
+						same += 1
+				if same < 2:
+					var best := current
+					var best_count := -1
+					for t in counts:
+						if counts[t] > best_count:
+							best = t
+							best_count = counts[t]
+					if best != current:
+						updates[cell] = best
+		for cell in updates:
+			_terrain_grid[cell] = updates[cell]
 
 func _generate_paths(seed_value: int) -> void:
 	var rng := RandomNumberGenerator.new()
