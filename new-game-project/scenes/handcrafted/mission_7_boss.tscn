@@ -1,12 +1,10 @@
 [gd_scene format=3 uid="uid://mqpwqianksvs"]
 
 [ext_resource type="Script" path="res://scripts/HandcraftedMap.gd" id="1_handm7"]
-[ext_resource type="TileSet" uid="uid://5epmd5028ti" path="res://resources/handcrafted_tileset.tres" id="2_tileset"]
-[ext_resource type="Resource" uid="uid://dreypr0e4y7ma" path="res://resources/tile_config_default.tres" id="3_tilecfg"]
+[ext_resource type="TileSet" path="res://resources/caraka_terrain_tileset.tres" id="2_tileset"]
 
 [node name="HandcraftedMap" type="Node2D" groups=["map_generator"]]
 script = ExtResource("1_handm7")
-tile_config = ExtResource("3_tilecfg")
 
 [node name="TileMapLayer" type="TileMapLayer" parent="."]
 tile_set = ExtResource("2_tileset")

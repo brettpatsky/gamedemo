@@ -1,6 +1,0 @@
-[gd_resource type="Resource" script_class="TileConfig" format=3 uid="uid://dreypr0e4y7ma"]
-
-[ext_resource type="Script" uid="uid://bfcbdp0m8tdl0" path="res://scripts/TileConfig.gd" id="1"]
-
-[resource]
-script = ExtResource("1")

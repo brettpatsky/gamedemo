@@ -1,74 +1,140 @@
 # =============================================================================
 # HandcraftedMap.gd
 # Drop-in replacement for MapGenerator used by hand-authored mission scenes
-# (see scenes/handcrafted/mission_*.tscn). The scene file owns the static
-# content — tiles, trees, rocks, boundary walls — and runtime only handles
-# the dynamic stuff: passable-cell scan, navigation bake, topography overlay,
-# mission objects, and enemies.
+# (see scenes/handcrafted/mission_*.tscn).
 #
-# Extends MapGenerator so all the gameplay queries (is_water_at, slope
-# multipliers, range modifiers, spawn-position picker) work unchanged.
-#
-# Editor workflow:
+# Workflow:
 #   1. Open scenes/handcrafted/mission_X.tscn in Godot.
-#   2. Click the "Regenerate Random Map" button in the inspector to seed a
-#      fresh random layout into the scene.
-#   3. Edit the result freely — paint tiles on the TileMapLayer, drag
-#      trees/rocks/walls in the scene tree, place mission props.
-#   4. Save (Ctrl+S). The .tscn captures everything you placed.
+#   2. Pick a Season in the inspector, then click "Generate Caraka Map".
+#   3. Hand-paint additional tiles / props on top of the generated base.
+#   4. Save (Ctrl+S) — the .tscn captures everything.
+#
+# Generates terrain using the Caraka tilepack on three TileMapLayers:
+#   - TileMapLayer_ground   : dirt base, auto-tiled edges at water boundaries
+#   - TileMapLayer_objects  : seasonal grass + paths, auto-tiled transitions
+#   - TileMapLayer_Overlay  : static animated water tiles
+#
+# Missing layers are auto-created on generate. Topography / elevation queries
+# return neutral values since handcrafted maps don't use noise-driven terrain.
+# is_water_at() is overridden to check the water layer for movement slowdown.
 # =============================================================================
 @tool
 extends MapGenerator
 class_name HandcraftedMap
 
-# Inspector button — only available in the editor. Clears any obstacles /
-# walls owned by the scene root and re-runs the bake step. After clicking,
-# review the result and Ctrl+S to persist.
+enum Season { SPRING, SUMMER, FALL, WINTER }
+
+@export var season: Season = Season.SUMMER
 @warning_ignore("unused_private_class_variable")
-@export_tool_button("Regenerate Random Map", "Reload") var _regen_btn: Callable = _editor_regenerate
+@export_tool_button("Generate Caraka Map", "Reload") var _caraka_btn: Callable = _editor_generate_caraka
 
-# Set this to the atlas coordinate of your water / impassable tile in whatever
-# tileset this scene uses. Cells with this atlas coord are excluded from
-# _passable_cells so enemies and mission objects don't spawn on them.
-# Leave at (-1, -1) to treat every painted tile as passable (useful when
-# your tileset has no water, or you're using Obstacle nodes for blocking).
-@export var water_tile_atlas: Vector2i = Vector2i(-1, -1)
+# When true, generate() clears the saved tiles and regenerates fresh Caraka
+# terrain at runtime. Set by Main.gd based on the title-screen "Map: Auto"
+# toggle. Default false = use whatever tiles are already painted in the scene
+# (the "Custom" / hand-edited workflow).
+var regenerate_at_runtime: bool = false
 
-# Suppress the parent's _ready in editor — we don't want add_to_group("map_generator")
-# or any runtime setup running while you're editing the .tscn.
-#
+const TERRAIN_TILESET := "res://resources/caraka_terrain_tileset.tres"
+
+# Terrain set index per season (defined in caraka_terrain_tileset.tres)
+const SEASON_TERRAIN_SET := {
+	Season.SPRING: 2,
+	Season.SUMMER: 3,
+	Season.FALL:   4,
+	Season.WINTER: 5,
+}
+
+const TREE_TEXTURE := "res://resources/caraka/Props/Tree.png"
+const ROCK_TEXTURE := "res://resources/caraka/Props/Rock/rock.png"
+const BUSH_TEXTURE := "res://resources/caraka/Props/Bush.png"
+const FLOWER_TEXTURE := "res://resources/caraka/Props/Flower.png"
+
+# Tree.png is a 32×64 grid. Cols 0=spring, 1-2=summer, 3-5=fall, 6=winter.
+# Row 0 (y=0) = conifers, row 2 (y=128) = deciduous. Cols 8-14 repeat with variants.
+const TREE_REGIONS := {
+	Season.SPRING: [Rect2(0, 0, 32, 64), Rect2(256, 0, 32, 64), Rect2(0, 128, 32, 64)],
+	Season.SUMMER: [Rect2(32, 0, 32, 64), Rect2(64, 0, 32, 64), Rect2(32, 128, 32, 64)],
+	Season.FALL:   [Rect2(96, 0, 32, 64), Rect2(128, 0, 32, 64), Rect2(96, 128, 32, 64)],
+	Season.WINTER: [Rect2(192, 0, 32, 64), Rect2(448, 0, 32, 64)],
+}
+
+# Bush.png: 8 cols × 4 rows (16×16). Seasons in rows: 0=spring, 1=summer, 2=fall, 3=winter.
+const BUSH_REGIONS := {
+	Season.SPRING: [Rect2(0, 0, 16, 16), Rect2(16, 0, 16, 16), Rect2(32, 0, 16, 16)],
+	Season.SUMMER: [Rect2(0, 16, 16, 16), Rect2(16, 16, 16, 16), Rect2(32, 16, 16, 16)],
+	Season.FALL:   [Rect2(0, 32, 16, 16), Rect2(16, 32, 16, 16), Rect2(32, 32, 16, 16)],
+	Season.WINTER: [Rect2(0, 48, 16, 16), Rect2(16, 48, 16, 16), Rect2(32, 48, 16, 16)],
+}
+
+var _terrain_grid: Dictionary = {}
+var _objects_layer: TileMapLayer
+var _water_layer: TileMapLayer
+
 # Dimensions are applied here (NOT in generate()) because Main.gd calls
 # camera.refresh_map_bounds() between scene instantiation and generate(); if
 # the dimensions weren't already set, the camera would clamp to the inherited
-# MapGenerator @export defaults (55×50 @ 64px) and trap the viewport in the
-# wrong corner of the world.
+# MapGenerator @export defaults and trap the viewport in the wrong corner.
 func _ready() -> void:
 	if Engine.is_editor_hint():
-		if tile_config == null:
-			tile_config = TileConfig.new()
 		return
 	map_width  = Balance.MAP_HANDCRAFTED_WIDTH
 	map_height = Balance.MAP_HANDCRAFTED_HEIGHT
 	tile_size  = Balance.MAP_HANDCRAFTED_TILE_SIZE
 	super._ready()
 	# Force painted tiles to render below enemies / obstacles / mission props.
-	# Enemies are added to this node as siblings of TileMapLayer and default to
-	# z_index = 0; if the tileset has y_sort_enabled or per-tile z overrides,
-	# tiles can end up drawn on top. Dropping the layer to -1 sidesteps all of
-	# that — anything spawned at runtime stays visible.
 	if tile_map:
 		tile_map.z_index = -1
+	_resolve_layers()
+	# Always run setup — it assigns the tileset (idempotent if already set) and
+	# applies the 2× layer scale that maps 16 px art to MAP_HANDCRAFTED_TILE_SIZE
+	# (32 px) visual cells. Must happen BEFORE the camera's refresh_map_bounds
+	# call so get_map_rect returns the correct scaled-up dimensions.
+	if tile_map:
+		_setup_tileset()
+
+func _resolve_layers() -> void:
+	if _objects_layer == null:
+		_objects_layer = get_node_or_null("TileMapLayer_objects") as TileMapLayer
+		if _objects_layer == null:
+			_objects_layer = _create_layer("TileMapLayer_objects")
+	if _water_layer == null:
+		_water_layer = get_node_or_null("TileMapLayer_Overlay") as TileMapLayer
+		if _water_layer == null:
+			_water_layer = _create_layer("TileMapLayer_Overlay")
+
+func _create_layer(layer_name: String) -> TileMapLayer:
+	var layer := TileMapLayer.new()
+	layer.name = layer_name
+	add_child(layer)
+	if Engine.is_editor_hint():
+		var scene_root: Node = owner if owner else self
+		layer.owner = scene_root
+	return layer
+
+func _setup_tileset() -> void:
+	var ts: TileSet = load(TERRAIN_TILESET)
+	tile_map.tile_set = ts
+	tile_map.scale = Vector2(2.0, 2.0)
+	if _objects_layer:
+		_objects_layer.tile_set = ts
+		_objects_layer.scale = Vector2(2.0, 2.0)
+	if _water_layer:
+		_water_layer.tile_set = ts
+		_water_layer.scale = Vector2(2.0, 2.0)
 
 # ---------------------------------------------------------------------------
-# Runtime entry point. Skips tile-fill / obstacle / wall baking because the
-# scene already provides those. Topography is skipped — see below.
+# Runtime entry point. Scans whatever tiles the scene already has (including
+# any hand-painted additions), bakes navigation, then spawns mission content.
 # ---------------------------------------------------------------------------
-func generate(_seed_value: int = 0) -> void:
+func generate(seed_value: int = 0) -> void:
 	_objective_nodes.clear()
 	_enemy_exclusion_radius = 0
-	# Skip _configure_noise — handcrafted maps don't use noise-driven terrain.
-	# Range / slope queries are overridden below to return neutral values.
-	_scan_existing_tiles()
+	_resolve_layers()
+	if regenerate_at_runtime:
+		_setup_tileset()
+		_generate_terrain(seed_value)
+		_place_props(seed_value)
+	_scan_passable_from_tiles()
 	_bake_navigation()
 	match GameManager.current_level:
 		4: _spawn_fortified_structure()
@@ -78,18 +144,28 @@ func generate(_seed_value: int = 0) -> void:
 		_spawn_mission_parent_and_fragment()
 	_spawn_enemies()
 
-# Topography is a GDScript _draw() loop that renders one polygon per tile
-# every frame. At 110×100 tiles that's 11,000 draw calls/frame — too slow.
-# Hand-authored maps use custom tile art that doesn't need procedural hillshade,
-# so the overlay is skipped entirely.
+# Rebuilds _passable_cells from the actual painted tiles in the scene. A cell
+# is passable when the ground layer has a tile AND the water layer doesn't.
+# Captures both auto-generated and hand-painted edits.
+func _scan_passable_from_tiles() -> void:
+	_passable_cells.clear()
+	for x in map_width:
+		for y in map_height:
+			var cell := Vector2i(x, y)
+			var ground_id := tile_map.get_cell_source_id(cell)
+			if ground_id == -1:
+				continue  # no ground tile = not passable
+			if _water_layer and _water_layer.get_cell_source_id(cell) != -1:
+				continue  # water tile present = not passable
+			_passable_cells.append(cell)
+
+# Topography is a per-tile _draw() loop — too slow at 110×100. The Caraka
+# tileset has built-in shading so the procedural overlay isn't needed.
 func _spawn_topography() -> void:
 	pass
 
-# Procedural maps use elevation noise to give shooters on hills a range bonus
-# and movers on slopes a speed penalty. Hand-authored maps have no elevation
-# data, so both queries return neutral (1.0 = no modifier) — bullets travel
-# their base distance and characters move at their base speed regardless of
-# position. Override is_water_at() too if you want to disable water wading.
+# Procedural maps use elevation noise for range/slope modifiers. Handcrafted
+# maps don't have elevation data, so return neutral values.
 func get_range_modifier_at(_world_pos: Vector2) -> float:
 	return 1.0
 
@@ -99,166 +175,283 @@ func get_slope_speed_mult(_world_pos: Vector2, _direction: Vector2) -> float:
 func get_elevation_at(_world_pos: Vector2) -> float:
 	return 0.0
 
-# Walks the pre-baked TileMapLayer and rebuilds _passable_cells based on
-# whatever the author painted. Anything that isn't water counts as passable —
-# obstacle nodes provide their own collision so they don't need to be excluded
-# from the cell list (mission spawns shouldn't land inside a tree, but the
-# random-position pickers retry on failure).
-func _scan_existing_tiles() -> void:
-	_passable_cells.clear()
-	# Use water_tile_atlas if set; otherwise fall back to tile_config.water.
-	# If both are (-1,-1) / unset, skip the water check entirely.
-	var water_atlas: Vector2i = water_tile_atlas
-	if water_atlas == Vector2i(-1, -1) and tile_config != null:
-		water_atlas = tile_config.water
-	for x in map_width:
-		for y in map_height:
-			var atlas := tile_map.get_cell_atlas_coords(Vector2i(x, y))
-			if atlas == Vector2i(-1, -1):
-				continue  # empty cell — not passable
-			if water_atlas != Vector2i(-1, -1) and atlas == water_atlas:
-				continue  # water tile — not passable
-			_passable_cells.append(Vector2i(x, y))
+# Override the parent's is_water_at — water lives on TileMapLayer_Overlay,
+# not on the main ground layer. Any tile present on the water layer counts
+# as water (triggers movement slowdown in Soldier/Enemy via _water_speed_mult).
+func is_water_at(world_pos: Vector2) -> bool:
+	if _water_layer == null:
+		_water_layer = get_node_or_null("TileMapLayer_Overlay") as TileMapLayer
+	if _water_layer == null:
+		return false
+	var local_pos := _water_layer.to_local(world_pos)
+	var tile_pos  := _water_layer.local_to_map(local_pos)
+	return _water_layer.get_cell_source_id(tile_pos) != -1
 
 # ===========================================================================
-# EDITOR-ONLY: seed a random layout into the scene.
+# Terrain generation (used by both runtime generate() and the editor button)
 # ===========================================================================
-func _editor_regenerate() -> void:
+func _generate_terrain(seed_value: int) -> void:
+	tile_map.clear()
+	if _objects_layer:
+		_objects_layer.clear()
+	if _water_layer:
+		_water_layer.clear()
+	_terrain_grid.clear()
+
+	var effective_seed: int = seed_value if seed_value != 0 else randi()
+
+	var terrain_noise := FastNoiseLite.new()
+	terrain_noise.seed = effective_seed
+	terrain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	terrain_noise.frequency = 0.02
+	terrain_noise.fractal_octaves = 4
+
+	var water_noise := FastNoiseLite.new()
+	water_noise.seed = effective_seed + 1000
+	water_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	water_noise.frequency = 0.012
+	water_noise.fractal_octaves = 2
+
+	for x in map_width:
+		for y in map_height:
+			var cell := Vector2i(x, y)
+			var tv := (terrain_noise.get_noise_2d(float(x), float(y)) + 1.0) * 0.5
+			var wv := (water_noise.get_noise_2d(float(x), float(y)) + 1.0) * 0.5
+			var cx := float(x) / map_width
+			var cy := float(y) / map_height
+			var in_spawn := cx > 0.35 and cx < 0.65 and cy > 0.35 and cy < 0.65
+
+			if wv < 0.25 and not in_spawn:
+				_terrain_grid[cell] = "water"
+			elif tv < 0.40:
+				_terrain_grid[cell] = "dirt"
+			else:
+				_terrain_grid[cell] = "grass"
+
+	_smooth_terrain(2)
+
+	if season != Season.WINTER:
+		_generate_paths(effective_seed)
+
+	var land_cells: Array[Vector2i] = []
+	var grass_cells: Array[Vector2i] = []
+	var path_cells: Array[Vector2i] = []
+	var water_cells: Array[Vector2i] = []
+
+	for x in map_width:
+		for y in map_height:
+			var cell := Vector2i(x, y)
+			match _terrain_grid.get(cell, "grass"):
+				"grass":
+					grass_cells.append(cell)
+					land_cells.append(cell)
+				"path":
+					path_cells.append(cell)
+					land_cells.append(cell)
+				"dirt":
+					land_cells.append(cell)
+				"water":
+					water_cells.append(cell)
+
+	# Ground layer: dirt on land cells only (auto-tiled edges at water boundaries)
+	tile_map.set_cells_terrain_connect(land_cells, 0, 0, false)
+
+	# Objects layer: seasonal grass with auto-tiled edges (dirt shows through)
+	var season_set: int = SEASON_TERRAIN_SET[season]
+	if _objects_layer:
+		_objects_layer.set_cells_terrain_connect(grass_cells, season_set, 0, false)
+		if not path_cells.is_empty():
+			_objects_layer.set_cells_terrain_connect(path_cells, season_set, 2, false)
+
+	# Water layer: single static animated water tile per cell. The dirt layer
+	# below provides the visible shoreline via its terrain-driven edges.
+	if _water_layer and not water_cells.is_empty():
+		var water_src_id := _find_water_source_id()
+		if water_src_id >= 0:
+			# Atlas (8, 1) = solid fill water tile (original col=1 row=1, frame 0
+			# of an 8-frame animation; animation playback handles the rest).
+			var water_atlas := Vector2i(8, 1)
+			for cell in water_cells:
+				_water_layer.set_cell(cell, water_src_id, water_atlas)
+
+# Looks up the atlas source ID for the current season's water texture.
+func _find_water_source_id() -> int:
+	var ts: TileSet = tile_map.tile_set
+	if ts == null:
+		return -1
+	var filename: String
+	match season:
+		Season.SPRING:                filename = "water - spring - shallow.png"
+		Season.SUMMER, Season.WINTER: filename = "water - summer - shallow.png"
+		Season.FALL:                  filename = "water - fall - shallow.png"
+		_:                            filename = "water - summer - shallow.png"
+	for i in ts.get_source_count():
+		var src_id: int = ts.get_source_id(i)
+		var src: TileSetAtlasSource = ts.get_source(src_id) as TileSetAtlasSource
+		if src and src.texture and src.texture.resource_path.ends_with(filename):
+			return src_id
+	return -1
+
+# Cellular automata smoothing: any cell with fewer than 2 same-type 4-neighbors
+# flips to its majority neighbor. Removes 1-cell pinches that auto-tiling
+# struggles with.
+func _smooth_terrain(passes: int) -> void:
+	for p in passes:
+		var updates: Dictionary = {}
+		for x in map_width:
+			for y in map_height:
+				var cell := Vector2i(x, y)
+				var current: String = _terrain_grid.get(cell, "grass")
+				var counts: Dictionary = {"grass": 0, "dirt": 0, "water": 0}
+				var same := 0
+				for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var n: Vector2i = cell + off
+					if n.x < 0 or n.x >= map_width or n.y < 0 or n.y >= map_height:
+						continue
+					var nt: String = _terrain_grid.get(n, "grass")
+					counts[nt] = counts.get(nt, 0) + 1
+					if nt == current:
+						same += 1
+				if same < 2:
+					var best := current
+					var best_count := -1
+					for t in counts:
+						if counts[t] > best_count:
+							best = t
+							best_count = counts[t]
+					if best != current:
+						updates[cell] = best
+		for cell in updates:
+			_terrain_grid[cell] = updates[cell]
+
+func _generate_paths(seed_value: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value + 500
+	var path_count := rng.randi_range(3, 5)
+	var center := Vector2(map_width * 0.5, map_height * 0.5)
+
+	for i in path_count:
+		var start: Vector2i
+		match rng.randi() % 4:
+			0: start = Vector2i(0, rng.randi_range(10, map_height - 10))
+			1: start = Vector2i(map_width - 1, rng.randi_range(10, map_height - 10))
+			2: start = Vector2i(rng.randi_range(10, map_width - 10), 0)
+			3: start = Vector2i(rng.randi_range(10, map_width - 10), map_height - 1)
+
+		var pos := Vector2(start)
+		var steps := rng.randi_range(30, 60)
+		for s in steps:
+			var to_center := (center - pos).normalized()
+			var angle := to_center.angle() + rng.randf_range(-0.8, 0.8)
+			pos += Vector2.from_angle(angle) * 2.0
+
+			var cell := Vector2i(int(pos.x), int(pos.y))
+			for dx in range(-1, 2):
+				for dy in range(-1, 2):
+					var c := cell + Vector2i(dx, dy)
+					if c.x >= 0 and c.x < map_width and c.y >= 0 and c.y < map_height:
+						if _terrain_grid.get(c) == "grass":
+							_terrain_grid[c] = "path"
+
+func _place_props(seed_value: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value if seed_value != 0 else randi()
+
+	var tree_tex: Texture2D = load(TREE_TEXTURE)
+	var rock_tex: Texture2D = load(ROCK_TEXTURE)
+	var bush_tex: Texture2D = load(BUSH_TEXTURE)
+	var flower_tex: Texture2D = load(FLOWER_TEXTURE)
+	var tree_regs: Array = TREE_REGIONS.get(season, TREE_REGIONS[Season.SPRING])
+	var bush_regs: Array = BUSH_REGIONS.get(season, BUSH_REGIONS[Season.SPRING])
+	var scene_owner: Node = owner if owner else self
+
+	for cell in _terrain_grid:
+		if _terrain_grid[cell] == "water":
+			continue
+		var cx := float(cell.x) / map_width
+		var cy := float(cell.y) / map_height
+		if cx > 0.35 and cx < 0.65 and cy > 0.35 and cy < 0.65:
+			continue
+
+		var roll := rng.randf()
+		if _terrain_grid[cell] == "grass" and roll < 0.04:
+			var region: Rect2 = tree_regs[rng.randi() % tree_regs.size()]
+			_spawn_prop(tree_tex, region, cell, Vector2(2.0, 2.0), true, scene_owner)
+		elif roll >= 0.04 and roll < 0.055:
+			var rock_x := (rng.randi() % 4) * 32
+			_spawn_prop(rock_tex, Rect2(rock_x, 0, 32, 32), cell, Vector2(1.5, 1.5), true, scene_owner)
+		elif _terrain_grid[cell] == "grass" and roll >= 0.055 and roll < 0.07:
+			var breg: Rect2 = bush_regs[rng.randi() % bush_regs.size()]
+			_spawn_prop(bush_tex, breg, cell, Vector2(1.5, 1.5), false, scene_owner)
+		elif _terrain_grid[cell] == "grass" and roll >= 0.07 and roll < 0.09:
+			var fx := (rng.randi() % 8) * 16
+			var fy := (rng.randi() % 6) * 16
+			_spawn_prop(flower_tex, Rect2(fx, fy, 16, 16), cell, Vector2(1.5, 1.5), false, scene_owner)
+
+func _spawn_prop(tex: Texture2D, region: Rect2, cell: Vector2i, prop_scale: Vector2, has_collision: bool, scene_owner: Node) -> void:
+	var world_pos := to_local(tile_map.to_global(tile_map.map_to_local(cell)))
+	var atlas_tex := AtlasTexture.new()
+	atlas_tex.atlas = tex
+	atlas_tex.region = region
+
+	if has_collision:
+		var body := StaticBody2D.new()
+		body.position = world_pos
+		body.name = "Prop_%d_%d" % [cell.x, cell.y]
+		var sprite := Sprite2D.new()
+		sprite.texture = atlas_tex
+		sprite.scale = prop_scale
+		body.add_child(sprite)
+		var col := CollisionShape2D.new()
+		var shape := CircleShape2D.new()
+		shape.radius = 6.0
+		col.shape = shape
+		body.add_child(col)
+		add_child(body)
+		if Engine.is_editor_hint():
+			body.owner = scene_owner
+			sprite.owner = scene_owner
+			col.owner = scene_owner
+	else:
+		var sprite := Sprite2D.new()
+		sprite.position = world_pos
+		sprite.name = "Decor_%d_%d" % [cell.x, cell.y]
+		sprite.texture = atlas_tex
+		sprite.scale = prop_scale
+		add_child(sprite)
+		if Engine.is_editor_hint():
+			sprite.owner = scene_owner
+
+# ===========================================================================
+# EDITOR-ONLY: seed a Caraka layout into the scene. Save (Ctrl+S) to persist.
+# Any hand-painted edits made afterward are also captured on save.
+# ===========================================================================
+func _editor_generate_caraka() -> void:
 	if not Engine.is_editor_hint():
 		return
 	map_width  = Balance.MAP_HANDCRAFTED_WIDTH
 	map_height = Balance.MAP_HANDCRAFTED_HEIGHT
 	tile_size  = Balance.MAP_HANDCRAFTED_TILE_SIZE
-	var scene_root: Node = self if owner == null else owner
-	if tile_config == null:
-		tile_config = TileConfig.new()
+
 	if tile_map == null:
 		tile_map = get_node_or_null("TileMapLayer_ground") as TileMapLayer
 		if tile_map == null:
 			tile_map = get_node_or_null("TileMapLayer") as TileMapLayer
-	if tile_map == null or tile_map.tile_set == null:
-		push_warning("[HandcraftedMap] No TileMapLayer_ground / tile_set — can't regenerate.")
+	if tile_map == null:
+		push_warning("[HandcraftedMap] No TileMapLayer_ground found.")
 		return
 
-	# Wipe previously generated obstacles / walls so repeated clicks don't pile up.
-	# Only deletes nodes owned by the scene root (i.e. saved as part of this scene).
-	# TileMapLayer / NavigationRegion2D are kept; the tilemap gets re-filled below.
+	_resolve_layers()
+
+	# Clear previously-generated props (anything that isn't a TileMapLayer or
+	# the NavigationRegion2D) so repeated clicks don't pile up sprites.
+	var scene_root: Node = owner if owner else self
 	for child in get_children():
-		if child == tile_map or child == nav_region:
+		if child is TileMapLayer or child is NavigationRegion2D:
 			continue
 		if child.owner == scene_root:
 			child.queue_free()
 
-	_passable_cells.clear()
-	_configure_noise(randi())
-	_fill_tiles()
-	_editor_spawn_obstacles(scene_root)
-	_editor_spawn_boundary_walls(scene_root)
-	print("[HandcraftedMap] Regenerated layout. Save the scene (Ctrl+S) to persist.")
-
-# Mirrors MapGenerator._spawn_obstacles but sets `owner` on each spawned node
-# so they're written into the .tscn when the user saves. Obstacle.gd's _ready
-# is NOT @tool, so its collision-shape children won't be created in the editor
-# (they're set up fresh at runtime instead — no duplicates).
-func _editor_spawn_obstacles(scene_owner: Node) -> void:
-	var eligible = _passable_cells.filter(func(c: Vector2i) -> bool:
-		if c.x < 3 or c.x > map_width  - 4: return false
-		if c.y < 3 or c.y > map_height - 4: return false
-		var cx := float(c.x) / map_width
-		var cy := float(c.y) / map_height
-		return not (cx > 0.33 and cx < 0.67 and cy > 0.40 and cy < 0.60)
-	)
-	eligible.shuffle()
-
-	var total := mini(int(eligible.size() * 0.08), 220)
-	@warning_ignore("integer_division")
-	var tree_budget := total / 2
-	var rock_budget := total - tree_budget
-
-	var eligible_set: Dictionary = {}
-	for c in eligible:
-		eligible_set[c] = true
-
-	const MIN_CLUSTER_SIZE := 5
-	const MAX_CLUSTER_SIZE := 14
-	var trees_placed := 0
-	var seed_idx     := 0
-	while trees_placed < tree_budget and seed_idx < eligible.size():
-		var seed_cell: Vector2i = eligible[seed_idx]
-		seed_idx += 1
-		if not eligible_set.has(seed_cell):
-			continue
-		var remaining := tree_budget - trees_placed
-		var target_size: int = mini(randi_range(MIN_CLUSTER_SIZE, MAX_CLUSTER_SIZE), remaining)
-		if target_size < MIN_CLUSTER_SIZE and remaining >= MIN_CLUSTER_SIZE:
-			target_size = MIN_CLUSTER_SIZE
-		var cluster: Array[Vector2i] = []
-		var frontier: Array[Vector2i] = [seed_cell]
-		while cluster.size() < target_size and not frontier.is_empty():
-			var pick: int = randi() % frontier.size()
-			var cell: Vector2i = frontier[pick]
-			frontier.remove_at(pick)
-			if not eligible_set.has(cell):
-				continue
-			eligible_set.erase(cell)
-			cluster.append(cell)
-			for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var n: Vector2i = cell + off
-				if eligible_set.has(n):
-					frontier.append(n)
-		if cluster.size() < MIN_CLUSTER_SIZE:
-			for c in cluster:
-				eligible_set[c] = true
-			continue
-		for cell in cluster:
-			var tree: StaticBody2D = ObstacleClass.new()
-			tree.is_tree  = true
-			tree.name     = "Tree_%d_%d" % [cell.x, cell.y]
-			tree.position = tile_map.map_to_local(cell)
-			add_child(tree)
-			tree.owner = scene_owner
-			trees_placed += 1
-
-	var rocks_placed := 0
-	for cell in eligible:
-		if rocks_placed >= rock_budget:
-			break
-		if not eligible_set.has(cell):
-			continue
-		eligible_set.erase(cell)
-		var rock: StaticBody2D = ObstacleClass.new()
-		rock.is_tree  = false
-		rock.name     = "Rock_%d_%d" % [cell.x, cell.y]
-		rock.position = tile_map.map_to_local(cell)
-		add_child(rock)
-		rock.owner = scene_owner
-		rocks_placed += 1
-
-# Mirrors MapGenerator._spawn_boundary_walls but writes the wall bodies +
-# collision shapes into the scene tree with owner set so they save.
-func _editor_spawn_boundary_walls(scene_owner: Node) -> void:
-	var half_tile: Vector2 = Vector2(tile_size, tile_size) * 0.5
-	var tl_local: Vector2 = tile_map.position + tile_map.map_to_local(Vector2i(0, 0)) - half_tile
-	var br_local: Vector2 = tile_map.position + tile_map.map_to_local(Vector2i(map_width - 1, map_height - 1)) + half_tile
-	var w: float = br_local.x - tl_local.x
-	var h: float = br_local.y - tl_local.y
-	const T := 256.0
-	_editor_add_wall(scene_owner, "BoundaryWallTop",    tl_local.x - T, tl_local.y - T, w + T * 2.0, T)
-	_editor_add_wall(scene_owner, "BoundaryWallBottom", tl_local.x - T, br_local.y,     w + T * 2.0, T)
-	_editor_add_wall(scene_owner, "BoundaryWallLeft",   tl_local.x - T, tl_local.y,     T,           h)
-	_editor_add_wall(scene_owner, "BoundaryWallRight",  br_local.x,     tl_local.y,     T,           h)
-
-func _editor_add_wall(scene_owner: Node, name_: String, x: float, y: float, w: float, h: float) -> void:
-	var body := StaticBody2D.new()
-	body.name             = name_
-	body.collision_layer  = 1
-	body.collision_mask   = 0
-	add_child(body)
-	body.owner = scene_owner
-	var shape := RectangleShape2D.new()
-	shape.size = Vector2(w, h)
-	var col := CollisionShape2D.new()
-	col.shape    = shape
-	col.position = Vector2(x + w * 0.5, y + h * 0.5)
-	body.add_child(col)
-	col.owner = scene_owner
+	_setup_tileset()
+	_generate_terrain(randi())
+	print("[HandcraftedMap] Generated %s terrain. Save (Ctrl+S) to persist." % Season.keys()[season])

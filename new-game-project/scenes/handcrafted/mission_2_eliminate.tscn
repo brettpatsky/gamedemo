@@ -1,7 +1,6 @@
 [gd_scene format=4 uid="uid://mqpwqddkamvs"]
 
-[ext_resource type="Script" uid="uid://b01wtlqk4whgv" path="res://scripts/CarakaAutoGen.gd" id="1_caraka"]
-[ext_resource type="Resource" uid="uid://dreypr0e4y7ma" path="res://resources/tile_config_default.tres" id="2_tilecfg"]
+[ext_resource type="Script" uid="uid://bvpj2ijdfuxm3" path="res://scripts/HandcraftedMap.gd" id="1_caraka"]
 [ext_resource type="TileSet" uid="uid://gvifgdhl63o5" path="res://resources/caraka_terrain_tileset.tres" id="3_qjhl4"]
 
 [node name="HandcraftedMap" type="Node2D" unique_id=1889911003 groups=["map_generator"]]
@@ -9,7 +8,6 @@ script = ExtResource("1_caraka")
 map_width = 110
 map_height = 100
 tile_size = 32
-tile_config = ExtResource("2_tilecfg")
 
 [node name="TileMapLayer_ground" type="TileMapLayer" parent="." unique_id=1734709520]
 scale = Vector2(2, 2)

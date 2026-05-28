@@ -80,13 +80,27 @@ func _ready() -> void:
 	# Default behaviour: mazes (3 + 6) swap MapGenerator for hand-authored
 	# 1-tile corridors and run with a single soldier. Boss (7) swaps for the
 	# Heart arena with the full squad. Tutorial (1) swaps for the puzzle
-	# corridor. Levels 2 / 4 / 5 use the procedural MapGenerator. With
-	# `use_handcrafted_maps` toggled on, the handcrafted version takes
-	# precedence on any level that has one mapped in HANDCRAFTED_MAP_PATHS.
+	# corridor. Levels 2 / 4 / 5 always load the handcrafted scene; the
+	# title-screen "Map: Auto/Custom" toggle decides whether they regenerate
+	# fresh Caraka terrain at runtime (Auto) or use the saved hand-edited
+	# tiles (Custom). For the other levels the toggle still swaps in the
+	# handcrafted scene when Custom is on.
 	var effective_squad_size: int = squad_size
-	if GameManager.use_handcrafted_maps and HANDCRAFTED_MAP_PATHS.has(GameManager.current_level):
+	var lvl: int = GameManager.current_level
+	var is_proc_level: bool = (lvl == 2 or lvl == 4 or lvl == 5)
+	var should_use_handcrafted: bool = is_proc_level \
+		or (GameManager.use_handcrafted_maps and HANDCRAFTED_MAP_PATHS.has(lvl))
+	if should_use_handcrafted and HANDCRAFTED_MAP_PATHS.has(lvl):
 		var old: Node = map_gen
-		map_gen = _spawn_alt_level(HANDCRAFTED_MAP_PATHS[GameManager.current_level])
+		map_gen = _spawn_alt_level(HANDCRAFTED_MAP_PATHS[lvl])
+		# Auto mode regenerates fresh Caraka terrain at runtime; Custom uses
+		# the saved tiles as-is. Only meaningful for HandcraftedMap-based scenes.
+		if "regenerate_at_runtime" in map_gen:
+			map_gen.regenerate_at_runtime = not GameManager.use_handcrafted_maps
+		# Auto mode also randomises the season per run for variety. Custom
+		# leaves whatever the scene was saved with.
+		if not GameManager.use_handcrafted_maps and "season" in map_gen:
+			map_gen.season = randi() % 4
 		old.remove_from_group("map_generator")
 		old.queue_free()
 		var camera: Node = get_tree().get_first_node_in_group("main_camera")
@@ -95,7 +109,7 @@ func _ready() -> void:
 		# Mazes ship with a single-soldier rule baked into their gameplay —
 		# preserve that for handcrafted versions of mazes so squad size matches
 		# the rest of the maze pipeline (formation snap skipped, etc.).
-		if GameManager.current_level == 3 or GameManager.current_level == 6:
+		if lvl == 3 or lvl == 6:
 			effective_squad_size = 1
 	elif GameManager.current_level == 1:
 		var old: Node = map_gen
@@ -228,17 +242,21 @@ func _spawn_ambient_effects() -> void:
 	var lv: int = GameManager.current_level
 	if lv != 2 and lv != 4 and lv != 5:
 		return
-	# Randomise per mission load so the same level feels different across
-	# runs. Four options, uniform distribution — tweak the weights here if
-	# any one starts to feel over-represented in playtests.
-	var pool: Array[AmbientLayer.Weather] = [
-		AmbientLayer.Weather.CLEAR,
-		AmbientLayer.Weather.RAIN,
-		AmbientLayer.Weather.SNOW,
-		AmbientLayer.Weather.FOG,
-	]
+	# Weather follows the map's season:
+	#   WINTER → snow
+	#   SPRING / FALL → 50% rain, 50% clear
+	#   SUMMER → clear
+	# Fog is intentionally never used (visually noisy, requested removed).
+	var weather: AmbientLayer.Weather = AmbientLayer.Weather.CLEAR
+	if map_gen and "season" in map_gen:
+		match map_gen.season:
+			HandcraftedMap.Season.WINTER:
+				weather = AmbientLayer.Weather.SNOW
+			HandcraftedMap.Season.SPRING, HandcraftedMap.Season.FALL:
+				if randi() % 2 == 0:
+					weather = AmbientLayer.Weather.RAIN
 	var layer := AmbientLayer.new()
-	layer.weather = pool[randi() % pool.size()]
+	layer.weather = weather
 	_subviewport.add_child(layer)
 
 # ---------------------------------------------------------------------------
