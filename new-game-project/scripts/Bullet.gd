@@ -159,9 +159,13 @@ func _on_area_entered(area: Area2D) -> void:
 func _try_hit(target: Node2D) -> void:
 	if target == _shooter:
 		return
-	# Prevent soldiers from hitting their own squad mates
-	if _shooter != null and _shooter.is_in_group("soldiers") and target.is_in_group("soldiers"):
-		return
+	# Prevent friendly fire on both teams — soldier bullets can't hit other
+	# soldiers, enemy bullets can't hit other enemies.
+	if _shooter != null:
+		if _shooter.is_in_group("soldiers") and target.is_in_group("soldiers"):
+			return
+		if _shooter.is_in_group("enemies") and target.is_in_group("enemies"):
+			return
 	if target.has_method("take_damage"):
 		target.take_damage(damage, element)
 		if _shooter != null and _shooter.has_method("on_bullet_hit"):

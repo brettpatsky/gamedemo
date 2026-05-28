@@ -101,6 +101,13 @@ func get_slope_speed_mult(_world_pos: Vector2, _direction: Vector2) -> float:
 func get_objective_node(group: String) -> Variant:
 	return _objective_nodes.get(group, null)
 
+# Converts a tile grid coord to a world position suitable for nodes added as
+# children of self. Must round-trip through to_global so the tile_map's scale
+# (2× for the Caraka layers) is honoured — calling map_to_local directly
+# returns coords in the layer's local space, which is HALF the world distance.
+func _tile_to_world(cell: Vector2i) -> Vector2:
+	return to_local(tile_map.to_global(tile_map.map_to_local(cell)))
+
 # ---------------------------------------------------------------------------
 # Shared spawn helpers — used by HandcraftedMap (procedural levels 2/4/5).
 # Maze / tutorial / boss scripts override these locally.
@@ -160,7 +167,7 @@ func _spawn_enemies() -> void:
 		if i >= spawn_zone.size():
 			break
 		var enemy: Node2D = enemy_scene.instantiate()
-		enemy.position = tile_map.map_to_local(spawn_zone[i])
+		enemy.position = _tile_to_world(spawn_zone[i])
 		add_child(enemy)
 
 # ---------------------------------------------------------------------------
@@ -197,7 +204,7 @@ func _spawn_mission_parent_and_fragment() -> void:
 
 	if cage_scene:
 		var cage: Node2D = cage_scene.instantiate()
-		cage.position = tile_map.map_to_local(cage_cell)
+		cage.position = _tile_to_world(cage_cell)
 		if "child_slot" in cage:
 			cage.set("child_slot", child_slot)
 		add_child(cage)
@@ -215,7 +222,7 @@ func _spawn_mission_parent_and_fragment() -> void:
 				best_d = d
 				best_cell = c
 		var frag: Node2D = frag_scene.instantiate()
-		frag.position = tile_map.map_to_local(best_cell)
+		frag.position = _tile_to_world(best_cell)
 		if "fragment_id" in frag:
 			frag.set("fragment_id", fragment_id)
 		if "display_name" in frag:
@@ -259,7 +266,7 @@ func _spawn_fortified_structure() -> void:
 			continue
 		candidates.shuffle()
 		var node: Node2D = scene.instantiate()
-		node.position = tile_map.map_to_local(candidates[0])
+		node.position = _tile_to_world(candidates[0])
 		add_child(node)
 		spawned.append(node)
 
@@ -294,7 +301,7 @@ func _spawn_escort_mission() -> void:
 		push_warning("[MapGenerator] npc_escort.tscn not found.")
 		return
 	var npc: Node2D = npc_scene.instantiate()
-	npc.position = tile_map.map_to_local(npc_cell)
+	npc.position = _tile_to_world(npc_cell)
 	add_child(npc)
 	_objective_nodes["escort_npc"] = npc
 
@@ -321,7 +328,7 @@ func _spawn_escort_mission() -> void:
 			if cell.x < 1 or cell.x > map_width - 2: continue
 			if cell.y < 1 or cell.y > map_height - 2: continue
 			var wall: Node2D = wall_scene.instantiate()
-			wall.position = tile_map.map_to_local(cell)
+			wall.position = _tile_to_world(cell)
 			add_child(wall)
 			walls.append(wall)
 		_objective_nodes["escort_walls"] = walls
@@ -349,6 +356,6 @@ func _spawn_escort_mission() -> void:
 		push_warning("[MapGenerator] extraction_zone.tscn not found.")
 		return
 	var zone_node: Node2D = ext_scene.instantiate()
-	zone_node.position = tile_map.map_to_local(ext_zone[0])
+	zone_node.position = _tile_to_world(ext_zone[0])
 	add_child(zone_node)
 	_objective_nodes["extraction_zone"] = zone_node
