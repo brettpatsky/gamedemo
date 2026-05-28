@@ -8,6 +8,7 @@
 extends CharacterBody2D
 
 const Balance = preload("res://scripts/BalanceConfig.gd")
+const _FLOATING_NUMBER_SCRIPT = preload("res://scripts/FloatingNumberFX.gd")
 
 # Stat numbers (move speed, HP, ranges, bullet stats) live in BalanceConfig.gd.
 # Held as instance vars so the rest of the script keeps reading by the same
@@ -97,6 +98,7 @@ func _ready() -> void:
 	_health              = max_health
 	health_bar.max_value = max_health
 	health_bar.value     = _health
+	_style_health_bar()
 	_spawn_protection_timer = spawn_protection
 	# Randomise weakness + resistance for combat enemies if the spawner
 	# didn't override them. Tutorial dummies stay neutral so Puzzle 1 is
@@ -366,6 +368,31 @@ func _play_anim(anim_name: String) -> void:
 # PUBLIC — damage / death
 # =============================================================================
 
+# Visual styling for the health bar — hides the default "100%" label and
+# gives the bar a small red silhouette above the enemy sprite.
+func _style_health_bar() -> void:
+	health_bar.show_percentage = false
+	health_bar.custom_minimum_size = Vector2(40, 5)
+	health_bar.size = Vector2(40, 5)
+	health_bar.position = Vector2(-20, -38)
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.08, 0.08, 0.1, 0.85)
+	bg.border_color = Color(0, 0, 0, 0.9)
+	bg.set_border_width_all(1)
+	bg.set_corner_radius_all(2)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(0.9, 0.3, 0.3)
+	fill.set_corner_radius_all(2)
+	health_bar.add_theme_stylebox_override("background", bg)
+	health_bar.add_theme_stylebox_override("fill", fill)
+
+func _spawn_damage_number(amount: int, color: Color) -> void:
+	var fx := Node2D.new()
+	fx.set_script(_FLOATING_NUMBER_SCRIPT)
+	get_viewport().add_child(fx)
+	fx.global_position = global_position + Vector2(0, -32)
+	fx.start(amount, color)
+
 func take_damage(amount: int, element: int = 0) -> void:
 	if _state == State.DEAD:
 		return
@@ -379,6 +406,11 @@ func take_damage(amount: int, element: int = 0) -> void:
 	var net: int = Elements.apply_damage(amount, element, weakness, resistance)
 	_health -= net
 	health_bar.value = _health
+	# Yellow on a neutral hit, brighter element-tinted gold when the weakness
+	# multiplier kicked in so the player gets visual confirmation crits landed.
+	var crit: bool = element != 0 and element == weakness
+	var num_color: Color = Color(1.0, 0.95, 0.3) if not crit else Color(1.0, 0.7, 0.15)
+	_spawn_damage_number(net, num_color)
 	if _health <= 0:
 		_die()
 

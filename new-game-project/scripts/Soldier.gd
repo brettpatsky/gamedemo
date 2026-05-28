@@ -46,6 +46,7 @@ const WEAPON_COUNT := 4
 
 const _GRENADE_SCRIPT = preload("res://scripts/Grenade.gd")
 const _MAZE_MOVER_SCRIPT = preload("res://scripts/SoldierMazeMover.gd")
+const _FLOATING_NUMBER_SCRIPT = preload("res://scripts/FloatingNumberFX.gd")
 
 var _weapon: WeaponType = WeaponType.PISTOL
 
@@ -245,6 +246,7 @@ func _ready() -> void:
 
 	health_bar.max_value = max_health
 	health_bar.value     = _health
+	_style_health_bar()
 
 	_play_anim("idle_" + _facing)
 
@@ -372,12 +374,40 @@ func take_damage(amount: int, _element: int = 0) -> void:
 		return
 	_health -= net
 	health_bar.value = _health
+	_spawn_damage_number(net, Color(1.0, 0.35, 0.35))
 	if _health <= 0:
 		if _state == State.BOMB:
 			# Detonate where we fell rather than dying quietly.
 			_explode()
 			return
 		_die()
+
+# Visual styling for the health bar — kept out of the .tscn so inherited
+# soldier scenes (soldier_1..6) don't each need their own StyleBoxFlat
+# resources. Hides the default "100%" label and gives the bar a small,
+# colour-coded silhouette above the sprite.
+func _style_health_bar() -> void:
+	health_bar.show_percentage = false
+	health_bar.custom_minimum_size = Vector2(44, 6)
+	health_bar.size = Vector2(44, 6)
+	health_bar.position = Vector2(-22, -56)
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.08, 0.08, 0.1, 0.85)
+	bg.border_color = Color(0, 0, 0, 0.9)
+	bg.set_border_width_all(1)
+	bg.set_corner_radius_all(2)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(0.35, 0.85, 0.4)
+	fill.set_corner_radius_all(2)
+	health_bar.add_theme_stylebox_override("background", bg)
+	health_bar.add_theme_stylebox_override("fill", fill)
+
+func _spawn_damage_number(amount: int, color: Color) -> void:
+	var fx := Node2D.new()
+	fx.set_script(_FLOATING_NUMBER_SCRIPT)
+	get_viewport().add_child(fx)
+	fx.global_position = global_position + Vector2(0, -48)
+	fx.start(amount, color)
 
 # =============================================================================
 # PRIVATE — STATE BEHAVIOURS
