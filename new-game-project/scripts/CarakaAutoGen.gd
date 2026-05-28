@@ -36,7 +36,7 @@ const TREE_REGIONS := {
 	Season.SPRING: [Rect2(0, 0, 32, 64), Rect2(256, 0, 32, 64), Rect2(0, 128, 32, 64)],
 	Season.SUMMER: [Rect2(32, 0, 32, 64), Rect2(64, 0, 32, 64), Rect2(32, 128, 32, 64)],
 	Season.FALL:   [Rect2(96, 0, 32, 64), Rect2(128, 0, 32, 64), Rect2(96, 128, 32, 64)],
-	Season.WINTER: [Rect2(192, 0, 32, 64), Rect2(448, 0, 32, 64), Rect2(192, 128, 32, 64)],
+	Season.WINTER: [Rect2(192, 0, 32, 64), Rect2(448, 0, 32, 64)],
 }
 
 # Bush.png: 8 cols × 4 rows (16×16). Seasons in rows: 0=spring, 1=summer, 2=fall, 3=winter.
@@ -136,7 +136,8 @@ func _generate_terrain(seed_value: int) -> void:
 			else:
 				_terrain_grid[cell] = "grass"
 
-	_generate_paths(effective_seed)
+	if season != Season.WINTER:
+		_generate_paths(effective_seed)
 
 	var land_cells: Array[Vector2i] = []
 	var grass_cells: Array[Vector2i] = []
@@ -158,7 +159,7 @@ func _generate_terrain(seed_value: int) -> void:
 				"water":
 					water_cells.append(cell)
 
-	# Ground layer: dirt on land cells only (edges auto-tile at water boundaries)
+	# Ground layer: dirt on land cells only (auto-tiled edges at water boundaries)
 	tile_map.set_cells_terrain_connect(land_cells, 0, 0, false)
 
 	# Objects layer: seasonal grass with auto-tiled edges (dirt shows through)
