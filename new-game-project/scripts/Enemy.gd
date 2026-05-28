@@ -87,14 +87,14 @@ var _spawn_protection_timer: float = 0.0
 func _ready() -> void:
 	add_to_group("enemies")
 	move_speed      = Balance.ENEMY_MOVE_SPEED
-	max_health      = override_max_health if override_max_health > 0 else Balance.ENEMY_MAX_HEALTH
+	max_health      = (override_max_health if override_max_health > 0 else Balance.ENEMY_MAX_HEALTH) * Balance.COMBAT_NUMBER_SCALE
 	sight_range     = Balance.ENEMY_SIGHT_RANGE
 	attack_range    = Balance.ENEMY_ATTACK_RANGE
 	score_value     = Balance.ENEMY_SCORE_VALUE
 	aim_jitter      = Balance.ENEMY_AIM_JITTER
 	bullet_speed    = Balance.ENEMY_BULLET_SPEED
 	bullet_distance = Balance.ENEMY_BULLET_DISTANCE
-	bullet_damage   = Balance.ENEMY_BULLET_DAMAGE
+	bullet_damage   = Balance.ENEMY_BULLET_DAMAGE * Balance.COMBAT_NUMBER_SCALE
 	_health              = max_health
 	health_bar.max_value = max_health
 	health_bar.value     = _health
@@ -372,9 +372,9 @@ func _play_anim(anim_name: String) -> void:
 # gives the bar a small red silhouette above the enemy sprite.
 func _style_health_bar() -> void:
 	health_bar.show_percentage = false
-	health_bar.custom_minimum_size = Vector2(40, 5)
-	health_bar.size = Vector2(40, 5)
-	health_bar.position = Vector2(-20, -38)
+	health_bar.custom_minimum_size = Vector2(32, 4)
+	health_bar.size = Vector2(32, 4)
+	health_bar.position = Vector2(-16, -26)
 	var bg := StyleBoxFlat.new()
 	bg.bg_color = Color(0.08, 0.08, 0.1, 0.85)
 	bg.border_color = Color(0, 0, 0, 0.9)

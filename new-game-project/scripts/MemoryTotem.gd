@@ -30,8 +30,8 @@ func _ready() -> void:
 	add_to_group("memory_totems")
 	collision_layer = 1
 	collision_mask  = 0
-	_health = float(Balance.TOTEM_MAX_HEALTH)
-	health_bar.max_value = Balance.TOTEM_MAX_HEALTH
+	_health = float(Balance.TOTEM_MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE)
+	health_bar.max_value = _health
 	health_bar.value     = _health
 	queue_redraw()
 
@@ -39,8 +39,9 @@ func _process(delta: float) -> void:
 	if _destroyed:
 		return
 	_pulse_phase += delta
-	if _health < Balance.TOTEM_MAX_HEALTH:
-		_health = minf(_health + Balance.TOTEM_REGEN_RATE * delta, float(Balance.TOTEM_MAX_HEALTH))
+	var max_hp: float = float(Balance.TOTEM_MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE)
+	if _health < max_hp:
+		_health = minf(_health + Balance.TOTEM_REGEN_RATE * Balance.COMBAT_NUMBER_SCALE * delta, max_hp)
 		health_bar.value = _health
 	queue_redraw()
 
@@ -56,7 +57,7 @@ func take_damage(amount: int, _element: int = 0) -> void:
 		queue_free()
 
 func _draw() -> void:
-	var hp_ratio: float = clampf(_health / float(Balance.TOTEM_MAX_HEALTH), 0.0, 1.0)
+	var hp_ratio: float = clampf(_health / float(Balance.TOTEM_MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE), 0.0, 1.0)
 	# Inner corrupted core — deep violet.
 	draw_circle(Vector2.ZERO, 32.0, Color(0.25, 0.05, 0.45))
 	draw_circle(Vector2.ZERO, 22.0, Color(0.55, 0.15, 0.85))

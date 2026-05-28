@@ -57,7 +57,7 @@ func _deal_damage() -> void:
 			# Heavy bonus damage to memory totems — required to outpace their
 			# 16 HP/s regen during the boss's Phase 2.
 			var dmg: int = Balance.GRENADE_TOTEM_DAMAGE if target.is_in_group("memory_totems") else Balance.GRENADE_DAMAGE
-			target.take_damage(dmg)
+			target.take_damage(dmg * Balance.COMBAT_NUMBER_SCALE)
 
 func _draw() -> void:
 	if _exploded:

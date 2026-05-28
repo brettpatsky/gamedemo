@@ -137,8 +137,9 @@ func get_element() -> int:
 # All three are safe to call right after the soldier has been added to the
 # scene tree (_ready has run synchronously up to its first await by then).
 func add_max_health(delta: int) -> void:
-	max_health += delta
-	_health = mini(_health + delta, max_health)
+	var scaled: int = delta * Balance.COMBAT_NUMBER_SCALE
+	max_health += scaled
+	_health = mini(_health + scaled, max_health)
 	if health_bar:
 		health_bar.max_value = max_health
 		health_bar.value     = _health
@@ -166,7 +167,7 @@ var damage_reduction: int   = 0      # subtracted from incoming damage
 var water_immune:     bool  = false  # ignores water speed slowdown
 
 func add_damage_bonus(delta: int) -> void:
-	damage_bonus += delta
+	damage_bonus += delta * Balance.COMBAT_NUMBER_SCALE
 
 func add_range_mult(percent: float) -> void:
 	range_mult *= (1.0 + percent)
@@ -175,7 +176,7 @@ func multiply_cooldown(multiplier: float) -> void:
 	cooldown_mult *= multiplier
 
 func add_damage_reduction(delta: int) -> void:
-	damage_reduction += delta
+	damage_reduction += delta * Balance.COMBAT_NUMBER_SCALE
 
 func enable_water_immunity() -> void:
 	water_immune = true
@@ -217,21 +218,21 @@ func _ready() -> void:
 	# slot fall back to the squad-wide BalanceConfig defaults.
 	if slot_index >= 0 and slot_index < Balance.SOLDIER_MAX_HEALTH_PER_SLOT.size():
 		move_speed      = Balance.SOLDIER_MOVE_SPEED_PER_SLOT[slot_index]
-		max_health      = Balance.SOLDIER_MAX_HEALTH_PER_SLOT[slot_index]
-		pistol_damage   = Balance.SOLDIER_PISTOL_DAMAGE_PER_SLOT[slot_index]
+		max_health      = Balance.SOLDIER_MAX_HEALTH_PER_SLOT[slot_index]      * Balance.COMBAT_NUMBER_SCALE
+		pistol_damage   = Balance.SOLDIER_PISTOL_DAMAGE_PER_SLOT[slot_index]   * Balance.COMBAT_NUMBER_SCALE
 		pistol_speed    = Balance.SOLDIER_PISTOL_SPEED_PER_SLOT[slot_index]
 		pistol_distance = Balance.SOLDIER_PISTOL_DISTANCE_PER_SLOT[slot_index]
-		rifle_damage    = Balance.SOLDIER_RIFLE_DAMAGE_PER_SLOT[slot_index]
+		rifle_damage    = Balance.SOLDIER_RIFLE_DAMAGE_PER_SLOT[slot_index]    * Balance.COMBAT_NUMBER_SCALE
 		rifle_speed     = Balance.SOLDIER_RIFLE_SPEED_PER_SLOT[slot_index]
 		rifle_distance  = Balance.SOLDIER_RIFLE_DISTANCE_PER_SLOT[slot_index]
 		bullet_color    = Balance.SOLDIER_BULLET_COLOR_PER_SLOT[slot_index]
 	else:
 		move_speed      = Balance.SOLDIER_MOVE_SPEED
-		max_health      = Balance.SOLDIER_MAX_HEALTH
-		pistol_damage   = Balance.SOLDIER_PISTOL_DAMAGE
+		max_health      = Balance.SOLDIER_MAX_HEALTH      * Balance.COMBAT_NUMBER_SCALE
+		pistol_damage   = Balance.SOLDIER_PISTOL_DAMAGE   * Balance.COMBAT_NUMBER_SCALE
 		pistol_speed    = Balance.SOLDIER_PISTOL_SPEED
 		pistol_distance = Balance.SOLDIER_PISTOL_DISTANCE
-		rifle_damage    = Balance.SOLDIER_RIFLE_DAMAGE
+		rifle_damage    = Balance.SOLDIER_RIFLE_DAMAGE    * Balance.COMBAT_NUMBER_SCALE
 		rifle_speed     = Balance.SOLDIER_RIFLE_SPEED
 		rifle_distance  = Balance.SOLDIER_RIFLE_DISTANCE
 	_grenade_ammo = Balance.SOLDIER_GRENADE_AMMO_MAX
@@ -278,7 +279,7 @@ func _ready() -> void:
 	# is split. Hidden by default; SquadController calls show_group_label().
 	_group_label = Label.new()
 	_group_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_group_label.position = Vector2(-12, -82)
+	_group_label.position = Vector2(-12, -62)
 	_group_label.add_theme_font_size_override("font_size", 14)
 	_group_label.hide()
 	add_child(_group_label)
@@ -388,9 +389,9 @@ func take_damage(amount: int, _element: int = 0) -> void:
 # colour-coded silhouette above the sprite.
 func _style_health_bar() -> void:
 	health_bar.show_percentage = false
-	health_bar.custom_minimum_size = Vector2(44, 6)
-	health_bar.size = Vector2(44, 6)
-	health_bar.position = Vector2(-22, -56)
+	health_bar.custom_minimum_size = Vector2(36, 5)
+	health_bar.size = Vector2(36, 5)
+	health_bar.position = Vector2(-18, -40)
 	var bg := StyleBoxFlat.new()
 	bg.bg_color = Color(0.08, 0.08, 0.1, 0.85)
 	bg.border_color = Color(0, 0, 0, 0.9)
@@ -547,7 +548,7 @@ func _explode() -> void:
 			if not target.has_method("take_damage"):
 				continue
 			if (target as Node2D).global_position.distance_to(origin) <= Balance.SACRIFICE_RADIUS:
-				target.take_damage(Balance.SACRIFICE_DAMAGE)
+				target.take_damage(Balance.SACRIFICE_DAMAGE * Balance.COMBAT_NUMBER_SCALE)
 
 	# Visual explosion: spawn a temporary Node2D that draws the blast circle.
 	# Added to the viewport directly, matching how grenades are spawned, so the

@@ -18,7 +18,7 @@ const MOVE_SPEED: float = 130.0
 # and made the NPC physically jam against squad capsules.
 const FOLLOW_DIST: float = 70.0
 
-var _health: int = MAX_HEALTH
+var _health: int = MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE
 var _dead:   bool = false
 var _freed:  bool = false   # set true once a sheltering wall is destroyed
 var _joined: bool = false   # set true the first time we reach the squad
@@ -36,8 +36,8 @@ var _stuck_strikes:   int     = 0
 func _ready() -> void:
 	add_to_group("soldiers")    # enemies detect + target this
 	add_to_group("escort_npc")  # extraction zone watches for this group
-	_health              = MAX_HEALTH
-	health_bar.max_value = MAX_HEALTH
+	_health              = MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE
+	health_bar.max_value = _health
 	health_bar.value     = _health
 	queue_redraw()
 	await get_tree().physics_frame

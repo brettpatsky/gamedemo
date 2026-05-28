@@ -96,8 +96,8 @@ func _ready() -> void:
 	add_to_group("boss")
 	collision_layer = 1
 	collision_mask  = 0
-	_health = Balance.BOSS_MAX_HEALTH
-	health_bar.max_value = Balance.BOSS_MAX_HEALTH
+	_health = Balance.BOSS_MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE
+	health_bar.max_value = _health
 	health_bar.value     = _health
 	# Dormant until the squad crosses into the boss room — BossArenaLevel's
 	# trigger zone calls activate() at that point.
@@ -383,7 +383,7 @@ func _draw() -> void:
 		pts.append(Vector2(cos(a), sin(a)) * 80.0)
 	draw_colored_polygon(pts, Color(0.12, 0.08, 0.18))
 	# Inner cracks — colour intensifies as health drops.
-	var hp_ratio: float = clampf(float(_health) / float(Balance.BOSS_MAX_HEALTH), 0.0, 1.0)
+	var hp_ratio: float = clampf(float(_health) / float(Balance.BOSS_MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE), 0.0, 1.0)
 	var crack_color := Color(1.0, 0.4 * (1.0 - hp_ratio), 1.0 * (1.0 - hp_ratio * 0.5), 0.8)
 	for i in 6:
 		var a: float = (TAU / 6.0) * float(i) - PI * 0.5

@@ -12,6 +12,8 @@
 class_name SpecialWall
 extends StaticBody2D
 
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
 signal destroyed
 
 @export var width:                  float  = 96.0
@@ -25,6 +27,11 @@ var _destroyed: bool = false
 
 func _ready() -> void:
 	add_to_group("structures")
+	# Scale HP and damage threshold by COMBAT_NUMBER_SCALE so the tutorial
+	# weapons keep their original "this breaks it / this doesn't" relationship
+	# after the global damage scale-up.
+	max_health = max_health * Balance.COMBAT_NUMBER_SCALE
+	min_damage_to_register = min_damage_to_register * Balance.COMBAT_NUMBER_SCALE
 	_health = max_health
 	var shape := RectangleShape2D.new()
 	shape.size = Vector2(width, height)

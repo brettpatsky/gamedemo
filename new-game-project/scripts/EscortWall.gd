@@ -6,6 +6,8 @@
 # =============================================================================
 extends StaticBody2D
 
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
 signal wall_destroyed
 
 const MAX_HEALTH: int = 25
@@ -16,8 +18,8 @@ var _health: int
 
 func _ready() -> void:
 	add_to_group("escort_walls")
-	_health = MAX_HEALTH
-	health_bar.max_value = MAX_HEALTH
+	_health = MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE
+	health_bar.max_value = _health
 	health_bar.value     = _health
 	queue_redraw()
 

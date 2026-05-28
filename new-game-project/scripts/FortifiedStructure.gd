@@ -5,6 +5,8 @@
 # =============================================================================
 extends StaticBody2D
 
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
 signal structure_destroyed
 
 const MAX_HEALTH: int = 90
@@ -16,8 +18,8 @@ var _destroyed: bool = false
 
 func _ready() -> void:
 	add_to_group("structures")
-	_health = MAX_HEALTH
-	health_bar.max_value = MAX_HEALTH
+	_health = MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE
+	health_bar.max_value = _health
 	health_bar.value     = _health
 	queue_redraw()
 
@@ -38,7 +40,7 @@ func _destroy() -> void:
 func _draw() -> void:
 	draw_rect(Rect2(-40, -40, 80, 80), Color(0.35, 0.35, 0.38))
 	draw_rect(Rect2(-40, -40, 80, 80), Color(0.15, 0.15, 0.17), false, 3.0)
-	var hp_ratio: float = float(_health) / float(MAX_HEALTH)
+	var hp_ratio: float = float(_health) / float(MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE)
 	var target_col := Color(0.9, 0.1, 0.1, 0.3 + 0.7 * (1.0 - hp_ratio))
 	draw_line(Vector2(-28, -28), Vector2(28, 28), target_col, 5.0)
 	draw_line(Vector2(28, -28), Vector2(-28, 28), target_col, 5.0)

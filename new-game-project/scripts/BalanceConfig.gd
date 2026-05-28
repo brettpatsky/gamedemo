@@ -17,6 +17,16 @@
 extends Node
 
 # -----------------------------------------------------------------------------
+# COMBAT NUMBER SCALE
+# -----------------------------------------------------------------------------
+# Single multiplier applied to every HP value and damage value at runtime.
+# Lets the per-slot / per-weapon tables below stay readable (1..8 range) while
+# the on-screen floating damage numbers and HP bars feel punchier. Balance is
+# preserved because both sides scale by the same amount. Tweak this one knob
+# to make hits feel chunkier or flatter — gameplay tuning never has to change.
+const COMBAT_NUMBER_SCALE: int = 7
+
+# -----------------------------------------------------------------------------
 # SOLDIER — squad-wide defaults
 # -----------------------------------------------------------------------------
 # Every value here is the FALLBACK used when slot_index < 0. Normal mission
