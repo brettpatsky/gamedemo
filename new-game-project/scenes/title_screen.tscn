@@ -1,11 +1,21 @@
 [gd_scene format=3 uid="uid://hhybejs82qhl"]
 
 [ext_resource type="Script" uid="uid://1tt34ime3jia" path="res://scripts/TitleScreen.gd" id="1_fgkus"]
-[ext_resource type="Texture2D" uid="uid://dviifl51nn46l" path="res://resources/tdstilepack/Spritesheet/luatilesheet.png" id="2_sheet"]
+[ext_resource type="Texture2D" uid="uid://brctfdq8nsmpt" path="res://resources/lua.png" id="2_lua"]
+[ext_resource type="Texture2D" uid="uid://b7v7ojvwnbu7e" path="res://resources/friend1.png" id="3_friend1"]
+[ext_resource type="Texture2D" uid="uid://cv5wae5ivvx5g" path="res://resources/friend2.png" id="4_friend2"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_idle"]
-atlas = ExtResource("2_sheet")
-region = Rect2(0, 778, 153, 153)
+atlas = ExtResource("2_lua")
+region = Rect2(0, 1536, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_friend1"]
+atlas = ExtResource("3_friend1")
+region = Rect2(0, 1536, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_friend2"]
+atlas = ExtResource("4_friend2")
+region = Rect2(0, 1536, 64, 64)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_fgkus"]
 bg_color = Color(0.11764706, 0.16470589, 0.27058825, 1)
@@ -230,7 +240,7 @@ theme_override_constants/separation = 8
 [node name="Portrait" type="TextureRect" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard2/Margin/VBox/Header" unique_id=910161483]
 custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
-texture = SubResource("AtlasTexture_idle")
+texture = SubResource("AtlasTexture_friend1")
 expand_mode = 1
 stretch_mode = 5
 
@@ -330,7 +340,7 @@ theme_override_constants/separation = 8
 [node name="Portrait" type="TextureRect" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard3/Margin/VBox/Header" unique_id=1423475149]
 custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
-texture = SubResource("AtlasTexture_idle")
+texture = SubResource("AtlasTexture_friend2")
 expand_mode = 1
 stretch_mode = 5
 
@@ -530,7 +540,7 @@ theme_override_constants/separation = 8
 [node name="Portrait" type="TextureRect" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard5/Margin/VBox/Header" unique_id=470355766]
 custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
-texture = SubResource("AtlasTexture_idle")
+texture = SubResource("AtlasTexture_friend1")
 expand_mode = 1
 stretch_mode = 5
 
@@ -630,7 +640,7 @@ theme_override_constants/separation = 8
 [node name="Portrait" type="TextureRect" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard6/Margin/VBox/Header" unique_id=1210682311]
 custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
-texture = SubResource("AtlasTexture_idle")
+texture = SubResource("AtlasTexture_friend2")
 expand_mode = 1
 stretch_mode = 5
 
