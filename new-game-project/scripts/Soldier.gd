@@ -207,6 +207,9 @@ var _stuck_strikes:   int     = 0     # ≥ HARD_STRIKES → hard-unstick telepo
 var _unstick_timer:   float   = 0.0
 var _unstick_dir:     Vector2 = Vector2.ZERO
 
+# Last direction the soldier was facing — drives directional idle/shoot anims.
+var _facing: String = "down"
+
 func _ready() -> void:
 	# Per-slot stats win when Main has assigned slot_index (every normal
 	# mission spawn). Standalone test scenes that drop a soldier without a
@@ -243,7 +246,7 @@ func _ready() -> void:
 	health_bar.max_value = max_health
 	health_bar.value     = _health
 
-	_play_anim("idle")
+	_play_anim("idle_" + _facing)
 
 	# Tighter arrival tolerance so soldiers don't overshoot and circle back.
 	nav_agent.path_desired_distance  = 4.0
@@ -297,7 +300,7 @@ func _physics_process(delta: float) -> void:
 			velocity = Vector2.ZERO
 			move_and_slide()
 			if _shoot_flash_timer <= 0.0:
-				_play_anim("idle")
+				_play_anim("idle_" + _facing)
 		State.DEAD:
 			pass
 
@@ -384,12 +387,12 @@ func _do_move(delta: float) -> void:
 	if maze_mode:
 		if _MAZE_MOVER_SCRIPT.tick(self):
 			_state = State.IDLE
-			_play_anim("idle")
+			_play_anim("idle_" + _facing)
 		return
 
 	if nav_agent.is_navigation_finished():
 		_state = State.IDLE
-		_play_anim("idle")
+		_play_anim("idle_" + _facing)
 		footstep.stop()
 		return
 
@@ -548,10 +551,8 @@ func _do_shoot() -> void:
 			return
 
 	var dir: Vector2 = (_bullet_aim - global_position).normalized()
-	if dir.x != 0:
-		sprite.flip_h = dir.x < 0
-
-	_play_anim("shoot")
+	_facing = _dir_to_facing(dir)
+	_play_anim("shoot_" + _facing)
 	_shoot_flash_timer = Balance.SOLDIER_SHOOT_FLASH_DURATION
 	gunshot.pitch_scale = randf_range(0.9, 1.1)
 	gunshot.play()
@@ -588,9 +589,8 @@ func _throw_grenade(target: Vector2) -> void:
 	_shoot_cooldown  = Balance.SOLDIER_GRENADE_COOLDOWN
 
 	var dir: Vector2 = (target - global_position).normalized()
-	if dir.x != 0:
-		sprite.flip_h = dir.x < 0
-	_play_anim("shoot")
+	_facing = _dir_to_facing(dir)
+	_play_anim("shoot_" + _facing)
 	_shoot_flash_timer = Balance.SOLDIER_SHOOT_FLASH_DURATION
 
 	var grenade   := Node2D.new()
@@ -670,7 +670,7 @@ func revive() -> void:
 	sprite.modulate = Color.WHITE
 	$CollisionShape2D.set_deferred("disabled", false)
 	_state = State.IDLE
-	_play_anim("idle")
+	_play_anim("idle_" + _facing)
 	GameManager.on_soldier_revived(self)
 
 func _on_die_anim_finished() -> void:
@@ -722,8 +722,7 @@ func _try_autodefend(delta: float) -> void:
 		return
 	var dir := (closest.global_position - global_position).normalized()
 	dir = dir.rotated(randf_range(-Balance.SOLDIER_AUTODEFEND_JITTER, Balance.SOLDIER_AUTODEFEND_JITTER))
-	if dir.x != 0:
-		sprite.flip_h = dir.x < 0
+	_facing = _dir_to_facing(dir)
 	gunshot.pitch_scale = randf_range(0.9, 1.1)
 	gunshot.play()
 	if bullet_scene:
@@ -741,14 +740,24 @@ func _try_autodefend(delta: float) -> void:
 # PRIVATE — ANIMATION
 # =============================================================================
 
+func _dir_to_facing(dir: Vector2) -> String:
+	if abs(dir.y) > abs(dir.x):
+		return "up" if dir.y < 0 else "down"
+	return "left" if dir.x < 0 else "right"
+
 func _play_anim(anim_name: String) -> void:
+	if sprite.sprite_frames == null or not sprite.sprite_frames.has_animation(anim_name):
+		return
 	if sprite.animation != anim_name:
 		sprite.play(anim_name)
 
 func _play_walk_anim(direction: Vector2) -> void:
-	if abs(direction.y) > abs(direction.x):
+	_facing = _dir_to_facing(direction)
+	var anim := "walk_" + _facing
+	if sprite.sprite_frames and sprite.sprite_frames.has_animation(anim):
 		sprite.flip_h = false
-		_play_anim("walk_up" if direction.y < 0 else "walk_down")
-	else:
-		sprite.flip_h = direction.x < 0
+		_play_anim(anim)
+	elif sprite.sprite_frames and sprite.sprite_frames.has_animation("walk_side"):
+		# Fallback for soldiers that don't yet have separate walk_left/walk_right.
+		sprite.flip_h = _facing == "left"
 		_play_anim("walk_side")
