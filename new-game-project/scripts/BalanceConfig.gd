@@ -47,10 +47,11 @@ const SOLDIER_RIFLE_DAMAGE:   int   = 1
 const SOLDIER_RIFLE_SPEED:    float = 900.0
 const SOLDIER_RIFLE_DISTANCE: float = 2000.0
 const SOLDIER_RIFLE_COOLDOWN: float = 0.12      # very fast — pool burns quickly
+const SOLDIER_RIFLE_AMMO_MAX: int   = 300       # squad-wide pool per mission
 
-# Grenade — per-soldier ammo (not shared), heavy throw.
-const SOLDIER_GRENADE_AMMO_MAX: int   = 5       # starting stockpile per mission
-const SOLDIER_GRENADE_COOLDOWN: float = 2.0     # long so it isn't spammed
+# Grenade — squad-wide shared pool, heavy throw.
+const SOLDIER_GRENADE_AMMO_MAX: int   = 10      # squad-wide pool per mission
+const SOLDIER_GRENADE_COOLDOWN: float = 0.5     # quick lobs so the player can react in a firefight
 
 # -----------------------------------------------------------------------------
 # SOLDIER — per-slot stat tables
@@ -99,9 +100,9 @@ const SACRIFICE_TIMEOUT:      float = 6.0
 # Soldiers can wedge against rocks or each other in tight corridors. The
 # sidestep handles most short hangs; HARD_STRIKES escalates to a path-teleport.
 const SOLDIER_STUCK_CHECK_INTERVAL: float = 0.5   # how often we sample position
-const SOLDIER_STUCK_THRESHOLD:      float = 8.0   # px moved < this in interval = stuck
+const SOLDIER_STUCK_THRESHOLD:      float = 12.0   # px moved < this in interval = stuck
 const SOLDIER_UNSTICK_DURATION:     float = 0.35  # how long the sidestep nudge lasts
-const SOLDIER_STUCK_HARD_STRIKES:   int   = 6     # consecutive strikes → teleport
+const SOLDIER_STUCK_HARD_STRIKES:   int   = 4     # consecutive strikes → teleport
 
 # -----------------------------------------------------------------------------
 # SOLDIER — catch-up rubberbanding
@@ -225,9 +226,10 @@ const ZONE_DAMAGE_PER_TICK: int   = 1
 # -----------------------------------------------------------------------------
 # GRENADE  (squad weapon)
 # -----------------------------------------------------------------------------
-const GRENADE_SPEED:            float = 250.0   # px/s during arc
+const GRENADE_SPEED:            float = 600.0   # px/s during arc — fast enough to feel like a lob, not a balloon
 const GRENADE_ARC_HEIGHT:       float = 80.0    # peak visual height
-const GRENADE_EXPLOSION_RADIUS: float = 110.0
+const GRENADE_EXPLOSION_RADIUS: float = 140.0
+const GRENADE_MAX_RANGE:        float = 500.0   # clicks past this clamp to the rim — no full-screen lobs
 const GRENADE_DAMAGE:           int   = 12
 # Memory totems regen too fast for pistols. Grenades get a heavy bonus so a
 # single throw cracks a totem shield (80 → 20 HP).
@@ -248,7 +250,7 @@ const PROJECTILE_RADIUS:       float = 12.0
 # Used by the boss mission to hand the squad enough rifle ammo / grenades to
 # actually clear the encounter — defaults would starve them.
 const LOADOUT_BOSS_RIFLE_POOL:   int = 600
-const LOADOUT_BOSS_GRENADE_AMMO: int = 15
+const LOADOUT_BOSS_GRENADE_AMMO: int = 90    # squad-wide pool override for the boss mission (was 15 per soldier × 6)
 
 # =============================================================================
 # MAP DIMENSIONS

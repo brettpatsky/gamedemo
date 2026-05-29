@@ -128,9 +128,10 @@ static func _apply_one(id: String) -> bool:
 			GameManager.rifle_ammo_pool += 50
 			return true
 		"locker_key":
-			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
-				if s.has_method("add_grenade_ammo"):
-					s.add_grenade_ammo(2)
+			# Grenade ammo is now a shared squad pool — add once, not per
+			# soldier. Old behaviour added 2 per kid (×6 = +12 total); we
+			# preserve that total with a single +12 to the pool.
+			GameManager.grenade_ammo_pool += 12
 			return true
 		"lucky_pencil":
 			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):

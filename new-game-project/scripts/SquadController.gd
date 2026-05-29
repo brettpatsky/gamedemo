@@ -315,12 +315,23 @@ func _issue_fire_order(target: Vector2) -> void:
 	# GRENADE: one throw per fire order — the closest soldier is the thrower.
 	# Firing one-per-soldier was redundant and wasted 5 ammo per click.
 	if _active_weapon() == 2:  # WeaponType.GRENADE
-		var thrower: Node2D = _closest_to(group, target)
-		if thrower != null:
-			thrower.fire_at(target, target)
-		_update_ammo_hud()
-		_update_weapon_hud()
-		return
+		# Pool drained between clicks? Flip the whole active group onto pistol
+		# so the HUD weapon icon updates and this click pistol-fires instead of
+		# silently doing nothing on the empty-pool guard inside _throw_grenade.
+		if GameManager.grenade_ammo_pool <= 0:
+			for s in group:
+				if s.has_method("set_weapon"):
+					s.set_weapon(0)
+			_update_ammo_hud()
+			_update_weapon_hud()
+			# Fall through into the standard pistol path so this click still fires.
+		else:
+			var thrower: Node2D = _closest_to(group, target)
+			if thrower != null:
+				thrower.fire_at(target, target)
+			_update_ammo_hud()
+			_update_weapon_hud()
+			return
 
 	# Every soldier aims directly at the click point.
 	for soldier in group:

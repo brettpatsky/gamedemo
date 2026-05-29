@@ -386,6 +386,9 @@ func _build_room_elements() -> void:
 func _unlock_final_trial_features() -> void:
 	GameManager.set_sacrifice_enabled(true)
 	GameManager.set_revive_enabled(true)
+	# Final Trial only needs one sacrifice — capping charges keeps a stray
+	# second click from emptying the squad before Revive can be tried.
+	GameManager.sacrifice_charges = 1
 	var hud: Node = get_tree().get_first_node_in_group("hud")
 	if hud and hud.has_method("show_toast"):
 		hud.show_toast("SACRIFICE & REVIVE UNLOCKED",
@@ -454,15 +457,20 @@ func _build_room_final() -> void:
 func _add_sign(world_pos: Vector2, text: String) -> void:
 	var label := Label.new()
 	label.text = text
+	# Render glyphs at a larger size, then scale the Control down so the on-
+	# screen footprint stays roughly the same. The SubViewport upscales its
+	# render with bilinear filtering — small font sizes get blurred badly,
+	# so we rasterize big and shrink. Net result: sharper text, same layout.
+	label.add_theme_font_size_override("font_size", 28)
+	label.scale = Vector2(0.5, 0.5)
 	label.position = world_pos - Vector2(80, 12)
-	label.size = Vector2(220, 90)
+	label.size = Vector2(440, 180)
 	# Don't let signs swallow clicks — soldiers need to be able to walk
 	# under them and the player needs to be able to click through them.
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.add_theme_font_size_override("font_size", 13)
 	label.add_theme_color_override("font_color", Color(1, 0.95, 0.7))
 	label.add_theme_color_override("font_outline_color", Color(0.1, 0.1, 0.15))
-	label.add_theme_constant_override("outline_size", 3)
+	label.add_theme_constant_override("outline_size", 5)
 	add_child(label)
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,8 @@
 # =============================================================================
 extends Node
 
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
 # ---------------------------------------------------------------------------
 # Signals — other nodes subscribe to these instead of polling each frame
 # ---------------------------------------------------------------------------
@@ -49,14 +51,24 @@ var revive_potions: int = REVIVES_PER_MISSION
 
 # Shared rifle ammo pool — all soldiers draw from this so smaller groups
 # aren't penalised with less ammo after a split.
-const RIFLE_AMMO_POOL_MAX := 300
-var rifle_ammo_pool: int = RIFLE_AMMO_POOL_MAX
+# Pool sizes live in BalanceConfig.SOLDIER_RIFLE_AMMO_MAX and
+# SOLDIER_GRENADE_AMMO_MAX. Both pools are squad-wide so every soldier
+# draws from the same counter — fixes the HUD-vs-throws drift the old
+# per-soldier grenade ammo had.
+var rifle_ammo_pool:   int = Balance.SOLDIER_RIFLE_AMMO_MAX
+var grenade_ammo_pool: int = Balance.SOLDIER_GRENADE_AMMO_MAX
 
 # Feature gates. Reset to true at the start of every mission; the tutorial
 # disables both during Main._ready and re-enables them when Puzzle 5 (the
 # Identity Gate) completes — see TutorialLevel1._build_room_identity.
 var sacrifice_enabled: bool = true
 var revive_enabled:    bool = true
+
+# Per-mission cap on how many times Sacrifice can be triggered. -1 = unlimited
+# (default for normal missions). Tutorial sets this to 1 for the Final Trial
+# room so the player can't accidentally drain the squad by spamming clicks.
+# Reset to -1 in reset_squad_stats so it doesn't bleed between missions.
+var sacrifice_charges: int = -1
 
 # Friendship Bracelet (fragment) — revives still need at least one potion
 # to "exist" but don't consume it. Reset per mission in reset_squad_stats.
@@ -74,6 +86,16 @@ func set_revive_enabled(value: bool) -> void:
 	revive_enabled = value
 	emit_signal("revive_enabled_changed", value)
 
+# Decrement a sacrifice charge (called by Soldier.arm_as_bomb once the bomb
+# has actually committed). When the count hits zero the weapon disables so
+# the HUD button greys out and a follow-up click can't arm another kid.
+func consume_sacrifice_charge() -> void:
+	if sacrifice_charges < 0:
+		return  # unlimited mode — no bookkeeping
+	sacrifice_charges -= 1
+	if sacrifice_charges <= 0:
+		set_sacrifice_enabled(false)
+
 # Per-soldier accuracy stats (indexed by spawn slot 0..squad_size-1).
 # Persisted in GameManager so dead soldiers' final totals survive after queue_free.
 var soldier_shots: Array[int] = []
@@ -88,13 +110,16 @@ func reset_squad_stats(size: int) -> void:
 		soldier_shots[i] = 0
 		soldier_hits[i]  = 0
 		soldier_alive[i] = true
-	revive_potions  = REVIVES_PER_MISSION
-	rifle_ammo_pool = RIFLE_AMMO_POOL_MAX
+	revive_potions   = REVIVES_PER_MISSION
+	rifle_ammo_pool   = Balance.SOLDIER_RIFLE_AMMO_MAX
+	grenade_ammo_pool = Balance.SOLDIER_GRENADE_AMMO_MAX
 	emit_signal("revives_changed", revive_potions)
 	# Default both feature gates open at the start of every mission. Tutorial
 	# locks them again in Main.gd right after this call.
 	set_sacrifice_enabled(true)
 	set_revive_enabled(true)
+	# Reset sacrifice-charge cap so non-tutorial missions get unlimited use.
+	sacrifice_charges = -1
 	# Friendship Bracelet (fragment) re-enables free_revives in FragmentEffects.
 	free_revives = false
 

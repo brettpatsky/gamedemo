@@ -50,9 +50,10 @@ const _FLOATING_NUMBER_SCRIPT = preload("res://scripts/FloatingNumberFX.gd")
 
 var _weapon: WeaponType = WeaponType.PISTOL
 
-# Rifle ammo is a shared squad pool in GameManager — see GameManager.rifle_ammo_pool.
-# Grenade ammo is still per-soldier since only one soldier throws per order.
-var _grenade_ammo: int = 0   # populated from BalanceConfig in _ready()
+# Rifle and grenade ammo are both shared squad pools in GameManager
+# (rifle_ammo_pool / grenade_ammo_pool). Per-soldier counters caused HUD
+# desync — the readout showed one soldier's stockpile, throws drew from
+# whoever was closest, so the count "ran out" before the squad actually did.
 
 func cycle_weapon() -> void:
 	# Step forward until we land on an enabled weapon. Sacrifice is the only
@@ -83,12 +84,14 @@ func get_rifle_ammo() -> int:
 	return GameManager.rifle_ammo_pool
 
 func get_grenade_ammo() -> int:
-	return _grenade_ammo
+	return GameManager.grenade_ammo_pool
 
 # Per-mission override for grenade stockpile — used by the boss level to hand
-# the squad enough potions to break the orbiting Memory Totems.
+# the squad enough potions to break the orbiting Memory Totems. Now writes
+# the squad-wide pool; callers loop over soldiers but each call overwrites
+# the same shared value, which is harmless.
 func set_grenade_ammo(amount: int) -> void:
-	_grenade_ammo = maxi(amount, 0)
+	GameManager.grenade_ammo_pool = maxi(amount, 0)
 
 # Returns true for any weapon that fires continuously while the button is held.
 # Pistol and rifle both stream fire — the per-weapon SHOOT_COOLDOWN governs pace.
@@ -150,7 +153,7 @@ func heal_to_full() -> void:
 		health_bar.value = _health
 
 func add_grenade_ammo(delta: int) -> void:
-	_grenade_ammo = maxi(_grenade_ammo + delta, 0)
+	GameManager.grenade_ammo_pool = maxi(GameManager.grenade_ammo_pool + delta, 0)
 
 func add_speed_bonus(percent: float) -> void:
 	move_speed *= (1.0 + percent)
@@ -235,7 +238,8 @@ func _ready() -> void:
 		rifle_damage    = Balance.SOLDIER_RIFLE_DAMAGE    * Balance.COMBAT_NUMBER_SCALE
 		rifle_speed     = Balance.SOLDIER_RIFLE_SPEED
 		rifle_distance  = Balance.SOLDIER_RIFLE_DISTANCE
-	_grenade_ammo = Balance.SOLDIER_GRENADE_AMMO_MAX
+	# Grenade pool is initialised once per mission in GameManager.reset_squad_stats,
+	# not here — every soldier reads the same shared counter.
 	_health = max_health
 	if _carry_hp_override > 0:
 		_health = min(_carry_hp_override, max_health)
@@ -359,6 +363,10 @@ func arm_as_bomb(target: Vector2) -> void:
 	# Tint the sprite red so it's visually obvious this soldier is armed.
 	sprite.modulate = Color(1.0, 0.4, 0.4)
 	footstep.play()
+	# Burn a sacrifice charge — no-op unless the tutorial / a future fragment
+	# has imposed a cap. Hits zero → sacrifice disables so the player can't
+	# arm a second kid by accident.
+	GameManager.consume_sacrifice_charge()
 
 func take_damage(amount: int, _element: int = 0) -> void:
 	if _state == State.DEAD:
@@ -612,12 +620,18 @@ func _do_shoot() -> void:
 func _throw_grenade(target: Vector2) -> void:
 	if _shoot_cooldown > 0.0:
 		return
-	if _grenade_ammo <= 0:
-		# Out of grenades — fall back to pistol
+	if GameManager.grenade_ammo_pool <= 0:
+		# Pool exhausted — flip self to pistol so the next click pistol-fires.
 		_weapon = WeaponType.PISTOL
 		return
-	_grenade_ammo   -= 1
+	GameManager.grenade_ammo_pool -= 1
 	_shoot_cooldown  = Balance.SOLDIER_GRENADE_COOLDOWN
+
+	# Cap throw distance — clicks past GRENADE_MAX_RANGE clamp to the rim so the
+	# weapon can't reach across the whole map.
+	var to_target: Vector2 = target - global_position
+	if to_target.length() > Balance.GRENADE_MAX_RANGE:
+		target = global_position + to_target.normalized() * Balance.GRENADE_MAX_RANGE
 
 	var dir: Vector2 = (target - global_position).normalized()
 	_facing = _dir_to_facing(dir)
@@ -630,6 +644,12 @@ func _throw_grenade(target: Vector2) -> void:
 	get_viewport().add_child(grenade)
 	grenade.global_position = spawn_pos
 	grenade.initialise(spawn_pos, target, self)
+
+	# Last potion just left the bag — auto-switch this soldier off grenade so a
+	# follow-up click on the same thrower drops into pistol fire instead of
+	# silently no-op'ing on the empty-pool guard above.
+	if GameManager.grenade_ammo_pool <= 0:
+		_weapon = WeaponType.PISTOL
 
 # ---------------------------------------------------------------------------
 # Returns a speed multiplier based on the tile the soldier is standing on.
@@ -699,14 +719,27 @@ func revive() -> void:
 	health_bar.value = _health
 	health_bar.show()
 	sprite.modulate = Color.WHITE
+	sprite.speed_scale = 1.0
 	$CollisionShape2D.set_deferred("disabled", false)
 	_state = State.IDLE
 	_play_anim("idle_" + _facing)
 	GameManager.on_soldier_revived(self)
 
 func _on_die_anim_finished() -> void:
-	if _state == State.DEAD:
-		sprite.stop()
+	# Pin to the LAST frame of "die" (face-down corpse pose). AnimatedSprite2D
+	# .stop() would reset to frame 0 (standing pose), so we freeze explicitly
+	# by zeroing the speed scale and re-asserting the final frame index. The
+	# sprite_frames null-check is for the standalone test scenes that don't
+	# assign frames.
+	if _state != State.DEAD or sprite.sprite_frames == null:
+		return
+	var anim := sprite.animation
+	if not sprite.sprite_frames.has_animation(anim):
+		return
+	var frames: int = sprite.sprite_frames.get_frame_count(anim)
+	if frames > 0:
+		sprite.frame = frames - 1
+	sprite.speed_scale = 0.0
 
 # Lets callers check whether this soldier is a revivable corpse.
 func is_downed() -> bool:

@@ -217,15 +217,12 @@ func _input(event: InputEvent) -> void:
 			s.move_to(world_pos)
 
 # ---------------------------------------------------------------------------
-# Boss-mission loadout boost. Doubles the shared rifle pool and triples each
-# soldier's grenade stockpile so the squad can sustain damage through three
-# phases and still have potions to crack the orbiting totems. Values live in
-# Balance.LOADOUT_BOSS_*.
+# Boss-mission loadout boost. Bumps the shared rifle and grenade pools so the
+# squad can sustain damage through three phases and still have potions to
+# crack the orbiting totems. Values live in Balance.LOADOUT_BOSS_*.
 func _apply_boss_loadout() -> void:
-	GameManager.rifle_ammo_pool = Balance.LOADOUT_BOSS_RIFLE_POOL
-	for s in get_tree().get_nodes_in_group("soldiers"):
-		if s.has_method("set_grenade_ammo"):
-			s.set_grenade_ammo(Balance.LOADOUT_BOSS_GRENADE_AMMO)
+	GameManager.rifle_ammo_pool   = Balance.LOADOUT_BOSS_RIFLE_POOL
+	GameManager.grenade_ammo_pool = Balance.LOADOUT_BOSS_GRENADE_AMMO
 	# Re-push the ammo readout so the HUD numbers match the new pool before the
 	# player issues their first fire order.
 	if squad_ctrl and squad_ctrl.has_method("_update_ammo_hud"):
@@ -434,6 +431,7 @@ func _on_mission_win() -> void:
 		return
 	_mission_ended = true
 	_persist_run_state()
+	_freeze_and_fade_world()
 	if GameManager.current_level >= 7:
 		hud.show_mission_result("YOU WIN! ALL LEVELS COMPLETE!", Color.YELLOW, false)
 	else:
@@ -449,7 +447,28 @@ func _on_mission_fail() -> void:
 		return
 	_mission_ended = true
 	_persist_run_state()
+	_freeze_and_fade_world()
 	hud.show_mission_result("MISSION FAILED", Color.RED, false)
+
+# Stops all gameplay motion and dims the world so the bonus cards / end
+# screen read clearly. Disables processing on the SubViewport subtree so
+# soldiers, enemies, bullets and the camera all freeze in place — drawing
+# continues, only callbacks stop. HUD lives on its own CanvasLayer above
+# the viewport, so it keeps animating and stays at full brightness.
+func _freeze_and_fade_world() -> void:
+	_subviewport.process_mode = Node.PROCESS_MODE_DISABLED
+	# Looped audio (footsteps) doesn't stop when process is disabled, so
+	# silence anything currently playing on the soldier/enemy/NPC nodes.
+	for group in ["soldiers", "enemies"]:
+		for n in get_tree().get_nodes_in_group(group):
+			for child in (n as Node).get_children():
+				if child is AudioStreamPlayer2D and (child as AudioStreamPlayer2D).playing:
+					(child as AudioStreamPlayer2D).stop()
+	# Quick darken on the viewport — HUD stays bright because it isn't a child.
+	var tween := create_tween()
+	tween.tween_property($GameViewport, "modulate",
+			Color(0.35, 0.35, 0.4, 1.0), 0.4) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 # Connects the level's parent-cage signals if the map_gen has placed one.
 # When end_mission_on_freed is true (tutorial), opening the cage also ends
