@@ -74,9 +74,14 @@ var _sludge_pools: Array[Node2D] = []
 var _zone_pattern_idx: int   = 0
 var _zone_cycle_timer: float = 0.0
 
-# Phase-2 orbit angle — totems track this so they share a synchronised slow
-# rotation around the boss. Initialised on Phase 2 entry.
-var _totem_angle:         float = 0.0
+# Phase-2 per-totem orbit state. Each slot has its own angle, angular
+# velocity, and an independent radius-wobble phase so the squad can't lead
+# their shots on a metronome. Speeds are re-rolled every REROLL_TIME via
+# _totem_reroll_timer.
+var _totem_angles:        Array[float] = []
+var _totem_speeds:        Array[float] = []
+var _totem_wobble_phases: Array[float] = []
+var _totem_reroll_timer:  float = 0.0
 
 # Phase-3 timers.
 var _projectile_timer:    float = 0.0
@@ -196,35 +201,54 @@ func _clear_zones() -> void:
 func _enter_phase_2() -> void:
 	_phase = 2
 	_invulnerable = true
-	_totem_angle = 0.0
+	_totem_reroll_timer = 0.0
 	_clear_zones()
 	_spawn_totems()
 	_spawn_sludge_pools()
 	phase_changed.emit(2)
 
 func _tick_phase_2(delta: float) -> void:
-	# Drive the synchronised totem orbit — predictable so the squad can lead
-	# their shots, but it forces them to keep moving and re-aiming.
-	_totem_angle += Balance.BOSS_TOTEM_ORBIT_SPEED * delta
+	# Per-totem chaos: each totem advances on its own angular velocity, with
+	# a sine-driven radius wobble. Speeds re-roll every REROLL_TIME so the
+	# squad can't predict the orbit by watching a few cycles.
+	_totem_reroll_timer -= delta
+	if _totem_reroll_timer <= 0.0:
+		_totem_reroll_timer = Balance.BOSS_TOTEM_REROLL_TIME
+		_reroll_totem_speeds()
 	var any_alive: bool = false
 	for i in _totems.size():
 		var t: Node = _totems[i]
 		if not is_instance_valid(t):
 			continue
 		any_alive = true
-		var base_angle: float = (TAU / float(Balance.BOSS_TOTEM_COUNT)) * float(i) - PI * 0.5
-		var angle: float = base_angle + _totem_angle
+		_totem_angles[i] += _totem_speeds[i] * delta
+		_totem_wobble_phases[i] += Balance.BOSS_TOTEM_WOBBLE_SPEED * delta
+		var r: float = Balance.BOSS_TOTEM_RADIUS \
+				+ sin(_totem_wobble_phases[i]) * Balance.BOSS_TOTEM_RADIUS_WOBBLE
+		var angle: float = _totem_angles[i]
 		(t as Node2D).global_position = global_position \
-				+ Vector2(cos(angle), sin(angle)) * Balance.BOSS_TOTEM_RADIUS
+				+ Vector2(cos(angle), sin(angle)) * r
 	if not any_alive:
 		_phase = 3   # claim the phase early so this tick doesn't re-fire
 		call_deferred("_enter_phase_3")
 
+# Picks a fresh angular velocity for each surviving totem in
+# [BASE - SPREAD, BASE + SPREAD * 2]. Asymmetric range so the mean drift
+# stays forward — the orbit never crawls or reverses for long.
+func _reroll_totem_speeds() -> void:
+	for i in _totem_speeds.size():
+		var base: float = Balance.BOSS_TOTEM_ORBIT_SPEED
+		var spread: float = Balance.BOSS_TOTEM_SPEED_SPREAD
+		_totem_speeds[i] = randf_range(base - spread, base + spread * 2.0)
+
 func _spawn_totems() -> void:
-	# Keep _totems sized to Balance.BOSS_TOTEM_COUNT so each slot keeps its base orbit angle
-	# even after the totem in that slot is destroyed (the slot becomes invalid,
-	# but the indices of surviving totems stay stable).
+	# Keep _totems sized to Balance.BOSS_TOTEM_COUNT so each slot keeps its
+	# starting angle even after the totem in that slot is destroyed (the slot
+	# becomes invalid, but the indices of surviving totems stay stable).
 	_totems.clear()
+	_totem_angles.clear()
+	_totem_speeds.clear()
+	_totem_wobble_phases.clear()
 	for i in Balance.BOSS_TOTEM_COUNT:
 		var base_angle: float = (TAU / float(Balance.BOSS_TOTEM_COUNT)) * float(i) - PI * 0.5
 		var pos := global_position + Vector2(cos(base_angle), sin(base_angle)) * Balance.BOSS_TOTEM_RADIUS
@@ -234,6 +258,13 @@ func _spawn_totems() -> void:
 		if totem.has_signal("totem_destroyed"):
 			totem.totem_destroyed.connect(_on_totem_destroyed)
 		_totems.append(totem)
+		_totem_angles.append(base_angle)
+		# Random starting speed so totems begin desynced from frame 1.
+		_totem_speeds.append(randf_range(
+				Balance.BOSS_TOTEM_ORBIT_SPEED - Balance.BOSS_TOTEM_SPEED_SPREAD,
+				Balance.BOSS_TOTEM_ORBIT_SPEED + Balance.BOSS_TOTEM_SPEED_SPREAD * 2.0))
+		# Spread wobble phases so all three totems aren't bobbing in unison.
+		_totem_wobble_phases.append(randf() * TAU)
 
 func _on_totem_destroyed() -> void:
 	# Compact handler — phase 2 tick will detect the empty list and advance.
@@ -248,6 +279,12 @@ func _spawn_sludge_pools() -> void:
 		pool.set_script(_SLUDGE_SCRIPT)
 		get_parent().add_child(pool)
 		pool.global_position = pos
+		# Make the pool wander around the boss so the squad can't camp out of
+		# range and snipe the totems. Each pool seeks new targets independently.
+		if pool.has_method("configure"):
+			pool.configure(global_position,
+					Balance.BOSS_SLUDGE_WANDER_MIN,
+					Balance.BOSS_SLUDGE_WANDER_MAX)
 		_sludge_pools.append(pool)
 
 func _clear_sludge_pools() -> void:

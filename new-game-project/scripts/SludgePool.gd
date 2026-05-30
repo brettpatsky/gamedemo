@@ -14,6 +14,24 @@ var _accumulator: float = 0.0
 var _anim_phase:  float = 0.0
 var _damage_timer: float = 0.0
 
+# Wandering state — pool drifts toward _target_pos within an annulus around
+# _anchor_pos, then picks a new target. Anchor + wander radii are pushed in
+# via configure(); a zero anchor leaves the pool stationary (back-compat).
+var _anchor_pos: Vector2 = Vector2.ZERO
+var _wander_min: float   = 0.0
+var _wander_max: float   = 0.0
+var _target_pos: Vector2 = Vector2.ZERO
+var _has_anchor: bool    = false
+
+# Called by BossHeartstone immediately after add_child. Stationary pools
+# (legacy behaviour) skip the call and stay where spawned.
+func configure(anchor: Vector2, wander_min: float, wander_max: float) -> void:
+	_anchor_pos = anchor
+	_wander_min = wander_min
+	_wander_max = wander_max
+	_has_anchor = true
+	_target_pos = _pick_target()
+
 func _ready() -> void:
 	add_to_group("sludge_pools")
 	collision_layer = 0
@@ -32,6 +50,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_anim_phase += delta
+	_drift(delta)
 	queue_redraw()
 	var bodies: Array = get_overlapping_bodies()
 	# Walk the live, undowned soldiers once and apply both the ammo drain (in
@@ -60,6 +79,28 @@ func _process(delta: float) -> void:
 	for s in alive_inside:
 		if s.has_method("take_damage"):
 			s.take_damage(Balance.SLUDGE_DAMAGE_PER_TICK)
+
+# Glide toward the current wander target; when within one pool radius, pick a
+# new target inside the configured annulus. Stationary pools (anchor never
+# set) short-circuit so legacy behaviour is preserved.
+func _drift(delta: float) -> void:
+	if not _has_anchor:
+		return
+	var to_target: Vector2 = _target_pos - global_position
+	var step: float = Balance.BOSS_SLUDGE_DRIFT_SPEED * delta
+	if to_target.length() <= step or to_target.length() <= Balance.SLUDGE_RADIUS * 0.5:
+		_target_pos = _pick_target()
+		return
+	global_position += to_target.normalized() * step
+
+# Picks a random point in the annulus [WANDER_MIN, WANDER_MAX] around the
+# anchor (the boss position at spawn time). Uses sqrt() on the radius so
+# samples are uniform over area, not biased toward the centre.
+func _pick_target() -> Vector2:
+	var ang: float = randf() * TAU
+	var t: float = randf()
+	var r: float = sqrt(lerpf(_wander_min * _wander_min, _wander_max * _wander_max, t))
+	return _anchor_pos + Vector2(cos(ang), sin(ang)) * r
 
 func _draw() -> void:
 	# Layered violet pools — outer halo + main body + writhing inner rim.

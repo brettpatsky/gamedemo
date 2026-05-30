@@ -189,10 +189,22 @@ const BOSS_PHASE1_PAUSE:  float = 0.6   # cooldown between AOE bursts
 
 # Phase 2 — orbiting totems + sludge pools.
 const BOSS_TOTEM_COUNT:        int   = 3
-const BOSS_TOTEM_RADIUS:       float = 280.0   # orbit radius
-const BOSS_TOTEM_ORBIT_SPEED:  float = 0.30    # rad/s
+const BOSS_TOTEM_RADIUS:       float = 280.0   # mean orbit radius
+const BOSS_TOTEM_ORBIT_SPEED:  float = 0.30    # rad/s — mean angular speed
+# Per-totem chaos so the squad can't lead shots on a metronome. Each totem
+# picks its own angular velocity in [SPEED - SPREAD, SPEED + SPREAD * 2] and
+# re-rolls every REROLL_TIME seconds; its radius wobbles by ± WOBBLE px.
+const BOSS_TOTEM_SPEED_SPREAD: float = 0.45    # rad/s deviation per re-roll
+const BOSS_TOTEM_REROLL_TIME:  float = 2.2     # seconds between velocity re-rolls
+const BOSS_TOTEM_RADIUS_WOBBLE: float = 60.0   # peak in/out drift from BOSS_TOTEM_RADIUS
+const BOSS_TOTEM_WOBBLE_SPEED:  float = 1.5    # rad/s of the radius sine
 const BOSS_SLUDGE_COUNT:       int   = 3
-const BOSS_SLUDGE_RADIUS_RING: float = 240.0   # ring radius where pools sit
+const BOSS_SLUDGE_RADIUS_RING: float = 240.0   # ring radius where pools spawn
+# Wandering sludge — pools drift toward random points within an annulus
+# around the boss so the squad can't camp out of range.
+const BOSS_SLUDGE_DRIFT_SPEED: float = 90.0    # px/s while seeking next target
+const BOSS_SLUDGE_WANDER_MIN:  float = 140.0   # inner radius of wander zone
+const BOSS_SLUDGE_WANDER_MAX:  float = 360.0   # outer radius of wander zone
 
 # Phase 3 — projectile spiral + Void Embrace channel.
 const BOSS_PROJECTILE_INTERVAL:     float = 0.16  # seconds between spiral shots
