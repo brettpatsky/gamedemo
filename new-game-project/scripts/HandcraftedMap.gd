@@ -37,6 +37,19 @@ var regenerate_at_runtime: bool = false
 const TERRAIN_TILESET := "res://resources/caraka_terrain_tileset.tres"
 
 # Terrain set index per season (defined in caraka_terrain_tileset.tres)
+# Water terrain set index in the Caraka tileset (terrain_set_6 = Water).
+# The sub-terrain indices within that set: spring-shallow=0, spring-deep=1,
+# summer-shallow=2, summer-deep=3, fall-shallow=4, fall-deep=5. We always
+# use the SHALLOW variant for the playfield (deep is for waterfall ponds
+# the Caraka pack ships, which the procedural maps don't use).
+const WATER_TERRAIN_SET := 6
+const SEASON_WATER_TERRAIN := {
+	Season.SPRING: 0,
+	Season.SUMMER: 2,
+	Season.FALL:   4,
+	Season.WINTER: 2,   # winter borrows summer water (no winter texture exists)
+}
+
 const SEASON_TERRAIN_SET := {
 	Season.SPRING: 2,
 	Season.SUMMER: 3,
@@ -323,34 +336,14 @@ func _generate_terrain(seed_value: int) -> void:
 		if not path_cells.is_empty():
 			_objects_layer.set_cells_terrain_connect(path_cells, season_set, 2, false)
 
-	# Water layer: single static animated water tile per cell. The dirt layer
-	# below provides the visible shoreline via its terrain-driven edges.
+	# Water layer: auto-tiled animated water with proper edges. The terrain
+	# connector picks the right shoreline / corner / centre variant for each
+	# cell based on its neighbours, and each tile carries an 8-frame animation
+	# baked into the atlas so the surface ripples on its own.
 	if _water_layer and not water_cells.is_empty():
-		var water_src_id := _find_water_source_id()
-		if water_src_id >= 0:
-			# Atlas (8, 1) = solid fill water tile (original col=1 row=1, frame 0
-			# of an 8-frame animation; animation playback handles the rest).
-			var water_atlas := Vector2i(8, 1)
-			for cell in water_cells:
-				_water_layer.set_cell(cell, water_src_id, water_atlas)
-
-# Looks up the atlas source ID for the current season's water texture.
-func _find_water_source_id() -> int:
-	var ts: TileSet = tile_map.tile_set
-	if ts == null:
-		return -1
-	var filename: String
-	match season:
-		Season.SPRING:                filename = "water - spring - shallow.png"
-		Season.SUMMER, Season.WINTER: filename = "water - summer - shallow.png"
-		Season.FALL:                  filename = "water - fall - shallow.png"
-		_:                            filename = "water - summer - shallow.png"
-	for i in ts.get_source_count():
-		var src_id: int = ts.get_source_id(i)
-		var src: TileSetAtlasSource = ts.get_source(src_id) as TileSetAtlasSource
-		if src and src.texture and src.texture.resource_path.ends_with(filename):
-			return src_id
-	return -1
+		var water_terrain: int = SEASON_WATER_TERRAIN[season]
+		_water_layer.set_cells_terrain_connect(
+				water_cells, WATER_TERRAIN_SET, water_terrain, false)
 
 # Cellular automata smoothing: any cell with fewer than 2 same-type 4-neighbors
 # flips to its majority neighbor. Removes 1-cell pinches that auto-tiling
