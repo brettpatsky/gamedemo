@@ -72,37 +72,86 @@ func set_stats(p_damage: int, p_speed: float, p_distance: float, p_color: Color,
 	# Trail only fires for squad bullets — enemy bullets pass element = NONE.
 	_ensure_trail()
 
-# Spawns the element-coloured trail emitter once. Idempotent so repeated
-# set_stats calls don't pile up emitters. Particles render in WORLD space
-# (local_coords = false) so they hang back along the path the bullet has
-# already travelled. All numeric tunables live in Balance (BULLET_TRAIL_*).
+# Spawns an element-specific trail emitter once. Every bullet gets a trail —
+# including enemy (NONE) bullets. Idempotent: repeated set_stats calls won't
+# stack emitters. Particles use world space so they hang behind the bullet.
 func _ensure_trail() -> void:
 	if _trail != null:
 		return
-	if element == 0:
-		return
+	var back: Vector2 = (-_direction).normalized() if _direction != Vector2.ZERO else Vector2.LEFT
+	var perp: Vector2 = Vector2(-back.y, back.x)   # perpendicular to travel
 	var trail := CPUParticles2D.new()
-	trail.amount        = Balance.BULLET_TRAIL_AMOUNT
-	trail.lifetime      = Balance.BULLET_TRAIL_LIFETIME
-	trail.local_coords  = false
-	trail.emitting      = true
-	# Drift OPPOSITE to bullet travel, fanning out a touch.
-	trail.direction     = -_direction if _direction != Vector2.ZERO else Vector2.LEFT
-	trail.spread        = Balance.BULLET_TRAIL_SPREAD
-	trail.initial_velocity_min = Balance.BULLET_TRAIL_VELOCITY_MIN
-	trail.initial_velocity_max = Balance.BULLET_TRAIL_VELOCITY_MAX
-	# Scale: puffy at spawn, shrinks to nothing.
-	var curve := Curve.new()
-	curve.add_point(Vector2(0.0, 1.0))
-	curve.add_point(Vector2(1.0, 0.15))
-	trail.scale_amount_curve = curve
-	trail.scale_amount_min   = Balance.BULLET_TRAIL_SCALE_MIN
-	trail.scale_amount_max   = Balance.BULLET_TRAIL_SCALE_MAX
-	# Colour: element tint, alpha fades to 0.
-	var grad := Gradient.new()
-	grad.set_color(0, Color(color.r, color.g, color.b, Balance.BULLET_TRAIL_START_ALPHA))
-	grad.set_color(1, Color(color.r, color.g, color.b, 0.0))
-	trail.color_ramp = grad
+	trail.local_coords = false
+	trail.emitting     = true
+	var shrink := Curve.new()
+	shrink.add_point(Vector2(0.0, 1.0))
+	shrink.add_point(Vector2(1.0, 0.0))
+	trail.scale_amount_curve = shrink
+	match element:
+		1: # ─── FIRE — rising ember shower ──────────────────────────────────
+			trail.amount              = 22
+			trail.lifetime            = 0.35
+			trail.direction           = back + Vector2(0, -0.5)
+			trail.spread              = 28.0
+			trail.initial_velocity_min = 30.0
+			trail.initial_velocity_max = 80.0
+			trail.gravity             = Vector2(0.0, -90.0)   # embers rise
+			trail.angular_velocity_min = -200.0
+			trail.angular_velocity_max =  200.0
+			trail.scale_amount_min    = 3.0
+			trail.scale_amount_max    = 6.0
+			var fg := Gradient.new()
+			fg.set_color(0, Color(1.0, 1.0, 0.6, 1.0))
+			fg.set_color(1, Color(0.6, 0.0, 0.0, 0.0))
+			fg.add_point(0.35, Color(1.0, 0.45, 0.05, 0.85))
+			trail.color_ramp = fg
+		2: # ─── ICE — spinning crystal shards ─────────────────────────────
+			trail.amount              = 14
+			trail.lifetime            = 0.50
+			trail.direction           = back
+			trail.spread              = 40.0
+			trail.initial_velocity_min = 15.0
+			trail.initial_velocity_max = 50.0
+			trail.gravity             = Vector2.ZERO
+			trail.angular_velocity_min = -240.0
+			trail.angular_velocity_max =  240.0   # crystals tumble
+			trail.scale_amount_min    = 2.0
+			trail.scale_amount_max    = 5.0
+			var ig := Gradient.new()
+			ig.set_color(0, Color(1.0, 1.0, 1.0, 1.0))
+			ig.set_color(1, Color(0.1, 0.25, 0.9, 0.0))
+			ig.add_point(0.45, Color(0.5, 0.9, 1.0, 0.7))
+			trail.color_ramp = ig
+		3: # ─── LIGHTNING — electric sparks crackling perpendicular ────────
+			trail.amount              = 28
+			trail.lifetime            = 0.08   # ultra-short flicker
+			trail.direction           = perp   # crackle sideways
+			trail.spread              = 180.0  # full random burst
+			trail.initial_velocity_min = 60.0
+			trail.initial_velocity_max = 200.0
+			trail.gravity             = Vector2.ZERO
+			trail.scale_amount_min    = 1.0
+			trail.scale_amount_max    = 3.5
+			var lg := Gradient.new()
+			lg.set_color(0, Color(1.0, 1.0, 1.0, 1.0))
+			lg.set_color(1, Color(0.8, 0.6, 0.0, 0.0))
+			lg.add_point(0.4, Color(1.0, 0.95, 0.3, 0.9))
+			trail.color_ramp = lg
+		_: # ─── NONE / enemy — green toxic drip ──────────────────────────
+			trail.amount              = 12
+			trail.lifetime            = 0.30
+			trail.direction           = back
+			trail.spread              = 22.0
+			trail.initial_velocity_min = 18.0
+			trail.initial_velocity_max = 45.0
+			trail.gravity             = Vector2(0.0, 40.0)   # drips downward
+			trail.scale_amount_min    = 2.0
+			trail.scale_amount_max    = 4.5
+			var eg := Gradient.new()
+			eg.set_color(0, Color(0.6, 1.0, 0.3, 0.9))
+			eg.set_color(1, Color(0.0, 0.25, 0.0, 0.0))
+			eg.add_point(0.5, Color(0.15, 0.75, 0.1, 0.6))
+			trail.color_ramp = eg
 	add_child(trail)
 	_trail = trail
 

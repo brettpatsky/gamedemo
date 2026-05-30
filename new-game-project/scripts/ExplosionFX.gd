@@ -20,9 +20,9 @@ const _LOADER = preload("res://scripts/ProjectileSpriteLoader.gd")
 # Particle counts and radii per size tier — used for the fallback when no
 # PNG has been dropped in yet.
 const _FALLBACK := {
-	"hit":     {"count": 8,  "radius": 18.0,  "speed": 80.0,  "life": 0.25, "color": Color(1.0, 0.8, 0.4)},
-	"grenade": {"count": 20, "radius": 50.0,  "speed": 140.0, "life": 0.45, "color": Color(1.0, 0.55, 0.1)},
-	"bomb":    {"count": 35, "radius": 100.0, "speed": 200.0, "life": 0.65, "color": Color(1.0, 0.3, 0.1)},
+	"hit":     {"count": 10, "radius": 14.0,  "speed": 90.0,  "life": 0.22, "color": Color(1.0, 0.8, 0.4)},
+	"grenade": {"count": 22, "radius": 55.0,  "speed": 150.0, "life": 0.50, "color": Color(1.0, 0.55, 0.1)},
+	"bomb":    {"count": 38, "radius": 110.0, "speed": 220.0, "life": 0.70, "color": Color(1.0, 0.3, 0.1)},
 }
 
 func start(size: String, tint: Color = Color.WHITE) -> void:

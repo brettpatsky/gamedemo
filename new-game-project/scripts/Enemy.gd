@@ -361,7 +361,7 @@ func _fire(direction: Vector2) -> void:
 	b.initialise(aim, self)
 	# Cap travel distance so enemy weapons are strictly out-ranged by the squad.
 	if b.has_method("set_stats"):
-		b.set_stats(bullet_damage, bullet_speed, bullet_distance, Color.ORANGE_RED)
+		b.set_stats(bullet_damage, bullet_speed, bullet_distance, Color(0.3, 1.0, 0.2))
 	gunshot.pitch_scale = randf_range(0.9, 1.1)
 	gunshot.play()
 
