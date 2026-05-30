@@ -7,6 +7,7 @@
 extends Node2D
 
 const Balance = preload("res://scripts/BalanceConfig.gd")
+const _EXPLOSION_SCRIPT = preload("res://scripts/ExplosionFX.gd")
 
 var _radius:   float = 0.0
 var _duration: float = 0.65
@@ -15,10 +16,16 @@ var _elapsed:  float = 0.0
 func start(radius: float, duration: float) -> void:
 	_radius   = radius
 	_duration = duration
-	# Explicitly enable _process — required when the script is attached via
-	# set_script() before the node enters the scene tree.
 	set_process(true)
 	queue_redraw()
+	# Spawn a sprite-based explosion on top of the procedural ring effect.
+	# The sprite plays once and self-destructs; the ring runs its own timer.
+	var fx := Node2D.new()
+	fx.set_script(_EXPLOSION_SCRIPT)
+	# Add as sibling (to the viewport) so it isn't freed with this node.
+	get_viewport().add_child(fx)
+	fx.global_position = global_position
+	fx.start("bomb")
 
 func _process(delta: float) -> void:
 	_elapsed += delta

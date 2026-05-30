@@ -17,6 +17,7 @@
 extends Area2D
 
 const Balance = preload("res://scripts/BalanceConfig.gd")
+const _EXPLOSION_SCRIPT = preload("res://scripts/ExplosionFX.gd")
 
 # ---------------------------------------------------------------------------
 # Tunables — defaults pulled from BalanceConfig in _ready(). Soldiers override
@@ -34,6 +35,9 @@ var element:      int   = 0   # Elements.E.NONE
 # Trail emitter — built once when set_stats lands a non-NONE element.
 # Enemy bullets (which never set an element) stay particle-free.
 var _trail:       CPUParticles2D = null
+# Sprite — built in _ready, updated in set_stats. When the relevant PNG
+# exists in resources/fx/projectiles the circle draw is suppressed.
+var _sprite:      AnimatedSprite2D = null
 
 # ---------------------------------------------------------------------------
 # State
@@ -63,6 +67,7 @@ func set_stats(p_damage: int, p_speed: float, p_distance: float, p_color: Color,
 	max_distance = p_distance * _elevation_range_mult()
 	color        = p_color
 	element      = p_element
+	_update_sprite()
 	queue_redraw()
 	# Trail only fires for squad bullets — enemy bullets pass element = NONE.
 	_ensure_trail()
@@ -124,9 +129,30 @@ func _ready() -> void:
 	# Layer 2 = soldiers/enemies; layer 1 = environment obstacles and walls.
 	set_collision_mask_value(1, true)
 	set_collision_mask_value(2, true)
+	# Sprite node created once; _update_sprite() populates it after set_stats.
+	_sprite = AnimatedSprite2D.new()
+	_sprite.centered = true
+	_sprite.visible  = false
+	add_child(_sprite)
 	queue_redraw()
 
+func _update_sprite() -> void:
+	if _sprite == null:
+		return
+	var frames: SpriteFrames = ProjectileSpriteLoader.get_bullet_frames(element)
+	if frames != null:
+		_sprite.sprite_frames = frames
+		_sprite.play(&"fly")
+		_sprite.flip_h   = true   # sheets face left; bullet rotation faces right
+		_sprite.visible  = true
+		_sprite.modulate = Color.WHITE
+	else:
+		_sprite.visible = false
+
 func _draw() -> void:
+	# Skip the circle when a sprite is showing — the AnimatedSprite2D takes over.
+	if _sprite != null and _sprite.visible:
+		return
 	draw_circle(Vector2.ZERO, 3.0, color)
 
 # ---------------------------------------------------------------------------
@@ -177,11 +203,8 @@ func _try_hit(target: Node2D) -> void:
 # Small particle burst when bullet connects (purely cosmetic)
 # ---------------------------------------------------------------------------
 func _spawn_hit_particles() -> void:
-	# If you have a GPUParticles2D / CPUParticles2D scene, instantiate it here.
-	# For now we simply print a debug hit marker.
-	# Example:
-	#   var fx = preload("res://scenes/HitEffect.tscn").instantiate()
-	#   get_tree().current_scene.add_child(fx)
-	#   fx.global_position = global_position
-	#   fx.emitting = true
-	pass
+	var fx := Node2D.new()
+	fx.set_script(_EXPLOSION_SCRIPT)
+	get_viewport().add_child(fx)
+	fx.global_position = global_position
+	fx.start("hit", color)

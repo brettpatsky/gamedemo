@@ -42,6 +42,12 @@ const TERRAIN_TILESET := "res://resources/caraka_terrain_tileset.tres"
 # summer-shallow=2, summer-deep=3, fall-shallow=4, fall-deep=5. We always
 # use the SHALLOW variant for the playfield (deep is for waterfall ponds
 # the Caraka pack ships, which the procedural maps don't use).
+# Minimum side length (in tiles) for any contiguous patch of a given terrain
+# type. The Caraka auto-tiler needs at least a 4×4 footprint to produce its
+# full set of edges + corners — anything thinner renders as a broken strip
+# with mismatched shoreline tiles. _enforce_min_block_size scrubs slivers.
+const MIN_BLOCK_SIZE := 4
+
 const WATER_TERRAIN_SET := 6
 const SEASON_WATER_TERRAIN := {
 	Season.SPRING: 0,
@@ -302,6 +308,12 @@ func _generate_terrain(seed_value: int) -> void:
 				_terrain_grid[cell] = "grass"
 
 	_smooth_terrain(2)
+	# Two passes of min-block enforcement so any sliver that gets re-typed in
+	# pass 1 (and might itself form a new sliver of the replacement type) gets
+	# caught in pass 2. Done BEFORE paths are drawn so the deliberately-thin
+	# 3-wide path strips aren't culled.
+	_enforce_min_block_size()
+	_enforce_min_block_size()
 
 	if season != Season.WINTER:
 		_generate_paths(effective_seed)
@@ -376,6 +388,63 @@ func _smooth_terrain(passes: int) -> void:
 						updates[cell] = best
 		for cell in updates:
 			_terrain_grid[cell] = updates[cell]
+
+# Morphological opening per terrain type. Any region that doesn't contain at
+# least one MIN_BLOCK_SIZE×MIN_BLOCK_SIZE square of its own type gets every
+# cell re-flipped to the surrounding majority. Eliminates the 1- and 2-cell
+# slivers the noise + smoothing pass leaves behind — those slivers don't
+# have valid edge variants in the Caraka tileset and render as broken
+# corners. Run before paths are placed so the intentionally-thin path lines
+# survive.
+func _enforce_min_block_size() -> void:
+	for type in ["grass", "dirt", "water"]:
+		# Erode: find every top-left anchor whose MIN_BLOCK_SIZE-square is
+		# fully this type. Dilate: any cell covered by such a square survives.
+		var kept: Dictionary = {}
+		for x in range(0, map_width - MIN_BLOCK_SIZE + 1):
+			for y in range(0, map_height - MIN_BLOCK_SIZE + 1):
+				var anchored := true
+				for dx in MIN_BLOCK_SIZE:
+					for dy in MIN_BLOCK_SIZE:
+						if _terrain_grid.get(Vector2i(x + dx, y + dy)) != type:
+							anchored = false
+							break
+					if not anchored:
+						break
+				if not anchored:
+					continue
+				for dx in MIN_BLOCK_SIZE:
+					for dy in MIN_BLOCK_SIZE:
+						kept[Vector2i(x + dx, y + dy)] = true
+		# Flip un-kept cells of this type to the dominant neighbouring type.
+		for cell in _terrain_grid.keys():
+			if _terrain_grid.get(cell) != type:
+				continue
+			if kept.has(cell):
+				continue
+			_terrain_grid[cell] = _dominant_other_type(cell, type)
+
+# Picks the most common terrain type in a 5×5 window around `cell`, ignoring
+# the type we're trying to replace. Falls back to "dirt" when nothing else
+# is around — dirt is the universal substrate the ground layer paints under
+# every land tile.
+func _dominant_other_type(cell: Vector2i, exclude: String) -> String:
+	var counts: Dictionary = {}
+	for dx in range(-2, 3):
+		for dy in range(-2, 3):
+			if dx == 0 and dy == 0:
+				continue
+			var t = _terrain_grid.get(cell + Vector2i(dx, dy), null)
+			if t == null or t == exclude:
+				continue
+			counts[t] = counts.get(t, 0) + 1
+	var best: String = "dirt"
+	var best_count: int = -1
+	for t in counts:
+		if counts[t] > best_count:
+			best = t
+			best_count = counts[t]
+	return best
 
 func _generate_paths(seed_value: int) -> void:
 	var rng := RandomNumberGenerator.new()
