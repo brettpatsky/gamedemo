@@ -138,13 +138,55 @@ func generate(seed_value: int = 0) -> void:
 		_place_props(seed_value)
 	_scan_passable_from_tiles()
 	_bake_navigation()
+	# Custom mission scenes can pre-place their objective nodes (structures /
+	# escort NPC / walls / extraction) directly in the .tscn — see mission_4
+	# and mission_5. _adopt_scene_objectives registers any it finds; the
+	# procedural spawners then no-op when their slot is already filled.
+	_adopt_scene_objectives()
 	match GameManager.current_level:
-		4: _spawn_fortified_structure()
-		5: _spawn_escort_mission()
+		4:
+			if not _objective_nodes.has("fortified_structure"):
+				_spawn_fortified_structure()
+		5:
+			if not _objective_nodes.has("escort_npc"):
+				_spawn_escort_mission()
 	var lv: int = GameManager.current_level
 	if lv == 2 or lv == 4 or lv == 5:
 		_spawn_mission_parent_and_fragment()
 	_spawn_enemies()
+
+# Picks up objective nodes that the .tscn placed by hand (instead of relying
+# on the procedural spawners). Detection is by group membership filtered to
+# direct children so other levels' own structures don't get harvested.
+func _adopt_scene_objectives() -> void:
+	var structs: Array[Node2D] = []
+	for c in get_children():
+		if c.is_in_group("structures"):
+			structs.append(c)
+	if not structs.is_empty():
+		_objective_nodes["fortified_structure"] = structs
+
+	var npc: Node = null
+	var walls: Array[Node2D] = []
+	var extraction: Node = null
+	for c in get_children():
+		if npc == null and c.is_in_group("escort_npc"):
+			npc = c
+		elif c.is_in_group("escort_walls"):
+			walls.append(c)
+		elif c.scene_file_path != "" and c.scene_file_path.ends_with("extraction_zone.tscn"):
+			extraction = c
+	if npc != null:
+		_objective_nodes["escort_npc"] = npc
+		# Block enemy spawns around the placed NPC so it isn't immediately swarmed.
+		var npc_local: Vector2 = (npc as Node2D).position
+		var world_tile: float = float(tile_size) * 2.0
+		_enemy_exclusion_centre = Vector2i(int(npc_local.x / world_tile), int(npc_local.y / world_tile))
+		_enemy_exclusion_radius = 6
+	if not walls.is_empty():
+		_objective_nodes["escort_walls"] = walls
+	if extraction != null:
+		_objective_nodes["extraction_zone"] = extraction
 
 # Rebuilds _passable_cells from the actual painted tiles in the scene. A cell
 # is passable when the ground layer has a tile AND the water layer doesn't.
@@ -188,6 +230,22 @@ func is_water_at(world_pos: Vector2) -> bool:
 	var local_pos := _water_layer.to_local(world_pos)
 	var tile_pos  := _water_layer.local_to_map(local_pos)
 	return _water_layer.get_cell_source_id(tile_pos) != -1
+
+# Per-tile surface for footstep audio. Water → empty string (silent).
+# Otherwise, the objects layer holds the seasonal terrain on top of the
+# bare dirt ground — its presence flips dirt → grass (warm seasons) or
+# dirt → snow (winter). Bare ground cells stay dirt.
+func get_surface_at(world_pos: Vector2) -> String:
+	if is_water_at(world_pos):
+		return ""
+	if _objects_layer == null:
+		_objects_layer = get_node_or_null("TileMapLayer_objects") as TileMapLayer
+	if _objects_layer != null:
+		var local_pos := _objects_layer.to_local(world_pos)
+		var tile_pos  := _objects_layer.local_to_map(local_pos)
+		if _objects_layer.get_cell_source_id(tile_pos) != -1:
+			return "snow" if season == Season.WINTER else "grass"
+	return "dirt"
 
 # ===========================================================================
 # Terrain generation (used by both runtime generate() and the editor button)

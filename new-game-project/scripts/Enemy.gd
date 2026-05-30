@@ -55,6 +55,10 @@ var bullet_damage:   int
 @onready var detection:  Area2D              = $DetectionArea
 @onready var gunshot:    AudioStreamPlayer2D = $GunShotAudio
 
+# Built programmatically in _ready so the enemy.tscn doesn't need a new node.
+# Null until the audio file is dropped at the convention path.
+var _hit_audio: AudioStreamPlayer2D = null
+
 enum State { PATROL, ALERT, ATTACK, DEAD }
 var _state: State = State.PATROL
 
@@ -99,6 +103,7 @@ func _ready() -> void:
 	health_bar.max_value = max_health
 	health_bar.value     = _health
 	_style_health_bar()
+	_hit_audio = _build_hit_audio("res://resources/audio/sfx/enemy_hit.ogg")
 	_spawn_protection_timer = spawn_protection
 	# Randomise weakness + resistance for combat enemies if the spawner
 	# didn't override them. Tutorial dummies stay neutral so Puzzle 1 is
@@ -368,6 +373,20 @@ func _play_anim(anim_name: String) -> void:
 # PUBLIC — damage / death
 # =============================================================================
 
+# Spawns a fresh AudioStreamPlayer2D for one-shot hit grunts. Skips silently
+# if the audio file isn't present so the project still runs before the SFX
+# drop lands. Pitch wobble matches gunshot for consistency.
+func _build_hit_audio(path: String) -> AudioStreamPlayer2D:
+	if not ResourceLoader.exists(path):
+		return null
+	var player := AudioStreamPlayer2D.new()
+	player.stream = load(path)
+	player.bus = &"sfx"
+	player.max_distance = 2000.0
+	player.max_polyphony = 3
+	add_child(player)
+	return player
+
 # Visual styling for the health bar — hides the default "100%" label and
 # gives the bar a small red silhouette above the enemy sprite.
 func _style_health_bar() -> void:
@@ -411,6 +430,9 @@ func take_damage(amount: int, element: int = 0) -> void:
 	var crit: bool = element != 0 and element == weakness
 	var num_color: Color = Color(1.0, 0.95, 0.3) if not crit else Color(1.0, 0.7, 0.15)
 	_spawn_damage_number(net, num_color)
+	if _hit_audio != null:
+		_hit_audio.pitch_scale = randf_range(0.9, 1.1)
+		_hit_audio.play()
 	if _health <= 0:
 		_die()
 

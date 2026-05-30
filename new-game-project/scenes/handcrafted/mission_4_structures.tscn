@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://b3handm4strc01"]
+[gd_scene load_steps=4 format=3 uid="uid://b3handm4strc01"]
 
 [ext_resource type="Script" path="res://scripts/HandcraftedMap.gd" id="1_handm4"]
 [ext_resource type="TileSet" path="res://resources/caraka_terrain_tileset.tres" id="2_tileset"]
+[ext_resource type="PackedScene" path="res://scenes/fortified_structure.tscn" id="3_fort"]
 
 [node name="HandcraftedMap" type="Node2D" groups=["map_generator"]]
 script = ExtResource("1_handm4")
@@ -10,3 +11,18 @@ script = ExtResource("1_handm4")
 tile_set = ExtResource("2_tileset")
 
 [node name="NavigationRegion2D" type="NavigationRegion2D" parent="."]
+
+[node name="Structure_Top" parent="." instance=ExtResource("3_fort")]
+position = Vector2(3520, 960)
+
+[node name="Structure_Left" parent="." instance=ExtResource("3_fort")]
+position = Vector2(960, 3904)
+
+[node name="Structure_Right" parent="." instance=ExtResource("3_fort")]
+position = Vector2(6080, 3904)
+
+[node name="Structure_BottomLeft" parent="." instance=ExtResource("3_fort")]
+position = Vector2(1856, 5312)
+
+[node name="Structure_BottomRight" parent="." instance=ExtResource("3_fort")]
+position = Vector2(5184, 5312)

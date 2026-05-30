@@ -37,6 +37,16 @@ var bullet_color:    Color = Color.YELLOW
 @onready var footstep:   AudioStreamPlayer2D  = $FootstepAudio
 @onready var gunshot:    AudioStreamPlayer2D  = $GunShotAudio
 
+# Per-surface footstep streams loaded by naming convention in _ready (see
+# _load_footstep_streams). Keyed by surface name ("dirt"/"grass"/"snow").
+# Missing files leave the entry null — _play_footstep falls back to the
+# original .tscn-assigned stream so the soldier never goes silent.
+var _surface_streams: Dictionary = {}
+var _last_surface:    String = ""
+# Soldier hit sound — built programmatically in _ready so the per-soldier
+# .tscn files don't each need a new AudioStreamPlayer2D node.
+var _hit_audio: AudioStreamPlayer2D = null
+
 # ---------------------------------------------------------------------------
 # Weapon system
 # ---------------------------------------------------------------------------
@@ -253,6 +263,9 @@ func _ready() -> void:
 	health_bar.value     = _health
 	_style_health_bar()
 
+	_load_footstep_streams()
+	_hit_audio = _build_hit_audio("res://resources/audio/sfx/soldier_hit.ogg")
+
 	_play_anim("idle_" + _facing)
 
 	# Tighter arrival tolerance so soldiers don't overshoot and circle back.
@@ -362,7 +375,7 @@ func arm_as_bomb(target: Vector2) -> void:
 	_state = State.BOMB
 	# Tint the sprite red so it's visually obvious this soldier is armed.
 	sprite.modulate = Color(1.0, 0.4, 0.4)
-	footstep.play()
+	_play_footstep()
 	# Burn a sacrifice charge — no-op unless the tutorial / a future fragment
 	# has imposed a cap. Hits zero → sacrifice disables so the player can't
 	# arm a second kid by accident.
@@ -384,6 +397,9 @@ func take_damage(amount: int, _element: int = 0) -> void:
 	_health -= net
 	health_bar.value = _health
 	_spawn_damage_number(net, Color(1.0, 0.35, 0.35))
+	if _hit_audio != null:
+		_hit_audio.pitch_scale = randf_range(0.9, 1.1)
+		_hit_audio.play()
 	if _health <= 0:
 		if _state == State.BOMB:
 			# Detonate where we fell rather than dying quietly.
@@ -478,8 +494,7 @@ func _do_move(delta: float) -> void:
 	if _shoot_flash_timer <= 0.0:
 		_play_walk_anim(direction)
 
-	if not footstep.playing:
-		footstep.play()
+	_play_footstep()
 
 func _on_safe_velocity(safe_velocity: Vector2) -> void:
 	# Avoidance computes velocities asynchronously — a callback queued during
@@ -799,6 +814,59 @@ func _try_autodefend(delta: float) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud and hud.has_method("show_under_attack"):
 		hud.show_under_attack(group_id + 1)
+
+# =============================================================================
+# PRIVATE — AUDIO
+# =============================================================================
+
+# Loads up to three per-soldier footstep streams by naming convention so each
+# kid sounds different on each surface. Missing files leave the slot null and
+# _play_footstep falls back to whatever the .tscn's FootstepAudio already has.
+# Convention: res://resources/audio/sfx/footsteps/footstep_<surface>_<N>.ogg
+# with N = slot_index + 1 (matches the laser1..laser6 numbering).
+func _load_footstep_streams() -> void:
+	var n: int = slot_index + 1 if slot_index >= 0 else 1
+	for surface in ["dirt", "grass", "snow"]:
+		var path := "res://resources/audio/sfx/footsteps/footstep_%s_%d.ogg" % [surface, n]
+		if ResourceLoader.exists(path):
+			_surface_streams[surface] = load(path)
+
+# Spawns a fresh AudioStreamPlayer2D wired to the squad SFX bus, used for the
+# one-shot hit grunt. Skips silently if the file isn't present so the project
+# still runs before the audio drop lands. Pitch wobble matches gunshot for
+# consistency.
+func _build_hit_audio(path: String) -> AudioStreamPlayer2D:
+	if not ResourceLoader.exists(path):
+		return null
+	var player := AudioStreamPlayer2D.new()
+	player.stream = load(path)
+	player.bus = &"sfx"
+	player.max_distance = 2000.0
+	player.max_polyphony = 3
+	add_child(player)
+	return player
+
+# Switches the footstep stream to match the surface under the soldier's feet
+# and starts (or continues) playback. Called from _do_move and from the maze
+# mover. Surface "" = silent (water): stop the loop.
+func _play_footstep() -> void:
+	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	var surface: String = "dirt"
+	if map_gen and map_gen.has_method("get_surface_at"):
+		surface = map_gen.get_surface_at(global_position)
+	if surface == "":
+		footstep.stop()
+		return
+	if surface != _last_surface:
+		_last_surface = surface
+		var stream: AudioStream = _surface_streams.get(surface, null)
+		if stream != null:
+			footstep.stream = stream
+		# else: leave whatever the .tscn assigned so the soldier isn't silent
+		# until the actual surface audio file is dropped in.
+		footstep.stop()
+	if not footstep.playing:
+		footstep.play()
 
 # =============================================================================
 # PRIVATE — ANIMATION

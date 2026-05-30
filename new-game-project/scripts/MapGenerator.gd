@@ -94,6 +94,13 @@ func get_range_modifier_at(_world_pos: Vector2) -> float:
 func get_slope_speed_mult(_world_pos: Vector2, _direction: Vector2) -> float:
 	return 1.0
 
+# Surface key under a world position — drives per-tile footstep playback.
+# Return "dirt", "grass", or "snow". Empty string = silent (water / off-map).
+# Base default is dirt; HandcraftedMap overrides to consult the seasonal
+# objects layer. Maze / tutorial / boss levels stay dirt-only.
+func get_surface_at(_world_pos: Vector2) -> String:
+	return "dirt"
+
 # ---------------------------------------------------------------------------
 # Objective lookup — subclasses store nodes in _objective_nodes during
 # generate(); external systems (HUD, objective manager) read them by group.

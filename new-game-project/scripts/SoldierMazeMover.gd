@@ -28,6 +28,5 @@ static func tick(soldier: CharacterBody2D) -> bool:
 
 	if soldier._shoot_flash_timer <= 0.0:
 		soldier._play_walk_anim(direction)
-	if not soldier.footstep.playing:
-		soldier.footstep.play()
+	soldier._play_footstep()
 	return false
