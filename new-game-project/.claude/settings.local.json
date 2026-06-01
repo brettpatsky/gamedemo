@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "mcp__pixellab__generate_image_pixflux",
+      "Bash(Get-ChildItem -Path \"c:\\\\projects\\\\gamedemo\\\\new-game-project\" -Recurse -Force)",
+      "Bash(Select-Object -First 50)",
+      "Bash(Format-List FullName)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\projects\\\\gamedemo\\\\new-game-project\" -Recurse -Force | Where-Object { $_.Extension -in @\\('.tscn', '.gd', '.png', '.jpg'\\) } | Select-Object -ExpandProperty FullName | Sort-Object)",
+      "mcp__pixellab__rotate",
+      "mcp__pixellab__animate_with_text"
     ]
   }
 }
