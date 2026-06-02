@@ -30,13 +30,21 @@ extends CanvasLayer
 # ---------------------------------------------------------------------------
 const WEAPON_NAMES := ["Pistol", "Auto", "Grenade", "Sacrifice"]
 const WEAPON_ICONS := [
-	"res://resources/tdstilepack/PNG/weapon_pistol.png",
-	"res://resources/tdstilepack/PNG/weapon_machine.png",
-	"res://resources/tdstilepack/PNG/weapon_grenade.png",
-	"res://resources/tdstilepack/PNG/weapon_gun.png",  # placeholder for Sacrifice
+	"res://resources/ui/icons/wand_fire.png",
+	"res://resources/ui/icons/wand_rapid.png",
+	"res://resources/ui/icons/bomb_magic.png",
+	"res://resources/ui/icons/gem_sacrifice.png",
 ]
 
 const FORMATION_NAMES := ["2×3", "3×2", "1×6", "6×1", "★"]
+
+const FORMATION_ICONS := [
+	"res://resources/ui/icons/formation_2x3.png",
+	"res://resources/ui/icons/formation_3x2.png",
+	"res://resources/ui/icons/formation_1x6.png",
+	"res://resources/ui/icons/formation_6x1.png",
+	"res://resources/ui/icons/formation_star.png",
+]
 
 # Colors shared by group buttons and the per-soldier group-number labels so the
 # player can instantly match a number on screen to the correct HUD button.
@@ -180,6 +188,7 @@ func _ready() -> void:
 
 	_refresh_weapon_highlight()
 	_refresh_formation_highlight()
+	_style_hud()
 
 # =============================================================================
 # WIRING — connect each grid button to its handler
@@ -190,13 +199,16 @@ func _wire_weapon_buttons() -> void:
 		if btn == null:
 			push_warning("[HUD] Missing WeaponButton%d" % i)
 			continue
-		# Icon
+		# Use btn.icon so it renders without relying on the scene TextureRect child.
+		if ResourceLoader.exists(WEAPON_ICONS[i]):
+			btn.icon = load(WEAPON_ICONS[i])
+			btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			btn.expand_icon = true
+		# Keep the TextureRect child in sync as a fallback for any scene-side code.
 		var icon := btn.get_node_or_null("Icon") as TextureRect
 		if icon and ResourceLoader.exists(WEAPON_ICONS[i]):
 			icon.texture = load(WEAPON_ICONS[i])
-		# Tooltip
 		btn.tooltip_text = WEAPON_NAMES[i]
-		# Click handler
 		var idx := i
 		btn.pressed.connect(func() -> void: _on_weapon_pressed(idx))
 
@@ -207,21 +219,30 @@ func _wire_formation_buttons() -> void:
 			push_warning("[HUD] Missing FormationButton%d" % i)
 			continue
 		var lbl := btn.get_node_or_null("Name") as Label
-		if lbl:
-			lbl.text = FORMATION_NAMES[i]
+		if i < FORMATION_ICONS.size() and ResourceLoader.exists(FORMATION_ICONS[i]):
+			btn.icon = load(FORMATION_ICONS[i])
+			btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			btn.expand_icon = true
+			if lbl:
+				lbl.hide()
+		else:
+			if lbl:
+				lbl.text = FORMATION_NAMES[i]
 		btn.tooltip_text = "Formation %s" % FORMATION_NAMES[i]
 		var idx := i
 		btn.pressed.connect(func() -> void: _on_formation_pressed(idx))
 
-	# Revive button — repurposes the 6th cell of the formation grid. The "?"
-	# label is replaced with a heart icon and a potion counter. Click to bring
-	# back the most recently downed soldier (one potion per mission).
+	# Revive button — repurposes the 6th cell of the formation grid.
 	_revive_button = _formation_grid.get_node_or_null("FormationButtonReserved") as Button
 	if _revive_button:
 		_revive_button.disabled = false
 		_revive_button.toggle_mode = false
-		_revive_button.text = "♥"
+		_revive_button.text = ""
 		_revive_button.tooltip_text = "Revive last fallen soldier"
+		if ResourceLoader.exists("res://resources/ui/icons/revive_heart.png"):
+			_revive_button.icon = load("res://resources/ui/icons/revive_heart.png")
+			_revive_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			_revive_button.expand_icon = true
 		# Add a small counter label inside the button (same pattern as ammo).
 		var counter := Label.new()
 		counter.name = "Counter"
@@ -1017,3 +1038,47 @@ func _refresh_weapon_locked_state() -> void:
 	var sacrifice_btn := _weapon_grid.get_node_or_null("WeaponButton3") as Button
 	if sacrifice_btn:
 		sacrifice_btn.disabled = not GameManager.sacrifice_enabled
+
+# =============================================================================
+# HUD STYLING
+# =============================================================================
+func _style_hud() -> void:
+	# Bottom panel — fantasy stone texture with gold corner ornaments.
+	var bottom := get_node_or_null("BottomPanel") as PanelContainer
+	if bottom:
+		const PANEL_TEX := "res://resources/ui/hud_panel_bg.png"
+		if ResourceLoader.exists(PANEL_TEX):
+			var style_tex := StyleBoxTexture.new()
+			style_tex.texture = load(PANEL_TEX)
+			# Leave the corner ornaments (~18px) fixed; stretch the centre.
+			style_tex.texture_margin_left   = 18
+			style_tex.texture_margin_right  = 18
+			style_tex.texture_margin_top    = 8
+			style_tex.texture_margin_bottom = 8
+			bottom.add_theme_stylebox_override("panel", style_tex)
+		else:
+			# Fallback if texture hasn't been imported yet.
+			var style := StyleBoxFlat.new()
+			style.bg_color = Color(0.07, 0.05, 0.10, 0.94)
+			style.border_width_top = 2
+			style.border_color = Color(0.65, 0.48, 0.18, 0.9)
+			bottom.add_theme_stylebox_override("panel", style)
+
+	# Top-left labels — warm gold text with a black outline for readability
+	# over any tile background.
+	for lbl in [_objective_label, _enemy_label, _escort_label]:
+		if lbl == null:
+			continue
+		lbl.add_theme_color_override("font_color", Color(1.0, 0.93, 0.65))
+		lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))
+		lbl.add_theme_constant_override("outline_size", 3)
+
+	# Under-attack toast — keep red but add black outline so it pops over light tiles.
+	if _under_attack_label:
+		_under_attack_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))
+		_under_attack_label.add_theme_constant_override("outline_size", 4)
+		_under_attack_label.add_theme_font_size_override("font_size", 18)
+
+	# Group cycle button — match the gold border theme.
+	if _group_cycle_button:
+		_group_cycle_button.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45))
