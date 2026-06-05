@@ -247,28 +247,41 @@ func _spawn_fortified_structure() -> void:
 		return
 
 	# Five non-overlapping zones covering different parts of the map.
-	# Border-padded by 2 tiles; centre squad-spawn area naturally avoided.
+	# Border-padded by 6 tiles to keep structures well clear of map edges.
+	# Minimum 20-tile gap between any two placed structures avoids clumping.
+	const PAD       := 6
+	const MIN_TILES := 20
 	var zone_filters: Array[Callable] = [
 		func(c: Vector2i) -> bool:  # top strip
-			return c.x >= 2 and c.x <= map_width - 3 \
-				and c.y >= 2 and c.y < int(map_height * 0.28),
+			return c.x >= PAD and c.x <= map_width - PAD - 1 \
+				and c.y >= PAD and c.y < int(map_height * 0.28),
 		func(c: Vector2i) -> bool:  # left flank
-			return c.x >= 2 and c.x < int(map_width * 0.25) \
-				and c.y >= int(map_height * 0.28) and c.y <= map_height - 3,
+			return c.x >= PAD and c.x < int(map_width * 0.25) \
+				and c.y >= int(map_height * 0.28) and c.y <= map_height - PAD - 1,
 		func(c: Vector2i) -> bool:  # right flank
-			return c.x > int(map_width * 0.75) and c.x <= map_width - 3 \
-				and c.y >= int(map_height * 0.28) and c.y <= map_height - 3,
+			return c.x > int(map_width * 0.75) and c.x <= map_width - PAD - 1 \
+				and c.y >= int(map_height * 0.28) and c.y <= map_height - PAD - 1,
 		func(c: Vector2i) -> bool:  # bottom-left
-			return c.x >= 2 and c.x < int(map_width * 0.50) \
-				and c.y > int(map_height * 0.70) and c.y <= map_height - 3,
+			return c.x >= PAD and c.x < int(map_width * 0.50) \
+				and c.y > int(map_height * 0.70) and c.y <= map_height - PAD - 1,
 		func(c: Vector2i) -> bool:  # bottom-right
-			return c.x >= int(map_width * 0.50) and c.x <= map_width - 3 \
-				and c.y > int(map_height * 0.70) and c.y <= map_height - 3,
+			return c.x >= int(map_width * 0.50) and c.x <= map_width - PAD - 1 \
+				and c.y > int(map_height * 0.70) and c.y <= map_height - PAD - 1,
 	]
 
 	var spawned: Array[Node2D] = []
 	for filter in zone_filters:
 		var candidates := _passable_cells.filter(filter)
+		# Remove tiles too close to already-placed structures.
+		if not spawned.is_empty():
+			var min_dist: float = MIN_TILES * float(tile_size)
+			candidates = candidates.filter(func(c: Vector2i) -> bool:
+				var wp: Vector2 = _tile_to_world(c)
+				for s: Node2D in spawned:
+					if wp.distance_to(s.position) < min_dist:
+						return false
+				return true
+			)
 		if candidates.is_empty():
 			continue
 		candidates.shuffle()

@@ -183,7 +183,15 @@ func _adopt_scene_objectives() -> void:
 		if c.is_in_group("structures"):
 			structs.append(c)
 	if not structs.is_empty():
-		_objective_nodes["fortified_structure"] = structs
+		if regenerate_at_runtime:
+			# Terrain was regenerated — the scene-placed structures sit at fixed
+			# world positions designed for the saved terrain, which are likely
+			# outside the new map bounds. Free them so _spawn_fortified_structure()
+			# can place all five procedurally on valid tiles instead.
+			for s in structs:
+				s.queue_free()
+		else:
+			_objective_nodes["fortified_structure"] = structs
 
 	var npc: Node = null
 	var walls: Array[Node2D] = []

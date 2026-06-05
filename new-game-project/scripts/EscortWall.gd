@@ -11,8 +11,10 @@ const Balance = preload("res://scripts/BalanceConfig.gd")
 signal wall_destroyed
 
 const MAX_HEALTH: int = 25
+const TEX_WALL := "res://resources/environment/fairy_garden/garden_wall.png"
 
 var _health: int
+var _sprite: Sprite2D = null
 
 @onready var health_bar: ProgressBar = $HealthBar
 
@@ -21,12 +23,17 @@ func _ready() -> void:
 	_health = MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE
 	health_bar.max_value = _health
 	health_bar.value     = _health
-	queue_redraw()
+
+	_sprite = Sprite2D.new()
+	_sprite.scale   = Vector2(1.1, 1.1)
+	_sprite.z_index = 1
+	add_child(_sprite)
+	if ResourceLoader.exists(TEX_WALL):
+		_sprite.texture = load(TEX_WALL)
 
 func take_damage(amount: int, _element: int = 0) -> void:
 	_health -= amount
 	health_bar.value = _health
-	queue_redraw()
 	if _health <= 0:
 		_destroy()
 
@@ -35,8 +42,10 @@ func _destroy() -> void:
 	queue_free()
 
 func _draw() -> void:
+	# Fallback placeholder shown if textures haven't been imported yet.
+	if _sprite != null and _sprite.texture != null:
+		return
 	draw_rect(Rect2(-28, -28, 56, 56), Color(0.45, 0.32, 0.22))
 	draw_rect(Rect2(-28, -28, 56, 56), Color(0.20, 0.13, 0.08), false, 2.5)
-	# Horizontal plank lines for a wood-fortification look
 	for y in [-14, 0, 14]:
 		draw_line(Vector2(-28, y), Vector2(28, y), Color(0.20, 0.13, 0.08), 1.5)
