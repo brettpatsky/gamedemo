@@ -488,8 +488,9 @@ func _tick_stuck_check(delta: float) -> void:
 		_hard_unstick()
 		_stuck_strikes = 0
 
-# Final-resort unstick: snap toward the next path waypoint. Capped at one
-# tile so it reads as a duck-around rather than a teleport.
+# Final-resort unstick: nudge toward the next path waypoint. Uses move_and_collide
+# (NOT a raw position set) so it slides past prop corners but can never punch
+# through a wall / cliff face onto a plateau.
 func _hard_unstick() -> void:
 	if nav_agent.is_navigation_finished():
 		return
@@ -497,7 +498,7 @@ func _hard_unstick() -> void:
 	var diff: Vector2 = next - global_position
 	if diff.length() < 1.0:
 		return
-	global_position += diff.normalized() * minf(diff.length(), 64.0)
+	move_and_collide(diff.normalized() * minf(diff.length(), 64.0))
 
 # Called when this enemy first spots the squad: nudges patrolling neighbours
 # inside ENEMY_ALERT_PULSE_RADIUS into ALERT focusing the same target.

@@ -520,10 +520,11 @@ func _try_unstick() -> void:
 	var nudge := perp * 32.0
 	nav_agent.target_position = _move_target + nudge
 
-# Final-resort unstick: snap the soldier toward the next waypoint along the
-# planned path. Breaks RVO-deadlocks and corner-wedges that the sidestep
-# nudge can't escape. Caps the jump at one tile so it reads as "ducking
-# around the obstacle" rather than a teleport.
+# Final-resort unstick: nudge the soldier toward the next waypoint along the
+# planned path. Breaks RVO-deadlocks and corner-wedges that the sidestep nudge
+# can't escape. Uses move_and_collide (NOT a raw position set) so it slides
+# past prop corners but can never punch through a wall / cliff face — a raw
+# teleport here let wedged soldiers pop straight off a plateau through the cliff.
 func _hard_unstick() -> void:
 	if nav_agent.is_navigation_finished():
 		return
@@ -531,7 +532,7 @@ func _hard_unstick() -> void:
 	var diff: Vector2 = next - global_position
 	if diff.length() < 1.0:
 		return
-	global_position += diff.normalized() * minf(diff.length(), 64.0)
+	move_and_collide(diff.normalized() * minf(diff.length(), 64.0))
 	_unstick_timer = 0.0   # cancel any in-flight sidestep so we don't double-nudge
 
 func _do_bomb_charge(delta: float) -> void:
