@@ -416,9 +416,8 @@ func _generate_terrain(seed_value: int) -> void:
 	_enforce_min_block_size()
 	_enforce_min_block_size()
 
-	# Dirt paths are suppressed on the elevation missions: their tan dirt strips
-	# read like fake cliff edges next to the real plateaus (user feedback). Kept
-	# off entirely here since every regenerated map now carries plateaus.
+	if season != Season.WINTER:
+		_generate_paths(effective_seed)
 
 	var land_cells: Array[Vector2i] = []
 	var grass_cells: Array[Vector2i] = []
@@ -635,15 +634,17 @@ func _close_tier_holes(radius: int) -> void:
 				if _tier_at(c) < level:
 					_tier_grid[c] = level
 
-# Phase B — flood-fill same-tier regions and carve one south-facing staircase
-# from each raised region down toward lower ground, so plateaus stay reachable.
+# Phase B — flood-fill same-tier regions and carve south-facing staircases from
+# each raised region down to lower ground, so plateaus stay reachable. Wide
+# plateaus get several stairs (spread across the face) so the squad isn't forced
+# to funnel through a single exit.
 func _carve_stairs() -> void:
 	_stair_cells.clear()
 	if Balance.ELEV_TIER_COUNT <= 1:
 		return
 	for region in _compute_regions():
 		if int(region.tier) >= 1:
-			_carve_one_stair(region)
+			_carve_region_stairs(region)
 
 func _compute_regions() -> Array:
 	var region_of: Dictionary = {}
@@ -673,12 +674,14 @@ func _compute_regions() -> Array:
 			regions.append({"tier": t, "cells": cells})
 	return regions
 
-func _carve_one_stair(region: Dictionary) -> void:
+func _carve_region_stairs(region: Dictionary) -> void:
 	var tier_lv: int = int(region.tier)
 	var w: int = Balance.ELEV_STAIR_WIDTH
 	var h: int = Balance.ELEV_CLIFF_FACE_TILES
-	var best := Vector2i(-1, -1)
-	var best_score := -1
+
+	# Every south-edge start where a full-width staircase fits and is flanked by
+	# wall on both sides (so it stays interior to the face, not over a corner).
+	var valid: Array[Vector2i] = []
 	for c in region.cells:
 		var ok := true
 		for dx in w:
@@ -686,8 +689,6 @@ func _carve_one_stair(region: Dictionary) -> void:
 			if _tier_at(top) != tier_lv:
 				ok = false
 				break
-			# face cells below must all be lower, and there must be lower ground
-			# to land on past the face.
 			for d in range(1, h + 1):
 				if _tier_at(Vector2i(c.x + dx, c.y + d)) >= tier_lv:
 					ok = false
@@ -700,25 +701,51 @@ func _carve_one_stair(region: Dictionary) -> void:
 				break
 		if not ok:
 			continue
-		# Require a wall column flanking each side so the stair stays interior to the
-		# south face and never spills over the plateau's east/west corner edge.
 		var lf := Vector2i(c.x - 1, c.y)
 		var rf := Vector2i(c.x + w, c.y)
 		var left_walled := _tier_at(lf) == tier_lv and _tier_at(lf + Vector2i(0, 1)) < tier_lv
 		var right_walled := _tier_at(rf) == tier_lv and _tier_at(rf + Vector2i(0, 1)) < tier_lv
-		if not (left_walled and right_walled):
-			continue
-		var score := 1000 - absi(c.x - int(map_width * 0.5))
-		if score > best_score:
-			best_score = score
-			best = c
-	if best.x < 0:
+		if left_walled and right_walled:
+			valid.append(c)
+	if valid.is_empty():
 		return
+
+	# How many stairs: one per ~16 tiles of plateau width, 1-3. Spread them evenly
+	# across the face, keeping a wall gap between adjacent staircases.
+	var minx := 99999
+	var maxx := -99999
+	for c in region.cells:
+		minx = mini(minx, c.x)
+		maxx = maxi(maxx, c.x)
+	var width := maxx - minx + 1
+	var count: int = clampi(int(width / 16.0), 1, 3)
+	var sep := w + 5
+	var picked: Array[Vector2i] = []
+	for i in count:
+		var target_x := minx + int(width * float(i + 1) / float(count + 1))
+		var best := Vector2i(-1, -1)
+		var best_d := 1 << 30
+		for c in valid:
+			var crowded := false
+			for p in picked:
+				if absi(c.x - p.x) < sep:
+					crowded = true
+					break
+			if crowded:
+				continue
+			var dd := absi(c.x - target_x)
+			if dd < best_d:
+				best_d = dd
+				best = c
+		if best.x >= 0:
+			picked.append(best)
+
 	# Stairs cover the plateau edge row (d=0, the top step) down through the wall
 	# rows, so they line up with the cap-on-edge wall and stay walkable top-to-bottom.
-	for dx in w:
-		for d in range(0, h):
-			_stair_cells[Vector2i(best.x + dx, best.y + d)] = true
+	for best in picked:
+		for dx in w:
+			for d in range(0, h):
+				_stair_cells[Vector2i(best.x + dx, best.y + d)] = true
 
 # Phase C — render raised tiers like the Caraka reference: the plateau TOP is
 # grass with the terrain's own auto-tiled edge lip (so the SIDES/back read as a
@@ -1070,9 +1097,14 @@ func _generate_paths(seed_value: int) -> void:
 						if _terrain_grid.get(c) == "grass":
 							_terrain_grid[c] = "path"
 
+# Props are placed in CLUSTERS, not a uniform scatter: a low-frequency "forest"
+# noise field carves broad dense woodland blobs with open clearings between, and
+# a separate "rocky" field clumps rocks into outcrops. Trees are scaled up so a
+# conifer towers over the squad. Clearings get the occasional lone tree + flowers.
 func _place_props(seed_value: int) -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = seed_value if seed_value != 0 else randi()
+	var effective: int = seed_value if seed_value != 0 else randi()
+	rng.seed = effective
 
 	var tree_tex: Texture2D = load(TREE_TEXTURE)
 	var rock_tex: Texture2D = load(ROCK_TEXTURE)
@@ -1082,32 +1114,61 @@ func _place_props(seed_value: int) -> void:
 	var bush_regs: Array = BUSH_REGIONS.get(season, BUSH_REGIONS[Season.SPRING])
 	var scene_owner: Node = owner if owner else self
 
+	var forest := FastNoiseLite.new()
+	forest.seed = effective + 700
+	forest.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	forest.frequency = 0.05
+	forest.fractal_octaves = 3
+	var rocky := FastNoiseLite.new()
+	rocky.seed = effective + 1700
+	rocky.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	rocky.frequency = 0.10
+	rocky.fractal_octaves = 2
+
+	const TREE_SCALE := Vector2(2.6, 2.6)
 	for cell in _terrain_grid:
-		if _terrain_grid[cell] == "water":
-			continue
-		if _cliff_cells.has(cell):
-			continue  # don't sprout trees/rocks out of a cliff face / wall
-		if _tier_at(cell) >= 1:
-			continue  # keep plateau tops clear of trees/rocks
+		var ttype: String = _terrain_grid[cell]
+		if ttype == "water" or ttype == "path":
+			continue  # keep water + the dirt paths between forests clear
+		if _cliff_cells.has(cell) or _tier_at(cell) >= 1:
+			continue  # no props on cliffs / plateau tops
 		var cx := float(cell.x) / map_width
 		var cy := float(cell.y) / map_height
-		if cx > 0.35 and cx < 0.65 and cy > 0.35 and cy < 0.65:
-			continue
+		if cx > 0.38 and cx < 0.62 and cy > 0.38 and cy < 0.62:
+			continue  # keep the squad's spawn area open
 
+		var fv := forest.get_noise_2d(float(cell.x), float(cell.y))   # -1..1
+		var rv := rocky.get_noise_2d(float(cell.x), float(cell.y))
 		var roll := rng.randf()
-		if _terrain_grid[cell] == "grass" and roll < 0.04:
-			var region: Rect2 = tree_regs[rng.randi() % tree_regs.size()]
-			_spawn_prop(tree_tex, region, cell, Vector2(2.0, 2.0), true, scene_owner)
-		elif roll >= 0.04 and roll < 0.055:
-			var rock_x := (rng.randi() % 4) * 32
-			_spawn_prop(rock_tex, Rect2(rock_x, 0, 32, 32), cell, Vector2(1.5, 1.5), true, scene_owner)
-		elif _terrain_grid[cell] == "grass" and roll >= 0.055 and roll < 0.07:
-			var breg: Rect2 = bush_regs[rng.randi() % bush_regs.size()]
-			_spawn_prop(bush_tex, breg, cell, Vector2(1.5, 1.5), false, scene_owner)
-		elif _terrain_grid[cell] == "grass" and roll >= 0.07 and roll < 0.09:
-			var fx := (rng.randi() % 8) * 16
-			var fy := (rng.randi() % 6) * 16
-			_spawn_prop(flower_tex, Rect2(fx, fy, 16, 16), cell, Vector2(1.5, 1.5), false, scene_owner)
+
+		# Dense forest: tree probability ramps up toward the blob core; canopies
+		# overlap (trees are bigger than a cell) so it reads as solid woodland,
+		# while the gaps stay walkable.
+		if ttype == "grass" and fv > 0.08:
+			var dens: float = clampf(remap(fv, 0.08, 0.7, 0.15, 0.62), 0.0, 0.62)
+			if roll < dens:
+				_spawn_prop(tree_tex, tree_regs[rng.randi() % tree_regs.size()], cell, TREE_SCALE, true, scene_owner)
+				continue
+			if roll < dens + 0.08:
+				_spawn_prop(bush_tex, bush_regs[rng.randi() % bush_regs.size()], cell, Vector2(1.6, 1.6), false, scene_owner)
+				continue
+
+		# Rocky outcrops — clustered, independent of the forest field.
+		if rv > 0.30:
+			var rdens: float = clampf(remap(rv, 0.30, 0.75, 0.08, 0.40), 0.0, 0.40)
+			if roll < rdens:
+				var rock_x := (rng.randi() % 4) * 32
+				_spawn_prop(rock_tex, Rect2(rock_x, 0, 32, 32), cell, Vector2(1.7, 1.7), true, scene_owner)
+				continue
+
+		# Clearings: the odd lone tree + scattered flowers to keep them alive.
+		if ttype == "grass":
+			if roll < 0.012:
+				_spawn_prop(tree_tex, tree_regs[rng.randi() % tree_regs.size()], cell, TREE_SCALE, true, scene_owner)
+			elif roll < 0.05:
+				var fx := (rng.randi() % 8) * 16
+				var fy := (rng.randi() % 6) * 16
+				_spawn_prop(flower_tex, Rect2(fx, fy, 16, 16), cell, Vector2(1.5, 1.5), false, scene_owner)
 
 func _spawn_prop(tex: Texture2D, region: Rect2, cell: Vector2i, prop_scale: Vector2, has_collision: bool, scene_owner: Node) -> void:
 	var world_pos := to_local(tile_map.to_global(tile_map.map_to_local(cell)))
