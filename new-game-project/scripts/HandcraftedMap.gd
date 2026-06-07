@@ -78,11 +78,14 @@ const FLOWER_TEXTURE := "res://resources/caraka/Props/Flower.png"
 # deciduous trees render with a different proportion that doesn't match,
 # and conifers + rocks already provide enough visual variety.
 # Cols 0=spring, 1-2=summer, 3-5=fall, 6=winter. Cols 8+ are variant shapes.
+# Region height is 48, NOT 64: each cell's conifer only occupies y 4-43; the
+# bottom 12 px hold a small sapling/crystal that otherwise renders as a stray
+# "partial tree" at the base of every conifer. Cropping to 48 drops it.
 const TREE_REGIONS := {
-	Season.SPRING: [Rect2(0, 0, 32, 64), Rect2(256, 0, 32, 64)],
-	Season.SUMMER: [Rect2(32, 0, 32, 64), Rect2(64, 0, 32, 64)],
-	Season.FALL:   [Rect2(96, 0, 32, 64), Rect2(128, 0, 32, 64)],
-	Season.WINTER: [Rect2(192, 0, 32, 64), Rect2(448, 0, 32, 64)],
+	Season.SPRING: [Rect2(0, 0, 32, 48), Rect2(256, 0, 32, 48)],
+	Season.SUMMER: [Rect2(32, 0, 32, 48), Rect2(64, 0, 32, 48)],
+	Season.FALL:   [Rect2(96, 0, 32, 48), Rect2(128, 0, 32, 48)],
+	Season.WINTER: [Rect2(192, 0, 32, 48), Rect2(448, 0, 32, 48)],
 }
 
 # Bush.png: 8 cols × 4 rows (16×16). Seasons in rows: 0=spring, 1=summer, 2=fall, 3=winter.
@@ -1083,7 +1086,9 @@ func _place_props(seed_value: int) -> void:
 		if _terrain_grid[cell] == "water":
 			continue
 		if _cliff_cells.has(cell):
-			continue  # don't sprout trees/rocks out of a cliff face
+			continue  # don't sprout trees/rocks out of a cliff face / wall
+		if _tier_at(cell) >= 1:
+			continue  # keep plateau tops clear of trees/rocks
 		var cx := float(cell.x) / map_width
 		var cy := float(cell.y) / map_height
 		if cx > 0.35 and cx < 0.65 and cy > 0.35 and cy < 0.65:
