@@ -26,6 +26,12 @@ var nav_region: NavigationRegion2D
 var _passable_cells: Array[Vector2i] = []
 var _objective_nodes: Dictionary = {}
 
+# Backend elevation field — a continuous Perlin heightmap, decoupled from the
+# 2D tile rendering. Stays null until a subclass opts in via _init_elevation();
+# while null, all the elevation queries fall back to neutral so flat map types
+# (mazes / tutorial / boss arena) keep their level surface. See _init_elevation.
+var _elevation_noise: FastNoiseLite = null
+
 # Subclass-controlled exclusion zone — cells within this radius of the centre
 # are skipped during enemy spawn (used by the escort mission to keep the NPC's
 # pocket clear of hostiles).
@@ -85,14 +91,78 @@ func get_spawn_positions(count: int) -> Array[Vector2]:
 func is_water_at(_world_pos: Vector2) -> bool:
 	return false
 
-func get_elevation_at(_world_pos: Vector2) -> float:
-	return 0.0
+# ---------------------------------------------------------------------------
+# Elevation backend — a Perlin heightmap that lives entirely in data, separate
+# from the 2D tile frontend. Subclasses that want hilly terrain call
+# _init_elevation() once during generate(); everyone else inherits the neutral
+# behaviour because _elevation_noise stays null (guarded in get_elevation_at).
+#
+# Sampling happens in continuous tile-space (one noise unit ≈ one tile) so the
+# field is independent of the tileset's pixel scale AND lines up 1:1 with the
+# NoiseTexture2D visual overlay, which bakes the same noise at one pixel per
+# tile. Returned elevation is the raw Perlin value in roughly [-1, 1].
+# ---------------------------------------------------------------------------
+func _init_elevation(seed_value: int) -> void:
+	var n := FastNoiseLite.new()
+	# Offset off the terrain/water seeds (seed, seed+1000) so elevation doesn't
+	# visually correlate with where the grass/water bands fell.
+	n.seed = (seed_value if seed_value != 0 else randi()) + 2000
+	n.noise_type = FastNoiseLite.TYPE_PERLIN
+	n.frequency = Balance.ELEV_NOISE_FREQUENCY
+	n.fractal_type = FastNoiseLite.FRACTAL_FBM
+	n.fractal_octaves = Balance.ELEV_NOISE_OCTAVES
+	n.fractal_lacunarity = Balance.ELEV_NOISE_LACUNARITY
+	n.fractal_gain = Balance.ELEV_NOISE_GAIN
+	_elevation_noise = n
 
-func get_range_modifier_at(_world_pos: Vector2) -> float:
+# Continuous tile-space coordinate for a world position. map_to_local works in
+# the tileset's own (unscaled) pixel units, so dividing the inverse-transformed
+# point by the tileset cell size yields a fractional tile index — exactly the
+# coordinate space the overlay texture is baked in.
+func _world_to_noise_coords(world_pos: Vector2) -> Vector2:
+	if tile_map == null:
+		return world_pos
+	var cell := 16.0
+	if tile_map.tile_set:
+		cell = float(tile_map.tile_set.tile_size.x)
+	return tile_map.to_local(world_pos) / cell
+
+func get_elevation_at(world_pos: Vector2) -> float:
+	if _elevation_noise == null:
+		return 0.0
+	var c := _world_to_noise_coords(world_pos)
+	return clampf(_elevation_noise.get_noise_2d(c.x, c.y), -1.0, 1.0)
+
+# Bullet range bonus/penalty: above HILL_THRESHOLD ramps up toward
+# HILL_RANGE_MULT, below VALLEY_THRESHOLD ramps down toward VALLEY_RANGE_MULT,
+# flat ground in between stays 1.0. Smooth so there's no hard step at a border.
+func get_range_modifier_at(world_pos: Vector2) -> float:
+	var e := get_elevation_at(world_pos)
+	if e >= Balance.HILL_THRESHOLD:
+		var t := inverse_lerp(Balance.HILL_THRESHOLD, 1.0, minf(e, 1.0))
+		return lerpf(1.0, Balance.HILL_RANGE_MULT, t)
+	if e <= Balance.VALLEY_THRESHOLD:
+		var t := inverse_lerp(Balance.VALLEY_THRESHOLD, -1.0, maxf(e, -1.0))
+		return lerpf(1.0, Balance.VALLEY_RANGE_MULT, t)
 	return 1.0
 
-func get_slope_speed_mult(_world_pos: Vector2, _direction: Vector2) -> float:
-	return 1.0
+# Slope speed: central finite-difference of the heightmap gives the gradient
+# (elevation-per-tile) in x and y; its dot with the movement direction is the
+# directional slope. Moving uphill (positive slope) slows you, downhill speeds
+# you up, clamped to the configured band.
+func get_slope_speed_mult(world_pos: Vector2, direction: Vector2) -> float:
+	if _elevation_noise == null or direction.length_squared() < 0.0001:
+		return 1.0
+	var step_tiles := Balance.ELEV_SLOPE_SAMPLE_TILES
+	var step_px := float(tile_size) * step_tiles
+	var ex := get_elevation_at(world_pos + Vector2(step_px, 0.0)) \
+			- get_elevation_at(world_pos - Vector2(step_px, 0.0))
+	var ey := get_elevation_at(world_pos + Vector2(0.0, step_px)) \
+			- get_elevation_at(world_pos - Vector2(0.0, step_px))
+	var gradient := Vector2(ex, ey) / (2.0 * step_tiles)
+	var dir_slope := gradient.dot(direction.normalized())
+	return clampf(1.0 - dir_slope * Balance.SLOPE_SPEED_SCALE,
+			Balance.SLOPE_SPEED_MIN, Balance.SLOPE_SPEED_MAX)
 
 # Surface key under a world position — drives per-tile footstep playback.
 # Return "dirt", "grass", or "snow". Empty string = silent (water / off-map).

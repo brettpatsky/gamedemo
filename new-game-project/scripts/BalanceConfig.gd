@@ -304,38 +304,50 @@ const SLOPE_SPEED_MIN:   float = 0.75   # steepest uphill multiplier
 const SLOPE_SPEED_MAX:   float = 1.25   # steepest downhill multiplier
 
 # -----------------------------------------------------------------------------
-# TERRAIN — hill-shade visual overlay (MapGenerator's topography layer)
+# TERRAIN — elevation heightmap (Perlin noise, backend data layer)
 # -----------------------------------------------------------------------------
-# Lambert-shading direction. Both components negative = light from the
-# top-left; flipping signs flips the lit side. Magnitude < 1 (not normalised
-# here) is fine because SHADE_INTENSITY scales the result.
-const HILLSHADE_LIGHT_X:        float = -0.6
-const HILLSHADE_LIGHT_Y:        float = -0.6
-# How sharply the shading reacts to slope. Higher = more contrast between
-# lit and shadowed slopes; too high and flats start showing patchy noise.
-const HILLSHADE_INTENSITY:      float = 6.0
-# Max alpha of the lit highlight (warm cream) and shadow (cool indigo) on
-# fully sloped tiles. Lower = subtler relief.
-const HILLSHADE_HIGHLIGHT_ALPHA: float = 0.55
-const HILLSHADE_SHADOW_ALPHA:    float = 0.65
-const HILLSHADE_HIGHLIGHT_COLOR: Color = Color(1.00, 0.96, 0.78)
-const HILLSHADE_SHADOW_COLOR:    Color = Color(0.02, 0.06, 0.14)
+# Elevation is a continuous Perlin heightmap sampled in tile-space, generated
+# independently of the 2D tile rendering (see MapGenerator._init_elevation).
+# One noise unit ≈ one map tile, so FREQUENCY is in cycles-per-tile: lower =
+# broader, gentler swells. 0.045 ≈ a 22-tile wavelength, giving ~4-5 distinct
+# hills across a 110-tile handcrafted map.
+const ELEV_NOISE_FREQUENCY:  float = 0.024   # broad swells → plateaus big enough to fight on / fit stairs
+const ELEV_NOISE_OCTAVES:    int   = 2      # fractal detail layered on the base swell — low for smooth rolling hills
+const ELEV_NOISE_LACUNARITY: float = 2.0    # frequency multiplier per octave
+const ELEV_NOISE_GAIN:       float = 0.5    # amplitude falloff per octave (lower = smoother)
 
-# Zone tint — a flat colour wash that fades in past the gameplay thresholds
-# so hills read warm, valleys read cool. ZONE_MAX_ALPHA caps the wash;
-# ZONE_FALLOFF is how much noise-units past the threshold it takes to reach
-# full alpha (smaller = harder edge).
-const HILLSHADE_HILL_TINT:    Color = Color(1.00, 0.78, 0.40)
-const HILLSHADE_VALLEY_TINT:  Color = Color(0.20, 0.40, 0.85)
-const HILLSHADE_ZONE_MAX_ALPHA: float = 0.35
-const HILLSHADE_ZONE_FALLOFF:   float = 0.30
+# Slope is the directional derivative of the heightmap, taken by central
+# finite-difference this many tiles to either side of the sample point. Larger
+# = smoother / more averaged slope response.
+const ELEV_SLOPE_SAMPLE_TILES: float = 1.5
 
-# Cliff drop-shadows along band transitions. Whenever a hill tile has a
-# flat neighbour to its N or W, a gradient band paints on that flat tile so
-# the edge reads as a cliff in NW-lit lighting.
-const HILLSHADE_DROP_SHADOW_COLOR: Color = Color(0.02, 0.04, 0.10)
-const HILLSHADE_DROP_SHADOW_WIDTH: float = 16.0   # px into the lower tile
-const HILLSHADE_DROP_SHADOW_ALPHA: float = 0.55
+# -----------------------------------------------------------------------------
+# TERRAIN — discrete elevation tiers (Zelda-style cliffs + stairs)
+# -----------------------------------------------------------------------------
+# The continuous heightmap (above) is quantised into flat height TIERS. Tier
+# boundaries are rendered as vertical cliff faces with a drop shadow; stairs are
+# carved through cliffs so every plateau stays reachable. A cell's tier = the
+# number of thresholds its elevation exceeds, so TIER_COUNT = thresholds + 1.
+# Designed to scale to 3 tiers later (e.g. hide parents/totems up top) — just
+# bump the count and add a threshold.
+const ELEV_TIER_COUNT:      int = 2
+const ELEV_TIER_THRESHOLDS: Array = [0.32]   # size == TIER_COUNT - 1, ascending; 3 tiers e.g. [0.10, 0.45]
+
+# Plateaus smaller than this (per side, in tiles) get dissolved back into the
+# surrounding lower tier, so cliffs autotile cleanly and stairs have room.
+const ELEV_TIER_MIN_BLOCK:  int = 6
+
+# Height of a cliff face in tiles (cap + faces + base occupy this many low cells
+# south of a plateau edge). 2 = cap+base; 3 adds a face row for taller drops.
+# 3 matches the 3-tall Steps nine-slice so staircases fill the face cleanly.
+const ELEV_CLIFF_FACE_TILES: int = 3
+
+# Width (in tiles) of a carved staircase. The Steps art is a 3-wide nine-slice,
+# so 3 stamps cleanly; wider repeats the middle column.
+const ELEV_STAIR_WIDTH: int = 6
+
+# Drop-shadow cast on the low ground at the foot of a cliff (alpha-blended).
+const ELEV_CLIFF_SHADOW_COLOR: Color = Color(0.04, 0.05, 0.10, 0.45)
 
 # =============================================================================
 # AMBIENT — birds, critters, weather. Purely cosmetic atmosphere layer.

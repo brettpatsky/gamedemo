@@ -8,7 +8,8 @@
       "Bash(Format-List FullName)",
       "PowerShell(Get-ChildItem -Path \"c:\\\\projects\\\\gamedemo\\\\new-game-project\" -Recurse -Force | Where-Object { $_.Extension -in @\\('.tscn', '.gd', '.png', '.jpg'\\) } | Select-Object -ExpandProperty FullName | Sort-Object)",
       "mcp__pixellab__rotate",
-      "mcp__pixellab__animate_with_text"
+      "mcp__pixellab__animate_with_text",
+      "PowerShell($ErrorActionPreference='SilentlyContinue'; & \"C:\\\\Godot_v4.6.3-stable_win64.exe\" --path \"C:\\\\projects\\\\gamedemo\\\\new-game-project\" \"res://temp_shot.tscn\" 2>&1 | Out-File \"$env:TEMP\\\\gf.log\" -Encoding utf8; Get-Content \"$env:TEMP\\\\gf.log\" | Select-String \"ELEVDBG|error|ERROR|Invalid\" | Select-Object -First 15 | ForEach-Object { $_.Line })"
     ]
   }
 }

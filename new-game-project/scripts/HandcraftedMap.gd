@@ -14,8 +14,10 @@
 #   - TileMapLayer_objects  : seasonal grass + paths, auto-tiled transitions
 #   - TileMapLayer_Overlay  : static animated water tiles
 #
-# Missing layers are auto-created on generate. Topography / elevation queries
-# return neutral values since handcrafted maps don't use noise-driven terrain.
+# Missing layers are auto-created on generate. Elevation is a separate backend
+# concern: generate() seeds a Perlin heightmap via MapGenerator._init_elevation
+# (decoupled from the tile rendering) so bullet range and slope speed respond to
+# terrain height, and an optional NoiseTexture2D overlay shades it on screen.
 # is_water_at() is overridden to check the water layer for movement slowdown.
 # =============================================================================
 @tool
@@ -35,6 +37,10 @@ enum Season { SPRING, SUMMER, FALL, WINTER }
 var regenerate_at_runtime: bool = false
 
 const TERRAIN_TILESET := "res://resources/caraka_terrain_tileset.tres"
+
+# Decorative props (trees / rocks / bushes / flowers). Was toggled off while the
+# elevation system was being iterated on; back on now.
+const PLACE_PROPS := true
 
 # Terrain set index per season (defined in caraka_terrain_tileset.tres)
 # Water terrain set index in the Caraka tileset (terrain_set_6 = Water).
@@ -91,6 +97,41 @@ var _terrain_grid: Dictionary = {}
 var _objects_layer: TileMapLayer
 var _water_layer: TileMapLayer
 
+# --- Discrete elevation tiers (Zelda-style cliffs) -------------------------
+# _tier_grid: per-cell integer height tier (0 = low ground).
+# _cliff_cells: cells occupied by a cliff face/shadow — non-walkable.
+# _stair_cells: cells carved into a cliff as walkable steps (the only way up).
+var _tier_grid:   Dictionary = {}
+var _cliff_cells: Dictionary = {}
+var _stair_cells: Dictionary = {}
+var _cliff_layer: TileMapLayer
+# Raised-tier grass top, on its own layer so it can be modulated a distinct
+# (darker) shade from the low ground without tinting the cliff walls.
+var _plateau_layer: TileMapLayer
+# Per raised cell → {"wall": src, "stair": base_col} so each plateau gets a
+# consistent (but varied between plateaus) light/dark wall + stair style.
+var _tier1_style: Dictionary = {}
+
+# Atlas source ids in caraka_terrain_tileset.tres (resolved from sources/N).
+const WALL_SOURCE:      int = 4    # dirt wall.png        — light cliff face
+const WALL_DARK_SOURCE: int = 5    # dirt wall - dark.png — dark cliff face
+const STEPS_SOURCE:     int = 44   # Steps.png            — staircases
+# Verified against the user's hand-painted reference (mission_2 TileMapLayer_reference):
+# dirt wall sheets (8×6) carry the cliff block on ROWS 3-5 (cap/face/base). Columns:
+#   col 0 = left end, col 5 = right end, cols 1-4 = interchangeable middle variants.
+const WALL_ROW_CAP:   int = 3
+const WALL_ROW_FACE:  int = 4
+const WALL_ROW_BASE:  int = 5
+const WALL_COL_LEFT:  int = 0
+const WALL_COL_RIGHT: int = 5
+const WALL_MID_COLS := [1, 2, 3, 4]   # cycled across the face for variety
+# Steps sheet (6×4): two 3-wide staircases — cols 0-2 (light brown) and cols 3-5
+# (dark brown), each rows 0/1/2 = cap/face/base. We pick one variant per plateau.
+const STAIR_BASE_COLS := [0, 3]
+const STEP_CAP:   int = 0
+const STEP_FACE:  int = 1
+const STEP_BASE:  int = 2
+
 # Dimensions are applied here (NOT in generate()) because Main.gd calls
 # camera.refresh_map_bounds() between scene instantiation and generate(); if
 # the dimensions weren't already set, the camera would clamp to the inherited
@@ -102,9 +143,6 @@ func _ready() -> void:
 	map_height = Balance.MAP_HANDCRAFTED_HEIGHT
 	tile_size  = Balance.MAP_HANDCRAFTED_TILE_SIZE
 	super._ready()
-	# Force painted tiles to render below enemies / obstacles / mission props.
-	if tile_map:
-		tile_map.z_index = -1
 	_resolve_layers()
 	# Always run setup — it assigns the tileset (idempotent if already set) and
 	# applies the 2× layer scale that maps 16 px art to MAP_HANDCRAFTED_TILE_SIZE
@@ -122,6 +160,14 @@ func _resolve_layers() -> void:
 		_water_layer = get_node_or_null("TileMapLayer_Overlay") as TileMapLayer
 		if _water_layer == null:
 			_water_layer = _create_layer("TileMapLayer_Overlay")
+	if _cliff_layer == null:
+		_cliff_layer = get_node_or_null("TileMapLayer_cliff") as TileMapLayer
+		if _cliff_layer == null:
+			_cliff_layer = _create_layer("TileMapLayer_cliff")
+	if _plateau_layer == null:
+		_plateau_layer = get_node_or_null("TileMapLayer_plateau") as TileMapLayer
+		if _plateau_layer == null:
+			_plateau_layer = _create_layer("TileMapLayer_plateau")
 
 func _create_layer(layer_name: String) -> TileMapLayer:
 	var layer := TileMapLayer.new()
@@ -142,6 +188,28 @@ func _setup_tileset() -> void:
 	if _water_layer:
 		_water_layer.tile_set = ts
 		_water_layer.scale = Vector2(2.0, 2.0)
+	if _plateau_layer:
+		_plateau_layer.tile_set = ts
+		_plateau_layer.scale = Vector2(2.0, 2.0)
+	if _cliff_layer:
+		_cliff_layer.tile_set = ts
+		_cliff_layer.scale = Vector2(2.0, 2.0)
+	# Terrain z-band. Ground/grass/water sit at the bottom; the plateau-top grass
+	# draws above them (covering the low grass on raised cells), then the cliff
+	# layer (faces over the low ground they hang over), all below props / enemies
+	# / mission nodes (z = 0).
+	tile_map.z_index = -4
+	if _objects_layer:
+		_objects_layer.z_index = -3
+	if _water_layer:
+		_water_layer.z_index = -2
+	if _plateau_layer:
+		_plateau_layer.z_index = -2
+		# Tint the raised top a richer/darker green so elevation reads at any zoom
+		# (no overlay/shadow — just a distinct grass shade, per user request).
+		_plateau_layer.self_modulate = Color(0.80, 0.88, 0.70)
+	if _cliff_layer:
+		_cliff_layer.z_index = -1
 
 # ---------------------------------------------------------------------------
 # Runtime entry point. Scans whatever tiles the scene already has (including
@@ -151,12 +219,26 @@ func generate(seed_value: int = 0) -> void:
 	_objective_nodes.clear()
 	_enemy_exclusion_radius = 0
 	_resolve_layers()
+	# Seed the backend heightmap first — both the gameplay queries (range/slope)
+	# and the tier quantisation read from it.
+	_init_elevation(seed_value)
 	if regenerate_at_runtime:
 		_setup_tileset()
+		# The hand-painted reference layer (used to author the cliff look) is not
+		# part of procedural output and has no collision — clear it so it doesn't
+		# linger as a fake, walk-through wall over the regenerated terrain.
+		var ref_layer := get_node_or_null("TileMapLayer_reference") as TileMapLayer
+		if ref_layer:
+			ref_layer.clear()
+		_build_tier_grid()       # quantise heightmap → flat tiers (Phase A)
+		_carve_stairs()          # punch reachable staircases through cliffs (Phase B)
 		_generate_terrain(seed_value)
-		_place_props(seed_value)
+		_paint_cliffs()          # cliff faces + steps on the cliff layer (Phase C)
+		if PLACE_PROPS:
+			_place_props(seed_value)
 	_scan_passable_from_tiles()
 	_bake_navigation()
+	_build_cliff_collision()
 	# Custom mission scenes can pre-place their objective nodes (structures /
 	# escort NPC / walls / extraction) directly in the .tscn — see mission_4
 	# and mission_5. _adopt_scene_objectives registers any it finds; the
@@ -223,6 +305,8 @@ func _scan_passable_from_tiles() -> void:
 	for x in map_width:
 		for y in map_height:
 			var cell := Vector2i(x, y)
+			if _cliff_cells.has(cell):
+				continue  # cliff face/shadow = impassable (stairs are walkable, not cliffs)
 			var ground_id := tile_map.get_cell_source_id(cell)
 			if ground_id == -1:
 				continue  # no ground tile = not passable
@@ -235,16 +319,8 @@ func _scan_passable_from_tiles() -> void:
 func _spawn_topography() -> void:
 	pass
 
-# Procedural maps use elevation noise for range/slope modifiers. Handcrafted
-# maps don't have elevation data, so return neutral values.
-func get_range_modifier_at(_world_pos: Vector2) -> float:
-	return 1.0
-
-func get_slope_speed_mult(_world_pos: Vector2, _direction: Vector2) -> float:
-	return 1.0
-
-func get_elevation_at(_world_pos: Vector2) -> float:
-	return 0.0
+# Elevation range/slope queries are inherited from MapGenerator now — generate()
+# seeds the heightmap so bullet range and movement speed respond to terrain.
 
 # Override the parent's is_water_at — water lives on TileMapLayer_Overlay,
 # not on the main ground layer. Any tile present on the water layer counts
@@ -299,6 +375,19 @@ func _generate_terrain(seed_value: int) -> void:
 	water_noise.frequency = 0.012
 	water_noise.fractal_octaves = 2
 
+	# Keep water clear of plateaus: a pond lapping a cliff base (or a staircase
+	# running into it) reads as broken. Mask out everything within a margin of any
+	# raised cell or carved stair.
+	var near_raised: Dictionary = {}
+	const WATER_CLEARANCE := 4
+	for x in map_width:
+		for y in map_height:
+			if _tier_at(Vector2i(x, y)) < 1 and not _stair_cells.has(Vector2i(x, y)):
+				continue
+			for dx in range(-WATER_CLEARANCE, WATER_CLEARANCE + 1):
+				for dy in range(-WATER_CLEARANCE, WATER_CLEARANCE + 1):
+					near_raised[Vector2i(x + dx, y + dy)] = true
+
 	for x in map_width:
 		for y in map_height:
 			var cell := Vector2i(x, y)
@@ -308,10 +397,11 @@ func _generate_terrain(seed_value: int) -> void:
 			var cy := float(y) / map_height
 			var in_spawn := cx > 0.35 and cx < 0.65 and cy > 0.35 and cy < 0.65
 
-			if wv < 0.25 and not in_spawn:
-				_terrain_grid[cell] = "water"
-			elif tv < 0.40:
-				_terrain_grid[cell] = "dirt"
+			if wv < 0.25 and not in_spawn and _tier_grid.get(cell, 0) == 0 \
+					and not near_raised.has(cell):
+				_terrain_grid[cell] = "water"  # water only pools on the low tier
+			elif tv < 0.15:
+				_terrain_grid[cell] = "dirt"   # rare bare-dirt accents; cliffs read against grass
 			else:
 				_terrain_grid[cell] = "grass"
 
@@ -323,8 +413,9 @@ func _generate_terrain(seed_value: int) -> void:
 	_enforce_min_block_size()
 	_enforce_min_block_size()
 
-	if season != Season.WINTER:
-		_generate_paths(effective_seed)
+	# Dirt paths are suppressed on the elevation missions: their tan dirt strips
+	# read like fake cliff edges next to the real plateaus (user feedback). Kept
+	# off entirely here since every regenerated map now carries plateaus.
 
 	var land_cells: Array[Vector2i] = []
 	var grass_cells: Array[Vector2i] = []
@@ -364,6 +455,499 @@ func _generate_terrain(seed_value: int) -> void:
 		var water_terrain: int = SEASON_WATER_TERRAIN[season]
 		_water_layer.set_cells_terrain_connect(
 				water_cells, WATER_TERRAIN_SET, water_terrain, false)
+
+# ===========================================================================
+# DISCRETE ELEVATION TIERS — quantise the heightmap, carve stairs, draw cliffs.
+# ===========================================================================
+func _tier_at(cell: Vector2i) -> int:
+	return int(_tier_grid.get(cell, 0))
+
+# Number of thresholds the elevation exceeds → integer tier (0 = low ground).
+func _tier_for(e: float) -> int:
+	var t := 0
+	for thr in Balance.ELEV_TIER_THRESHOLDS:
+		if e > float(thr):
+			t += 1
+		else:
+			break
+	return t
+
+# Phase A — sample the Perlin heightmap into flat tiers, flatten the spawn band
+# + outer border to low ground, and dissolve plateaus too small to fight on.
+func _build_tier_grid() -> void:
+	_tier_grid.clear()
+	_cliff_cells.clear()
+	if _elevation_noise == null:
+		return
+	for x in map_width:
+		for y in map_height:
+			_tier_grid[Vector2i(x, y)] = 0
+	_stamp_plateaus()           # broad blob plateaus on high ground (not noise contours)
+	_force_flat_zones()
+	_enforce_tier_min_block()   # opening: drop any border-clipped fragments
+	_close_tier_holes(1)        # closing: re-fill the corner clips the opening shaved
+	_force_flat_zones()         # closing may have grown into the border ring — reclear
+
+# Plateaus are 1-2 large, deliberate, clean RECTANGLES (sharp 90° corners): the
+# bottom row is one flat south-facing run → a single continuous wall with clean
+# end caps, the vertical sides carry only the grass lip. Each rectangle is placed
+# fully INSIDE the playfield and clear of the spawn band, so `_force_flat_zones`
+# never clips it (clipping is what leaves thin tier-1 remnants → "floating" walls
+# with no plateau). Candidates come from a jittered grid on non-valley ground.
+func _stamp_plateaus() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _elevation_noise.seed
+	const BORDER := 4
+	const MAX_PLATEAUS := 2
+	const SPACING := 18
+	# Spawn band kept fully clear (slightly larger than _force_flat_zones' 0.40-0.60
+	# box so plateaus never get clipped, while leaving room for large plateaus).
+	var sx0 := 0.38 * map_width
+	var sx1 := 0.62 * map_width
+	var sy0 := 0.38 * map_height
+	var sy1 := 0.62 * map_height
+	var candidates: Array[Vector2i] = []
+	for gx in range(SPACING, map_width - SPACING + 1, SPACING):
+		for gy in range(SPACING, map_height - SPACING + 1, SPACING):
+			var c := Vector2i(gx + rng.randi_range(-5, 5), gy + rng.randi_range(-5, 5))
+			if _elevation_noise.get_noise_2d(float(c.x), float(c.y)) < -0.35:
+				continue  # skip only deep valleys
+			candidates.append(c)
+	# Shuffle deterministically, then greedily take rectangles that fit fully inside
+	# the border, miss the spawn band, and don't crowd an already-placed one. Sizes
+	# are chosen to fit the non-spawn margins so placement is reliable (≥1).
+	for i in range(candidates.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp := candidates[i]; candidates[i] = candidates[j]; candidates[j] = tmp
+	var placed: Array[Rect2i] = []
+	for c in candidates:
+		if placed.size() >= MAX_PLATEAUS:
+			break
+		var rect := _fit_plateau_rect(c, rng, placed, sx0, sx1, sy0, sy1, BORDER)
+		if rect.size.x == 0:
+			continue
+		placed.append(rect)
+		for x in range(rect.position.x, rect.position.x + rect.size.x):
+			for y in range(rect.position.y, rect.position.y + rect.size.y):
+				_tier_grid[Vector2i(x, y)] = 1
+	# Guarantee at least one plateau: if the size/spawn constraints rejected every
+	# candidate, drop the spawn-clearance rule for a single fallback placement.
+	if placed.is_empty() and not candidates.is_empty():
+		for c in candidates:
+			var rect := _fit_plateau_rect(c, rng, placed, sx0, sx1, sy0, sy1, BORDER, true)
+			if rect.size.x == 0:
+				continue
+			for x in range(rect.position.x, rect.position.x + rect.size.x):
+				for y in range(rect.position.y, rect.position.y + rect.size.y):
+					_tier_grid[Vector2i(x, y)] = 1
+			break
+
+# Try to size a plateau rectangle around centre `c` that fits inside the border,
+# misses the spawn band (unless `force`) and doesn't crowd an already-placed one.
+# Returns a zero-size Rect2i if it can't fit.
+func _fit_plateau_rect(c: Vector2i, rng: RandomNumberGenerator, placed: Array[Rect2i],
+		sx0: float, sx1: float, sy0: float, sy1: float, border: int, force: bool = false) -> Rect2i:
+	var rx := rng.randi_range(15, 18)
+	var ry := rng.randi_range(13, 16)
+	var x0 := c.x - rx
+	var x1 := c.x + rx
+	var y0 := c.y - ry
+	var y1 := c.y + ry
+	if x0 < border or x1 >= map_width - border or y0 < border or y1 >= map_height - border:
+		return Rect2i(0, 0, 0, 0)
+	if not force and x1 >= sx0 - 1 and x0 <= sx1 + 1 and y1 >= sy0 - 1 and y0 <= sy1 + 1:
+		return Rect2i(0, 0, 0, 0)
+	var rect := Rect2i(x0, y0, x1 - x0 + 1, y1 - y0 + 1)
+	for p in placed:
+		if rect.grow(4).intersects(p):
+			return Rect2i(0, 0, 0, 0)
+	return rect
+
+# Keep the squad's central spawn and a border ring on low ground: the spawn band
+# so the squad never starts trapped, the border so every cliff blob is interior
+# (clean to outline for navigation later).
+func _force_flat_zones() -> void:
+	const BORDER := 3
+	for x in map_width:
+		for y in map_height:
+			var cx := float(x) / map_width
+			var cy := float(y) / map_height
+			var edge := x < BORDER or x >= map_width - BORDER \
+					or y < BORDER or y >= map_height - BORDER
+			var spawn := cx > 0.40 and cx < 0.60 and cy > 0.40 and cy < 0.60
+			if edge or spawn:
+				_tier_grid[Vector2i(x, y)] = 0
+
+# Morphological opening per tier level: any cell of tier ≥ level not covered by a
+# solid MIN_BLOCK² square of tier ≥ level gets demoted, removing slivers while
+# preserving full-size plateaus.
+func _enforce_tier_min_block() -> void:
+	var m: int = Balance.ELEV_TIER_MIN_BLOCK
+	for level in range(Balance.ELEV_TIER_COUNT - 1, 0, -1):
+		var kept: Dictionary = {}
+		for x in range(0, map_width - m + 1):
+			for y in range(0, map_height - m + 1):
+				var solid := true
+				for dx in m:
+					for dy in m:
+						if _tier_at(Vector2i(x + dx, y + dy)) < level:
+							solid = false
+							break
+					if not solid:
+						break
+				if not solid:
+					continue
+				for dx in m:
+					for dy in m:
+						kept[Vector2i(x + dx, y + dy)] = true
+		for cell in _tier_grid:
+			if _tier_at(cell) >= level and not kept.has(cell):
+				_tier_grid[cell] = level - 1
+
+# Morphological closing per tier level (dilate by `radius`, then erode): fills
+# interior pits and bridges concavities so each plateau becomes a solid blob.
+# Closing is extensive, so this only ever RAISES cells — never carves a plateau.
+func _close_tier_holes(radius: int) -> void:
+	for level in range(Balance.ELEV_TIER_COUNT - 1, 0, -1):
+		var dil: Dictionary = {}
+		for x in map_width:
+			for y in map_height:
+				if _tier_at(Vector2i(x, y)) < level:
+					continue
+				for dx in range(-radius, radius + 1):
+					for dy in range(-radius, radius + 1):
+						dil[Vector2i(x + dx, y + dy)] = true
+		# Erode the dilated set: a cell survives only if its full radius window is
+		# inside the dilation. Original cells are interior, so they always survive.
+		for c in dil:
+			var solid := true
+			for dx in range(-radius, radius + 1):
+				for dy in range(-radius, radius + 1):
+					if not dil.has(c + Vector2i(dx, dy)):
+						solid = false
+						break
+				if not solid:
+					break
+			if solid and c.x >= 0 and c.x < map_width and c.y >= 0 and c.y < map_height:
+				if _tier_at(c) < level:
+					_tier_grid[c] = level
+
+# Phase B — flood-fill same-tier regions and carve one south-facing staircase
+# from each raised region down toward lower ground, so plateaus stay reachable.
+func _carve_stairs() -> void:
+	_stair_cells.clear()
+	if Balance.ELEV_TIER_COUNT <= 1:
+		return
+	for region in _compute_regions():
+		if int(region.tier) >= 1:
+			_carve_one_stair(region)
+
+func _compute_regions() -> Array:
+	var region_of: Dictionary = {}
+	var regions: Array = []
+	const DIRS := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+	for x in map_width:
+		for y in map_height:
+			var start := Vector2i(x, y)
+			if region_of.has(start):
+				continue
+			var t := _tier_at(start)
+			var idx := regions.size()
+			var cells: Array[Vector2i] = []
+			var stack: Array[Vector2i] = [start]
+			region_of[start] = idx
+			while not stack.is_empty():
+				var c: Vector2i = stack.pop_back()
+				cells.append(c)
+				for off in DIRS:
+					var n: Vector2i = c + off
+					if n.x < 0 or n.x >= map_width or n.y < 0 or n.y >= map_height:
+						continue
+					if region_of.has(n) or _tier_at(n) != t:
+						continue
+					region_of[n] = idx
+					stack.append(n)
+			regions.append({"tier": t, "cells": cells})
+	return regions
+
+func _carve_one_stair(region: Dictionary) -> void:
+	var tier_lv: int = int(region.tier)
+	var w: int = Balance.ELEV_STAIR_WIDTH
+	var h: int = Balance.ELEV_CLIFF_FACE_TILES
+	var best := Vector2i(-1, -1)
+	var best_score := -1
+	for c in region.cells:
+		var ok := true
+		for dx in w:
+			var top := Vector2i(c.x + dx, c.y)
+			if _tier_at(top) != tier_lv:
+				ok = false
+				break
+			# face cells below must all be lower, and there must be lower ground
+			# to land on past the face.
+			for d in range(1, h + 1):
+				if _tier_at(Vector2i(c.x + dx, c.y + d)) >= tier_lv:
+					ok = false
+					break
+			if not ok:
+				break
+			var landing := Vector2i(c.x + dx, c.y + h + 1)
+			if landing.y >= map_height or _tier_at(landing) >= tier_lv:
+				ok = false
+				break
+		if not ok:
+			continue
+		# Require a wall column flanking each side so the stair stays interior to the
+		# south face and never spills over the plateau's east/west corner edge.
+		var lf := Vector2i(c.x - 1, c.y)
+		var rf := Vector2i(c.x + w, c.y)
+		var left_walled := _tier_at(lf) == tier_lv and _tier_at(lf + Vector2i(0, 1)) < tier_lv
+		var right_walled := _tier_at(rf) == tier_lv and _tier_at(rf + Vector2i(0, 1)) < tier_lv
+		if not (left_walled and right_walled):
+			continue
+		var score := 1000 - absi(c.x - int(map_width * 0.5))
+		if score > best_score:
+			best_score = score
+			best = c
+	if best.x < 0:
+		return
+	# Stairs cover the plateau edge row (d=0, the top step) down through the wall
+	# rows, so they line up with the cap-on-edge wall and stay walkable top-to-bottom.
+	for dx in w:
+		for d in range(0, h):
+			_stair_cells[Vector2i(best.x + dx, best.y + d)] = true
+
+# Phase C — render raised tiers like the Caraka reference: the plateau TOP is
+# grass with the terrain's own auto-tiled edge lip (so the SIDES/back read as a
+# grass edge), and only the FRONT (south) drop shows the brown wall face. Marks
+# the impassable cliff cells via _compute_cliff_cells.
+func _paint_cliffs() -> void:
+	_compute_cliff_cells()
+	if _cliff_layer == null:
+		return
+	_cliff_layer.clear()
+	if _plateau_layer:
+		_plateau_layer.clear()
+
+	# 1. Raised tiers as an auto-tiled grass blob on the (tinted) plateau layer →
+	#    the perimeter gets the grass-edge lip on every side (the reference's
+	#    "grass edge") and the whole top reads a distinct shade from low ground.
+	var season_set: int = SEASON_TERRAIN_SET[season]
+	var raised: Array[Vector2i] = []
+	for x in map_width:
+		for y in map_height:
+			if _tier_at(Vector2i(x, y)) >= 1:
+				raised.append(Vector2i(x, y))
+	if not raised.is_empty() and _plateau_layer:
+		_plateau_layer.set_cells_terrain_connect(raised, season_set, 0, false)
+
+	# 2. Front wall: cap/face/base block (rows 3/4/5). The CAP sits ON the
+	#    plateau's south-edge row (covering its grass lip → no gap, exactly the
+	#    reference), and face/base drop onto the low cells below. Source (light/
+	#    dark) + end-vs-middle column come from the per-plateau style + run extent.
+	_assign_cliff_styles()
+	var h: int = Balance.ELEV_CLIFF_FACE_TILES
+	for x in map_width:
+		for y in map_height:
+			var t := _tier_at(Vector2i(x, y))
+			if t < 1:
+				continue
+			if _tier_at(Vector2i(x, y + 1)) >= t:
+				continue  # only plateau cells whose SOUTH neighbour drops away
+			var style: Dictionary = _tier1_style.get(Vector2i(x, y), {})
+			var wall_src: int = style.get("wall", WALL_SOURCE)
+			# A run ends where the side neighbour is not itself a south-edge cell →
+			# cap that side with the end column; otherwise cycle a middle variant.
+			var left_end := not (_tier_at(Vector2i(x - 1, y)) == t and _tier_at(Vector2i(x - 1, y + 1)) < t)
+			var right_end := not (_tier_at(Vector2i(x + 1, y)) == t and _tier_at(Vector2i(x + 1, y + 1)) < t)
+			var col: int = WALL_MID_COLS[x % WALL_MID_COLS.size()]
+			if left_end:
+				col = WALL_COL_LEFT
+			elif right_end:
+				col = WALL_COL_RIGHT
+			for d in range(h):
+				var cc := Vector2i(x, y + d)
+				if cc.y >= map_height:
+					break
+				if d > 0 and _tier_at(cc) >= t:
+					break  # ran into equal/higher ground below
+				if _stair_cells.has(cc):
+					continue
+				var row := WALL_ROW_FACE
+				if d == 0:
+					row = WALL_ROW_CAP
+				elif d == h - 1:
+					row = WALL_ROW_BASE
+				_cliff_layer.set_cell(cc, wall_src, Vector2i(col, row))
+	_paint_stairs()
+
+# Give every raised region a consistent style picked from a hash of its anchor
+# cell, so adjacent plateaus tend to differ (light vs dark wall, light vs dark
+# staircase) for variety while staying deterministic per map layout.
+func _assign_cliff_styles() -> void:
+	_tier1_style.clear()
+	var ri := 0
+	for region in _compute_regions():
+		if int(region.tier) < 1:
+			continue
+		# Wall light/dark alternates every region, stair variant every two, so the
+		# pair cycles through all four combinations regardless of plateau count.
+		@warning_ignore("integer_division")
+		var style := {
+			"wall": WALL_SOURCE if (ri % 2 == 0) else WALL_DARK_SOURCE,
+			"stair": STAIR_BASE_COLS[(ri / 2) % STAIR_BASE_COLS.size()],
+		}
+		for c in region.cells:
+			_tier1_style[c] = style
+		ri += 1
+
+# Steps nine-slice, picked by each stair cell's stair-neighbours. The staircase
+# variant (light/dark) comes from the plateau the stair descends from.
+func _paint_stairs() -> void:
+	for cell in _stair_cells:
+		var c: Vector2i = cell
+		# Walk up to the plateau cell this stair column descends from for its style.
+		var top: Vector2i = c
+		while _stair_cells.has(top + Vector2i(0, -1)):
+			top += Vector2i(0, -1)
+		var style: Dictionary = _tier1_style.get(top + Vector2i(0, -1), {})
+		var base_col: int = style.get("stair", STAIR_BASE_COLS[0])
+		# Always the MIDDLE step column (it tiles edge-to-edge). The Steps sheet's
+		# left/right columns carry transparent padding meant for standalone stairs,
+		# which leaves a visible gap against the wall — the reference used col 1 only.
+		var row := STEP_FACE
+		if not _stair_cells.has(c + Vector2i(0, -1)):
+			row = STEP_CAP
+		elif not _stair_cells.has(c + Vector2i(0, 1)):
+			row = STEP_BASE
+		_cliff_layer.set_cell(c, STEPS_SOURCE, Vector2i(base_col + 1, row))
+
+# A cell is a cliff (impassable) if any orthogonal neighbour is higher (the
+# blocking ring), plus the south face is extended CLIFF_FACE_TILES deep so the
+# drop reads as a wall. Stair cells are exempt (they're the walkable way up).
+func _compute_cliff_cells() -> void:
+	_cliff_cells.clear()
+	const DIRS := [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]
+	for x in map_width:
+		for y in map_height:
+			var c := Vector2i(x, y)
+			var t := _tier_at(c)
+			for off in DIRS:
+				if _tier_at(c + off) > t:
+					if not _stair_cells.has(c):
+						_cliff_cells[c] = true
+					break
+	# South wall (cap-on-edge): the cap sits on the plateau's south-edge row and
+	# face/base drop below — all impassable (matches the painted wall + the stair
+	# carving), so the cap row is non-walkable and the only way down is the stairs.
+	var h: int = Balance.ELEV_CLIFF_FACE_TILES
+	for x in map_width:
+		for y in map_height:
+			var t := _tier_at(Vector2i(x, y))
+			if t < 1:
+				continue
+			if _tier_at(Vector2i(x, y + 1)) >= t:
+				continue
+			for d in range(h):
+				var cc := Vector2i(x, y + d)
+				if cc.y >= map_height:
+					break
+				if d > 0 and _tier_at(cc) >= t:
+					break
+				if not _stair_cells.has(cc):
+					_cliff_cells[cc] = true
+
+# ===========================================================================
+# PHASE D — blocking navigation + collision. Cliffs are impassable; the carved
+# stairs (gaps in the cliff set) are the only way between tiers.
+# ===========================================================================
+
+# Greedy-merge a cell set into maximal rectangles so nav obstructions and
+# collision use a handful of shapes instead of one per cell.
+func _merge_cells_to_rects(cells: Dictionary) -> Array[Rect2i]:
+	var covered: Dictionary = {}
+	var rects: Array[Rect2i] = []
+	for y in map_height:
+		for x in map_width:
+			var c := Vector2i(x, y)
+			if not cells.has(c) or covered.has(c):
+				continue
+			var rw := 1
+			while cells.has(Vector2i(x + rw, y)) and not covered.has(Vector2i(x + rw, y)):
+				rw += 1
+			var rh := 1
+			var grow := true
+			while grow:
+				var ny := y + rh
+				if ny >= map_height:
+					break
+				for dx in rw:
+					var cc := Vector2i(x + dx, ny)
+					if not cells.has(cc) or covered.has(cc):
+						grow = false
+						break
+				if grow:
+					rh += 1
+			for dy in rh:
+				for dx in rw:
+					covered[Vector2i(x + dx, y + dy)] = true
+			rects.append(Rect2i(x, y, rw, rh))
+	return rects
+
+# World-space Rect2 spanning a tile-rect (uses the tile_map transform so the 2×
+# layer scale is honoured).
+func _cell_rect_world(r: Rect2i) -> Rect2:
+	var half := Vector2(tile_size, tile_size) * 0.5
+	var tl: Vector2 = tile_map.to_global(tile_map.map_to_local(Vector2i(r.position.x, r.position.y))) - half
+	var br: Vector2 = tile_map.to_global(tile_map.map_to_local(Vector2i(r.position.x + r.size.x - 1, r.position.y + r.size.y - 1))) + half
+	return Rect2(tl, br - tl)
+
+func _rect_outline_local(node: Node2D, world: Rect2) -> PackedVector2Array:
+	var p := world.position
+	var s := world.size
+	return PackedVector2Array([
+		node.to_local(p),
+		node.to_local(p + Vector2(s.x, 0.0)),
+		node.to_local(p + s),
+		node.to_local(p + Vector2(0.0, s.y)),
+	])
+
+# Override the base rectangle bake: when cliffs exist, bake a navmesh over the
+# whole map with the cliff rectangles carved out as obstructions. Agents then
+# path around plateaus and only cross tiers through the stair gaps.
+func _bake_navigation() -> void:
+	if _cliff_cells.is_empty() or nav_region == null:
+		super._bake_navigation()
+		return
+	var src := NavigationMeshSourceGeometryData2D.new()
+	src.add_traversable_outline(_rect_outline_local(nav_region, get_map_rect()))
+	for r in _merge_cells_to_rects(_cliff_cells):
+		src.add_obstruction_outline(_rect_outline_local(nav_region, _cell_rect_world(r)))
+	var np := NavigationPolygon.new()
+	np.agent_radius = 12.0
+	np.cell_size = 4.0
+	NavigationServer2D.bake_from_source_geometry_data(np, src)
+	nav_region.navigation_polygon = np
+
+# One static body whose rectangle shapes cover the cliff cells, so units (and
+# bullets) physically cannot cross a cliff face even past nav avoidance.
+func _build_cliff_collision() -> void:
+	var existing := get_node_or_null("CliffCollision")
+	if existing:
+		existing.free()
+	if _cliff_cells.is_empty():
+		return
+	var body := StaticBody2D.new()
+	body.name = "CliffCollision"
+	add_child(body)
+	for r in _merge_cells_to_rects(_cliff_cells):
+		var wr := _cell_rect_world(r)
+		var col := CollisionShape2D.new()
+		var shape := RectangleShape2D.new()
+		shape.size = wr.size
+		col.shape = shape
+		col.position = to_local(wr.position + wr.size * 0.5)
+		body.add_child(col)
 
 # Cellular automata smoothing: any cell with fewer than 2 same-type 4-neighbors
 # flips to its majority neighbor. Removes 1-cell pinches that auto-tiling
@@ -498,6 +1082,8 @@ func _place_props(seed_value: int) -> void:
 	for cell in _terrain_grid:
 		if _terrain_grid[cell] == "water":
 			continue
+		if _cliff_cells.has(cell):
+			continue  # don't sprout trees/rocks out of a cliff face
 		var cx := float(cell.x) / map_width
 		var cy := float(cell.y) / map_height
 		if cx > 0.35 and cx < 0.65 and cy > 0.35 and cy < 0.65:
