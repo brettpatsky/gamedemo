@@ -25,6 +25,9 @@ var _pan_dragging: bool    = false
 var _drag_start:   Vector2 = Vector2.ZERO
 var _drag_cam_pos: Vector2 = Vector2.ZERO
 var _map_rect:     Rect2   = Rect2(Vector2.ZERO, Vector2(7680.0, 6400.0))
+# When > 0, replaces the auto-computed _get_min_zoom() as the zoom floor.
+# Used by enter_cave_view so the player can zoom out freely inside the cave.
+var _zoom_floor:   float   = -1.0
 
 @onready var squad: Node2D = get_tree().get_first_node_in_group("squad_controller") as Node2D
 
@@ -88,7 +91,8 @@ func _get_min_zoom() -> float:
 	return maxf(maxf(min_x, min_y), zoom_min)
 
 func _smooth_zoom(delta: float) -> void:
-	_target_zoom = maxf(_target_zoom, _get_min_zoom())
+	var min_z := _zoom_floor if _zoom_floor > 0.0 else _get_min_zoom()
+	_target_zoom = maxf(_target_zoom, min_z)
 	var new_z := lerpf(zoom.x, _target_zoom, zoom_speed * delta)
 	zoom = Vector2(new_z, new_z)
 
@@ -104,8 +108,20 @@ func _soft_follow_squad(delta: float) -> void:
 # Restrict the camera to a new rect and smoothly zoom to fit it.
 # Does NOT snap position — the squad follow and clamp bring the view there naturally.
 func lock_to_rect(rect: Rect2) -> void:
-	_map_rect   = rect
+	_map_rect    = rect
+	_zoom_floor  = -1.0   # re-enable auto min-zoom for the world map
 	_target_zoom = _get_min_zoom()
+
+# Use this instead of lock_to_rect when entering the cave.
+# Snaps to zoom=1.0 (full 1280×720 art visible + dark backdrop fills surplus viewport)
+# and lets the player zoom out freely down to zoom_min rather than forcing the
+# min-zoom needed to fill the screen.
+func enter_cave_view(rect: Rect2) -> void:
+	_map_rect    = rect
+	_zoom_floor  = zoom_min   # freely zoomable; no forced fill
+	_target_zoom = 1.0
+	zoom         = Vector2(1.0, 1.0)   # snap immediately while screen is black
+	position     = rect.get_center()
 
 func _clamp_to_map() -> void:
 	var half_vp: Vector2 = get_viewport_rect().size * 0.5 / zoom.x

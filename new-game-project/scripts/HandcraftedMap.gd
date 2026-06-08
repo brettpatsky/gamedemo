@@ -1026,15 +1026,15 @@ func _build_cliff_collision() -> void:
 	# Cliff faces.
 	for r in _merge_cells_to_rects(_cliff_cells):
 		_add_box_collider(body, _cell_rect_world(r))
-	# Map-boundary frame: a thick wall just outside each edge so units (and
-	# bullets) can't be pushed/knocked off the map. The navmesh already keeps
-	# paths inside; this is the physical backstop.
+	# Map-boundary frame: walls inset one tile from each visible edge so units
+	# and their sprites are blocked before reaching the screen boundary.
 	var m := get_map_rect()
-	const T := 64.0
-	_add_box_collider(body, Rect2(m.position.x - T, m.position.y - T, m.size.x + 2.0 * T, T))            # top
-	_add_box_collider(body, Rect2(m.position.x - T, m.position.y + m.size.y, m.size.x + 2.0 * T, T))     # bottom
-	_add_box_collider(body, Rect2(m.position.x - T, m.position.y - T, T, m.size.y + 2.0 * T))            # left
-	_add_box_collider(body, Rect2(m.position.x + m.size.x, m.position.y - T, T, m.size.y + 2.0 * T))     # right
+	const T := 64.0             # wall thickness (extends outward past the map edge)
+	var ts := float(tile_size)  # one tile = inward inset so sprites stay on screen
+	_add_box_collider(body, Rect2(m.position.x - T, m.position.y - T,       m.size.x + 2.0 * T, T + ts))  # top
+	_add_box_collider(body, Rect2(m.position.x - T, m.position.y + m.size.y - ts, m.size.x + 2.0 * T, T + ts))  # bottom
+	_add_box_collider(body, Rect2(m.position.x - T, m.position.y - T,       T + ts, m.size.y + 2.0 * T))  # left
+	_add_box_collider(body, Rect2(m.position.x + m.size.x - ts, m.position.y - T, T + ts, m.size.y + 2.0 * T))  # right
 
 func _add_box_collider(body: StaticBody2D, wr: Rect2) -> void:
 	var col := CollisionShape2D.new()
@@ -1311,10 +1311,13 @@ func _place_props(seed_value: int) -> void:
 				near_stair[sc + Vector2i(dx, dy)] = true
 
 	const TREE_SCALE := Vector2(2.6, 2.6)
+	const EDGE := 2   # tile margin — keeps prop sprites from clipping off screen
 	for cell in _terrain_grid:
 		var ttype: String = _terrain_grid[cell]
 		if ttype == "water" or ttype == "path":
 			continue  # keep water + the dirt paths between forests clear
+		if cell.x < EDGE or cell.x >= map_width - EDGE or cell.y < EDGE or cell.y >= map_height - EDGE:
+			continue  # too close to the visible boundary
 		if _cliff_cells.has(cell) or _tier_at(cell) >= 1:
 			continue  # no props on cliffs / plateau tops
 		if near_stair.has(cell):

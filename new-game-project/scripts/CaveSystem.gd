@@ -160,7 +160,9 @@ func _build_cave_area(child_slot: int) -> void:
 		left.append(p - Vector2(PATH_HALF, 0))
 		right.append(p + Vector2(PATH_HALF, 0))
 
-	_cave_spawn = cl[0].lerp(cl[1], 0.5)              # up the path, clear of the exit
+	# Spawn 80% of the way from entrance to waypoint-1 so the southernmost
+	# soldier (~56 px south of spawn) lands well clear of the 34-px exit trigger.
+	_cave_spawn = cl[0].lerp(cl[1], 0.8)
 
 	var root := Node2D.new()
 	root.name = "CaveArea"
@@ -258,9 +260,13 @@ func _transition(into_cave: bool) -> void:
 
 	var cam := get_tree().get_first_node_in_group("main_camera") as Camera2D
 	if cam:
-		cam.position = dest_centre
-		if cam.has_method("lock_to_rect"):
-			cam.lock_to_rect(rect)
+		if into_cave and cam.has_method("enter_cave_view"):
+			# Snaps to zoom=1.0 and centers on the full cave art.
+			cam.enter_cave_view(rect)
+		else:
+			cam.position = dest_centre
+			if cam.has_method("lock_to_rect"):
+				cam.lock_to_rect(rect)
 
 	var tw2 := create_tween()
 	tw2.tween_property(_fade, "color:a", 0.0, 0.28)
