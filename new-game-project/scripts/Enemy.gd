@@ -122,6 +122,20 @@ func _ready() -> void:
 	# Soldiers are on collision layer 2; detection area must include it.
 	detection.set_collision_mask_value(2, true)
 
+	# Mirror the soldier nav setup so enemies route around dense trees/rocks via
+	# RVO avoidance instead of grinding straight through the prop collision.
+	# Dummies are in the flat tutorial map and don't need avoidance.
+	if not dummy_mode:
+		nav_agent.path_desired_distance  = 4.0
+		nav_agent.target_desired_distance = 12.0
+		nav_agent.radius             = 18.0
+		nav_agent.avoidance_enabled  = true
+		nav_agent.neighbor_distance  = 80.0   # cheaper than soldiers (fewer active agents nearby)
+		nav_agent.max_neighbors      = 5
+		nav_agent.max_speed          = move_speed
+		if not nav_agent.velocity_computed.is_connected(_on_safe_velocity):
+			nav_agent.velocity_computed.connect(_on_safe_velocity)
+
 	await get_tree().physics_frame
 	_set_new_patrol_dest()
 
@@ -316,9 +330,22 @@ func _move_toward_nav_target() -> void:
 		return
 	var next: Vector2 = nav_agent.get_next_path_position()
 	var dir:  Vector2 = (next - global_position).normalized()
-	velocity = dir * move_speed * _water_speed_mult() * _slope_speed_mult(dir)
-	move_and_slide()
+	var desired := dir * move_speed * _water_speed_mult() * _slope_speed_mult(dir)
+	if nav_agent.avoidance_enabled:
+		nav_agent.max_speed = move_speed
+		nav_agent.set_velocity(desired)
+	else:
+		velocity = desired
+		move_and_slide()
 	_play_walk_anim(dir)
+
+# RVO callback — mirrors Soldier._on_safe_velocity. Guards ATTACK and DEAD so a
+# stale patrol/alert velocity can't clobber strafing or corpse drift.
+func _on_safe_velocity(safe_velocity: Vector2) -> void:
+	if _state == State.ATTACK or _state == State.DEAD:
+		return
+	velocity = safe_velocity
+	move_and_slide()
 
 func _play_walk_anim(direction: Vector2) -> void:
 	if abs(direction.y) > abs(direction.x):
