@@ -56,10 +56,11 @@ func refresh_map_bounds() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
+		var effective_min := _zoom_floor if _zoom_floor > 0.0 else _get_min_zoom()
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-			_target_zoom = clamp(_target_zoom + zoom_step, _get_min_zoom(), zoom_max)
+			_target_zoom = clamp(_target_zoom + zoom_step, effective_min, zoom_max)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-			_target_zoom = clamp(_target_zoom - zoom_step, _get_min_zoom(), zoom_max)
+			_target_zoom = clamp(_target_zoom - zoom_step, effective_min, zoom_max)
 		elif event.button_index == MOUSE_BUTTON_MIDDLE:
 			_pan_dragging  = event.pressed
 			_drag_start    = event.position
@@ -116,6 +117,13 @@ func lock_to_rect(rect: Rect2) -> void:
 # Snaps to zoom=1.0 (full 1280×720 art visible + dark backdrop fills surplus viewport)
 # and lets the player zoom out freely down to zoom_min rather than forcing the
 # min-zoom needed to fill the screen.
+# For tall narrow maps (tutorial) where viewport width would force min-zoom
+# above zoom_min and prevent zooming out to navigate vertically.
+func allow_free_zoom() -> void:
+	_zoom_floor  = zoom_min
+	_target_zoom = zoom_min
+	zoom         = Vector2(zoom_min, zoom_min)
+
 func enter_cave_view(rect: Rect2) -> void:
 	_map_rect    = rect
 	_zoom_floor  = zoom_min   # freely zoomable; no forced fill
@@ -125,5 +133,13 @@ func enter_cave_view(rect: Rect2) -> void:
 
 func _clamp_to_map() -> void:
 	var half_vp: Vector2 = get_viewport_rect().size * 0.5 / zoom.x
-	position.x = clamp(position.x, _map_rect.position.x + half_vp.x, _map_rect.end.x - half_vp.x)
-	position.y = clamp(position.y, _map_rect.position.y + half_vp.y, _map_rect.end.y - half_vp.y)
+	# When the map is narrower/shorter than the viewport at the current zoom,
+	# centre on that axis rather than clamping (avoids min > max inversion).
+	if half_vp.x >= _map_rect.size.x * 0.5:
+		position.x = _map_rect.get_center().x
+	else:
+		position.x = clamp(position.x, _map_rect.position.x + half_vp.x, _map_rect.end.x - half_vp.x)
+	if half_vp.y >= _map_rect.size.y * 0.5:
+		position.y = _map_rect.get_center().y
+	else:
+		position.y = clamp(position.y, _map_rect.position.y + half_vp.y, _map_rect.end.y - half_vp.y)

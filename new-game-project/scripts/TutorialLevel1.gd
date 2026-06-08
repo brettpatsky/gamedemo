@@ -1,17 +1,18 @@
 # =============================================================================
 # TutorialLevel1.gd
-# Hand-authored Level 1 — six puzzles laid out in a linear corridor, each
+# Hand-authored Level 1 — six puzzles laid out in a vertical corridor, each
 # teaching one core control. After Puzzle 6 the squad reaches the final
 # room with Kid 1's parent cage + the School Photo artifact.
 #
-# Layout (rooms left to right):
+# Layout (rooms bottom to top):
 #   R0  Combat        — kill the three enemies in the doorway
 #   R1  Grenade Wall  — staff/wand bounces; throwables break it
 #   R2  Ritual Circle — Pentagram formation; 5 kids on 5 circles
 #   R3  Pressure Plates — split into 3 groups, one kid per plate
 #   R4  Identity Gate — only Kid 1 may stand on the marked tile
-#   R5  Blood Ward    — only Sacrifice does enough damage
-#   R6  Final Room    — parent cage + memory fragment
+#   R5  Elements      — fire / ice / lightning braziers
+#   R6  Blood Ward    — only Sacrifice does enough damage
+#   R7  Final Room    — parent cage + memory fragment
 #
 # Acts as a drop-in replacement for MapGenerator on Level 1; Main.gd swaps
 # it in the same way it does for the maze and boss levels.
@@ -22,24 +23,22 @@ const _ROCK_SCENE:            PackedScene = preload("res://scenes/mazes/maze_roc
 const _PARENT_CAGE_SCENE:     PackedScene = preload("res://scenes/parent_cage.tscn")
 const _MEMORY_FRAGMENT_SCENE: PackedScene = preload("res://scenes/memory_fragment.tscn")
 
-const TILE             := 64
-const ROOM_W_TILES     := 10
-const ROOM_H_TILES     := 12
-const NUM_ROOMS        := 8    # 7 puzzles + final room
-const WALL_THICKNESS   := 1
-const DOORWAY_ROW_TOP  := 4    # interior row indices (0..ROOM_H_TILES-1)
-const DOORWAY_ROW_BOT  := 7    # 4-tile gap so a 1×6 vertical line streams through
+const TILE              := 64
+const ROOM_W_TILES      := 22
+const ROOM_H_TILES      := 12
+const NUM_ROOMS         := 8    # 7 puzzles + final room
+const WALL_THICKNESS    := 1
+const DOORWAY_COL_LEFT  := 9   # interior col indices (0..ROOM_W_TILES-1)
+const DOORWAY_COL_RIGHT := 12  # 4-tile gap centred in the 22-tile room width
 
 # Pre-computed half-tile counts so per-room positioning uses tidy int math.
-# Bit-shift instead of `/ 2` so the compiler doesn't re-fire the
-# integer-division warning at every use site after inlining the constant.
-const ROOM_HALF_W_TILES := ROOM_W_TILES >> 1
-const ROOM_HALF_H_TILES := ROOM_H_TILES >> 1
+const ROOM_HALF_W_TILES := ROOM_W_TILES >> 1   # 11
+const ROOM_HALF_H_TILES := ROOM_H_TILES >> 1   # 6
 
-const MAP_W_TILES := NUM_ROOMS * (ROOM_W_TILES + WALL_THICKNESS) + WALL_THICKNESS
-const MAP_H_TILES := ROOM_H_TILES + WALL_THICKNESS * 2
-const MAP_W       := MAP_W_TILES * TILE
-const MAP_H       := MAP_H_TILES * TILE
+const MAP_W_TILES := ROOM_W_TILES + WALL_THICKNESS * 2                              # 24
+const MAP_H_TILES := NUM_ROOMS * (ROOM_H_TILES + WALL_THICKNESS) + WALL_THICKNESS   # 105
+const MAP_W       := MAP_W_TILES * TILE   # 1536
+const MAP_H       := MAP_H_TILES * TILE   # 6720
 
 @onready var background: ColorRect          = $Background
 @onready var nav_region: NavigationRegion2D = $NavigationRegion2D
@@ -108,12 +107,12 @@ func get_slope_speed_mult(_world_pos: Vector2, _direction: Vector2) -> float:
 	return 1.0
 
 func get_spawn_positions(count: int) -> Array[Vector2]:
-	# Spawn the squad in Room 0 in the default 3×2 formation so SquadController's
-	# snap_to_formation() doesn't have to move them far afterwards.
+	# Squad spawns in Room 0 (bottom) slightly south of centre, facing the
+	# enemies that block the doorway at the north wall.
 	var room_centre := _room_centre(0)
 	var formation := [
-		Vector2(-80, -40), Vector2(0, -40), Vector2(80, -40),
-		Vector2(-80,  40), Vector2(0,  40), Vector2(80,  40),
+		Vector2(-80,  20), Vector2(0,  20), Vector2(80,  20),
+		Vector2(-80,  80), Vector2(0,  80), Vector2(80,  80),
 	]
 	var out: Array[Vector2] = []
 	for i in count:
@@ -151,20 +150,19 @@ func _build_walls() -> void:
 	for y in MAP_H_TILES:
 		_place_wall(0, y)
 		_place_wall(MAP_W_TILES - 1, y)
-	# Inner dividers — vertical walls between each adjacent pair of rooms,
-	# with a wide doorway in the middle (DOORWAY_ROW_TOP..DOORWAY_ROW_BOT
-	# inclusive — 4 tiles wide so a 1×6 vertical line can pass).
+	# Inner horizontal dividers between each adjacent pair of rooms, with a
+	# centred doorway (DOORWAY_COL_LEFT..DOORWAY_COL_RIGHT, 4 tiles wide).
 	for r in NUM_ROOMS - 1:
-		var divider_x: int = 1 + (r + 1) * (ROOM_W_TILES + 1) - 1
-		for y in MAP_H_TILES:
-			var interior_y: int = y - 1
-			if interior_y >= DOORWAY_ROW_TOP and interior_y <= DOORWAY_ROW_BOT:
+		var divider_y: int = _room_top_y(r) - 1
+		for x in MAP_W_TILES:
+			var interior_x: int = x - 1
+			if interior_x >= DOORWAY_COL_LEFT and interior_x <= DOORWAY_COL_RIGHT:
 				continue
-			_place_wall(divider_x, y)
+			_place_wall(x, divider_y)
 
 func _place_wall(tile_x: int, tile_y: int) -> void:
 	# Dedup: perimeter and divider loops both want to occupy corners and the
-	# y=0 / y=MAP_H_TILES-1 ends of every divider column. Two walls at the
+	# x=0 / x=MAP_W_TILES-1 ends of every divider row. Two walls at the
 	# same position would write coincident nav outlines, which fails the
 	# convex partition and breaks navigation entirely.
 	var key := Vector2i(tile_x, tile_y)
@@ -178,34 +176,39 @@ func _place_wall(tile_x: int, tile_y: int) -> void:
 	)
 	add_child(rock)
 
+# Returns the tile-row (y) of the top-left interior corner of a room.
+# Room 0 is at the bottom, room NUM_ROOMS-1 is at the top.
+func _room_top_y(room_index: int) -> int:
+	return 1 + (NUM_ROOMS - 1 - room_index) * (ROOM_H_TILES + WALL_THICKNESS)
+
 # Returns the world-space centre of a room (interior).
 func _room_centre(room_index: int) -> Vector2:
-	var col_start: int = 1 + room_index * (ROOM_W_TILES + 1)
-	var col_centre: float = float(col_start) + ROOM_W_TILES * 0.5
-	var row_centre: float = 1.0 + ROOM_H_TILES * 0.5
+	var row_top := _room_top_y(room_index)
+	var row_centre: float = float(row_top) + ROOM_H_TILES * 0.5
+	var col_centre: float = 1.0 + ROOM_W_TILES * 0.5
 	return Vector2(col_centre * TILE, row_centre * TILE)
 
 # Returns the world-space position of (dx, dy) tiles offset from the top-left
 # interior corner of the given room.
 func _room_position(room_index: int, dx_tiles: int, dy_tiles: int) -> Vector2:
-	var col_start: int = 1 + room_index * (ROOM_W_TILES + 1)
+	var row_start := _room_top_y(room_index)
 	return Vector2(
-		(col_start + dx_tiles) * TILE + TILE * 0.5,
-		(1 + dy_tiles) * TILE + TILE * 0.5,
+		(1 + dx_tiles) * TILE + TILE * 0.5,
+		(row_start + dy_tiles) * TILE + TILE * 0.5,
 	)
 
-# Returns the world-space centre of the doorway between room_index and
-# room_index + 1 — where the puzzle gate sits.
+# Returns the world-space centre of the horizontal doorway between room_index
+# and room_index + 1 (one room higher) — where the puzzle gate sits.
 func _doorway_position(room_index: int) -> Vector2:
-	var divider_x: int = 1 + (room_index + 1) * (ROOM_W_TILES + 1) - 1
-	var centre_y_tiles: float = 1.0 + (DOORWAY_ROW_TOP + DOORWAY_ROW_BOT + 1) * 0.5
-	return Vector2(divider_x * TILE + TILE * 0.5, centre_y_tiles * TILE)
+	var divider_y: int = _room_top_y(room_index) - 1
+	var centre_x: float = (1.0 + float(DOORWAY_COL_LEFT + DOORWAY_COL_RIGHT) * 0.5) * TILE
+	return Vector2(centre_x, divider_y * TILE + TILE * 0.5)
 
 func _spawn_gate(room_index: int) -> PuzzleGate:
 	var gate := PuzzleGate.new()
-	gate.width  = float(TILE)
-	# Gate spans the full doorway so the squad can't slip past unsolved puzzles.
-	gate.height = float(TILE * (DOORWAY_ROW_BOT - DOORWAY_ROW_TOP + 1))
+	# Gate spans the full 4-tile doorway width and one tile tall.
+	gate.width  = float(TILE * (DOORWAY_COL_RIGHT - DOORWAY_COL_LEFT + 1))
+	gate.height = float(TILE)
 	gate.position = _doorway_position(room_index)
 	add_child(gate)
 	return gate
@@ -223,7 +226,7 @@ func _build_rooms() -> void:
 	_build_room_sacrifice()
 	_build_room_final()
 
-# Room 0 — three enemies block the door. Movement + fire tutorial.
+# Room 0 — three enemies block the passage north. Movement + fire tutorial.
 func _build_room_combat() -> void:
 	_add_sign(_room_position(0, 1, 0),
 			"1.  COMBAT\nLeft-click to move\nRight-click (held) to fire")
@@ -231,9 +234,9 @@ func _build_room_combat() -> void:
 	if enemy_scene == null:
 		return
 	var positions := [
-		_room_position(0, ROOM_W_TILES - 2, 2),
-		_room_position(0, ROOM_W_TILES - 2, ROOM_H_TILES - 3),
-		_room_position(0, ROOM_W_TILES - 2, ROOM_HALF_H_TILES),
+		_room_position(0, 4, 2),
+		_room_position(0, ROOM_HALF_W_TILES, 2),
+		_room_position(0, ROOM_W_TILES - 5, 2),
 	]
 	for pos in positions:
 		var enemy: Node2D = enemy_scene.instantiate()
@@ -358,10 +361,9 @@ func _build_room_elements() -> void:
 	_add_sign(_room_position(5, 1, 0),
 			"6.  ELEMENTS\nEach kid fires Fire / Ice / Lightning\nLight every brazier with the matching element")
 	_elements_gate = _spawn_gate(5)
-	# Spread three braziers across the room so the player can shoot them
-	# from different angles without one shot hitting two at once.
+	# Spread three braziers across the room width.
 	var elems: Array[int] = [Elements.E.FIRE, Elements.E.ICE, Elements.E.LIGHTNING]
-	var col_offsets: Array[int] = [2, 5, 8]
+	var col_offsets: Array[int] = [4, ROOM_HALF_W_TILES, ROOM_W_TILES - 5]
 	for i in 3:
 		var brazier := ElementBrazier.new()
 		brazier.required_element = elems[i]
