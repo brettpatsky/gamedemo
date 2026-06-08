@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bmuxggdc51b5t"
-path="res://.godot/imported/_terrain_wide.png-e00db382c2c495de095c420b125cc323.ctex"
+uid="uid://d2rw5yf7iv6dm"
+path="res://.godot/imported/cave_garden.png-e585ff7d9fb45ad90b5f2b20c2a43916.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://_terrain_wide.png"
-dest_files=["res://.godot/imported/_terrain_wide.png-e00db382c2c495de095c420b125cc323.ctex"]
+source_file="res://resources/caves/cave_garden.png"
+dest_files=["res://.godot/imported/cave_garden.png-e585ff7d9fb45ad90b5f2b20c2a43916.ctex"]
 
 [params]
 

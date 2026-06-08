@@ -29,6 +29,8 @@ enum Season { SPRING, SUMMER, FALL, WINTER }
 @export var season: Season = Season.SUMMER
 @warning_ignore("unused_private_class_variable")
 @export_tool_button("Generate Caraka Map", "Reload") var _caraka_btn: Callable = _editor_generate_caraka
+@warning_ignore("unused_private_class_variable")
+@export_tool_button("Set Up Blank Layers", "Add") var _setup_btn: Callable = _editor_setup_layers
 
 # When true, generate() clears the saved tiles and regenerates fresh Caraka
 # terrain at runtime. Set by Main.gd based on the title-screen "Map: Auto"
@@ -99,6 +101,19 @@ const BUSH_REGIONS := {
 var _terrain_grid: Dictionary = {}
 var _objects_layer: TileMapLayer
 var _water_layer: TileMapLayer
+# Cells holding a prop with collision (trees / rocks). Baked into the navmesh as
+# obstructions so units path AROUND forests instead of wedging on trunks, and
+# excluded from the passable set so spawns/objectives never land on a prop.
+var _prop_cells: Dictionary = {}
+
+# Hidden cave (parent rescue) — entrance set into a plateau wall, parent hidden
+# in an off-playfield fairy garden. Built by the parent/fragment spawner.
+const CAVE_SYSTEM_SCRIPT := preload("res://scripts/CaveSystem.gd")
+var _cave_system: Node2D
+# Cave path-corridor outline(s) in nav_region-local space, folded into the map's
+# own navmesh bake so the squad can path inside the cave (a separate region on a
+# second nav map didn't drive the agents reliably).
+var _cave_nav_outlines: Array[PackedVector2Array] = []
 
 # --- Discrete elevation tiers (Zelda-style cliffs) -------------------------
 # _tier_grid: per-cell integer height tier (0 = low ground).
@@ -239,6 +254,13 @@ func generate(seed_value: int = 0) -> void:
 		_paint_cliffs()          # cliff faces + steps on the cliff layer (Phase C)
 		if PLACE_PROPS:
 			_place_props(seed_value)
+	else:
+		# Hand-painted ("Custom") map: derive the blocking from whatever the user
+		# painted on TileMapLayer_cliff so cliffs/stairs/props still work without a
+		# procedural pass. Everything below (passable scan, nav bake, collision +
+		# map boundary) is shared with the Auto path.
+		_setup_tileset()
+		_derive_from_painted_tiles()
 	_scan_passable_from_tiles()
 	_bake_navigation()
 	_build_cliff_collision()
@@ -258,6 +280,28 @@ func generate(seed_value: int = 0) -> void:
 	if lv == 2 or lv == 4 or lv == 5:
 		_spawn_mission_parent_and_fragment()
 	_spawn_enemies()
+
+# Hand-painted ("Custom") maps: read blocking straight off the painted layers so
+# the same nav/collision/boundary pipeline works without a procedural pass.
+# WYSIWYG — a painted dirt-wall tile blocks, a painted Steps tile is a walkable
+# gap, and the raised-grass layer marks the high tier (for the range bonus).
+# Paint walls around a plateau (leaving Steps gaps) to enclose it.
+func _derive_from_painted_tiles() -> void:
+	_tier_grid.clear()
+	_cliff_cells.clear()
+	_stair_cells.clear()
+	_prop_cells.clear()
+	if _plateau_layer:
+		for cell in _plateau_layer.get_used_cells():
+			_tier_grid[cell] = 1
+	if _cliff_layer == null:
+		return
+	for cell in _cliff_layer.get_used_cells():
+		var sid := _cliff_layer.get_cell_source_id(cell)
+		if sid == WALL_SOURCE or sid == WALL_DARK_SOURCE:
+			_cliff_cells[cell] = true
+		elif sid == STEPS_SOURCE:
+			_stair_cells[cell] = true
 
 # Picks up objective nodes that the .tscn placed by hand (instead of relying
 # on the procedural spawners). Detection is by group membership filtered to
@@ -310,6 +354,8 @@ func _scan_passable_from_tiles() -> void:
 			var cell := Vector2i(x, y)
 			if _cliff_cells.has(cell):
 				continue  # cliff face/shadow = impassable (stairs are walkable, not cliffs)
+			if _prop_cells.has(cell):
+				continue  # tree/rock collision = not passable (no spawns/objectives here)
 			var ground_id := tile_map.get_cell_source_id(cell)
 			if ground_id == -1:
 				continue  # no ground tile = not passable
@@ -942,19 +988,28 @@ func _rect_outline_local(node: Node2D, world: Rect2) -> PackedVector2Array:
 		node.to_local(p + Vector2(0.0, s.y)),
 	])
 
-# Override the base rectangle bake: when cliffs exist, bake a navmesh over the
-# whole map with the cliff rectangles carved out as obstructions. Agents then
-# path around plateaus and only cross tiers through the stair gaps.
+# Override the base rectangle bake: bake a navmesh over the whole map with the
+# cliff faces AND collidable props (trees/rocks) carved out as obstructions, so
+# agents path around plateaus + forests (through the clearings/paths) and only
+# cross tiers through the stair gaps — instead of wedging on a trunk every step.
 func _bake_navigation() -> void:
-	if _cliff_cells.is_empty() or nav_region == null:
+	if (_cliff_cells.is_empty() and _prop_cells.is_empty() and _cave_nav_outlines.is_empty()) or nav_region == null:
 		super._bake_navigation()
 		return
+	var obstacles: Dictionary = {}
+	for c in _cliff_cells:
+		obstacles[c] = true
+	for c in _prop_cells:
+		obstacles[c] = true
 	var src := NavigationMeshSourceGeometryData2D.new()
 	src.add_traversable_outline(_rect_outline_local(nav_region, get_map_rect()))
-	for r in _merge_cells_to_rects(_cliff_cells):
+	for r in _merge_cells_to_rects(obstacles):
 		src.add_obstruction_outline(_rect_outline_local(nav_region, _cell_rect_world(r)))
+	# Cave path corridor — a disjoint walkable island far off the playfield.
+	for outline in _cave_nav_outlines:
+		src.add_traversable_outline(outline)
 	var np := NavigationPolygon.new()
-	np.agent_radius = 12.0
+	np.agent_radius = 10.0
 	np.cell_size = 4.0
 	NavigationServer2D.bake_from_source_geometry_data(np, src)
 	nav_region.navigation_polygon = np
@@ -965,19 +1020,140 @@ func _build_cliff_collision() -> void:
 	var existing := get_node_or_null("CliffCollision")
 	if existing:
 		existing.free()
-	if _cliff_cells.is_empty():
-		return
 	var body := StaticBody2D.new()
 	body.name = "CliffCollision"
 	add_child(body)
+	# Cliff faces.
 	for r in _merge_cells_to_rects(_cliff_cells):
-		var wr := _cell_rect_world(r)
-		var col := CollisionShape2D.new()
-		var shape := RectangleShape2D.new()
-		shape.size = wr.size
-		col.shape = shape
-		col.position = to_local(wr.position + wr.size * 0.5)
-		body.add_child(col)
+		_add_box_collider(body, _cell_rect_world(r))
+	# Map-boundary frame: a thick wall just outside each edge so units (and
+	# bullets) can't be pushed/knocked off the map. The navmesh already keeps
+	# paths inside; this is the physical backstop.
+	var m := get_map_rect()
+	const T := 64.0
+	_add_box_collider(body, Rect2(m.position.x - T, m.position.y - T, m.size.x + 2.0 * T, T))            # top
+	_add_box_collider(body, Rect2(m.position.x - T, m.position.y + m.size.y, m.size.x + 2.0 * T, T))     # bottom
+	_add_box_collider(body, Rect2(m.position.x - T, m.position.y - T, T, m.size.y + 2.0 * T))            # left
+	_add_box_collider(body, Rect2(m.position.x + m.size.x, m.position.y - T, T, m.size.y + 2.0 * T))     # right
+
+func _add_box_collider(body: StaticBody2D, wr: Rect2) -> void:
+	var col := CollisionShape2D.new()
+	var shape := RectangleShape2D.new()
+	shape.size = wr.size
+	col.shape = shape
+	col.position = to_local(wr.position + wr.size * 0.5)
+	body.add_child(col)
+
+# ===========================================================================
+# HIDDEN CAVE — the level's captured parent is hidden in an underground fairy
+# garden reached through a cave mouth in a plateau wall (see CaveSystem.gd),
+# instead of the cage being dropped at a random world cell.
+# ===========================================================================
+func _spawn_mission_parent_and_fragment() -> void:
+	var foot := _pick_cave_entrance_foot()
+	if foot.x < 0:
+		super._spawn_mission_parent_and_fragment()   # no plateau to host a cave → fall back
+		return
+	var level: int = GameManager.current_level
+	# Clear trees/rocks around the entrance so it stays approachable (and isn't
+	# accidentally walked into while pathing around a prop).
+	for dx in range(-3, 4):
+		for dy in range(-4, 4):
+			var c := foot + Vector2i(dx, dy)
+			if _prop_cells.erase(c):
+				var pn := get_node_or_null("Prop_%d_%d" % [c.x, c.y])
+				if pn:
+					pn.queue_free()
+	var cave := Node2D.new()
+	cave.set_script(CAVE_SYSTEM_SCRIPT)
+	add_child(cave)
+	cave.setup(_tile_to_world(foot), level - 1, get_map_rect())
+	_cave_system = cave
+	if cave.parent_cage:
+		_objective_nodes["parent_cage"] = cave.parent_cage
+	# Fold the cave's path corridor into the map navmesh + re-bake so the squad can
+	# actually walk it (a standalone cave nav region didn't drive the agents).
+	if nav_region and cave.nav_outline_world.size() >= 3:
+		var local := PackedVector2Array()
+		for p: Vector2 in cave.nav_outline_world:
+			local.append(nav_region.to_local(p))
+		_cave_nav_outlines = [local]
+		_bake_navigation()
+	_spawn_world_fragment(level, foot)
+
+# The memory fragment still drops in the open world (the cave holds only the
+# parent), on a passable outer cell as far as possible from the cave entrance.
+func _spawn_world_fragment(level: int, avoid: Vector2i) -> void:
+	var fragment_id: String = FragmentEffects.get_mission_fragment_id(level)
+	if fragment_id == "":
+		return
+	var frag_scene: PackedScene = load("res://scenes/memory_fragment.tscn")
+	if frag_scene == null:
+		return
+	var outer := _passable_cells.filter(func(c: Vector2i) -> bool:
+		if c.x < 3 or c.x > map_width - 4 or c.y < 3 or c.y > map_height - 4:
+			return false
+		var cx := float(c.x) / float(map_width)
+		var cy := float(c.y) / float(map_height)
+		return cx < 0.22 or cx > 0.78 or cy < 0.22 or cy > 0.78
+	)
+	if outer.is_empty():
+		return
+	var best: Vector2i = outer[0]
+	var best_d := 0
+	for c in outer:
+		var diff: Vector2i = c - avoid
+		var d: int = diff.x * diff.x + diff.y * diff.y
+		if d > best_d:
+			best_d = d
+			best = c
+	var frag: Node2D = frag_scene.instantiate()
+	frag.position = _tile_to_world(best)
+	if "fragment_id" in frag:
+		frag.set("fragment_id", fragment_id)
+	if "display_name" in frag:
+		frag.set("display_name", FragmentEffects.get_display_name(fragment_id))
+	add_child(frag)
+	_objective_nodes["memory_fragment"] = frag
+
+# Foot = the walkable low-ground cell just below a plateau's south wall, near the
+# centre of the largest plateau and clear of stairs/props — where the cave mouth
+# sits. Returns (-1,-1) if there's no usable plateau wall.
+func _pick_cave_entrance_foot() -> Vector2i:
+	var best_region: Dictionary = {}
+	var best_size := 0
+	for region in _compute_regions():
+		if int(region.tier) >= 1 and region.cells.size() > best_size:
+			best_size = region.cells.size()
+			best_region = region
+	if best_region.is_empty():
+		return Vector2i(-1, -1)
+	var tier_lv := int(best_region.tier)
+	var h: int = Balance.ELEV_CLIFF_FACE_TILES
+	var sum_x := 0
+	for c in best_region.cells:
+		sum_x += c.x
+	var cx: int = int(round(float(sum_x) / float(best_region.cells.size())))
+	var best := Vector2i(-1, -1)
+	var best_d := 1 << 30
+	for c in best_region.cells:
+		if _tier_at(Vector2i(c.x, c.y + 1)) >= tier_lv:
+			continue   # not a south-edge cell
+		var foot := Vector2i(c.x, c.y + h)
+		if foot.y >= map_height or _cliff_cells.has(foot) or _prop_cells.has(foot):
+			continue
+		var near_stair := false
+		for sc in _stair_cells:
+			if absi(sc.x - c.x) < 4 and absi(sc.y - c.y) < 6:
+				near_stair = true
+				break
+		if near_stair:
+			continue
+		var d: int = absi(c.x - cx)
+		if d < best_d:
+			best_d = d
+			best = foot
+	return best
 
 # Cellular automata smoothing: any cell with fewer than 2 same-type 4-neighbors
 # flips to its majority neighbor. Removes 1-cell pinches that auto-tiling
@@ -1114,6 +1290,7 @@ func _place_props(seed_value: int) -> void:
 	var bush_regs: Array = BUSH_REGIONS.get(season, BUSH_REGIONS[Season.SPRING])
 	var scene_owner: Node = owner if owner else self
 
+	_prop_cells.clear()
 	var forest := FastNoiseLite.new()
 	forest.seed = effective + 700
 	forest.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -1125,6 +1302,14 @@ func _place_props(seed_value: int) -> void:
 	rocky.frequency = 0.10
 	rocky.fractal_octaves = 2
 
+	# Keep a clear apron around every staircase (and its landing) so a tree never
+	# spawns in front of the only way up/down.
+	var near_stair: Dictionary = {}
+	for sc in _stair_cells:
+		for dx in range(-3, 4):
+			for dy in range(-3, 4):
+				near_stair[sc + Vector2i(dx, dy)] = true
+
 	const TREE_SCALE := Vector2(2.6, 2.6)
 	for cell in _terrain_grid:
 		var ttype: String = _terrain_grid[cell]
@@ -1132,6 +1317,8 @@ func _place_props(seed_value: int) -> void:
 			continue  # keep water + the dirt paths between forests clear
 		if _cliff_cells.has(cell) or _tier_at(cell) >= 1:
 			continue  # no props on cliffs / plateau tops
+		if near_stair.has(cell):
+			continue  # keep staircase approaches clear
 		var cx := float(cell.x) / map_width
 		var cy := float(cell.y) / map_height
 		if cx > 0.38 and cx < 0.62 and cy > 0.38 and cy < 0.62:
@@ -1171,6 +1358,8 @@ func _place_props(seed_value: int) -> void:
 				_spawn_prop(flower_tex, Rect2(fx, fy, 16, 16), cell, Vector2(1.5, 1.5), false, scene_owner)
 
 func _spawn_prop(tex: Texture2D, region: Rect2, cell: Vector2i, prop_scale: Vector2, has_collision: bool, scene_owner: Node) -> void:
+	if has_collision:
+		_prop_cells[cell] = true   # nav obstruction + non-passable
 	var world_pos := to_local(tile_map.to_global(tile_map.map_to_local(cell)))
 	var atlas_tex := AtlasTexture.new()
 	atlas_tex.atlas = tex
@@ -1208,6 +1397,36 @@ func _spawn_prop(tex: Texture2D, region: Rect2, cell: Vector2i, prop_scale: Vect
 # EDITOR-ONLY: seed a Caraka layout into the scene. Save (Ctrl+S) to persist.
 # Any hand-painted edits made afterward are also captured on save.
 # ===========================================================================
+# Editor: ensure this scene has the standard Caraka layer + navmesh layout so it
+# can be hand-painted with full functionality, WITHOUT generating terrain. Brings
+# any handcrafted scene up to the same structure as the others. Save afterwards.
+func _editor_setup_layers() -> void:
+	if not Engine.is_editor_hint():
+		return
+	map_width  = Balance.MAP_HANDCRAFTED_WIDTH
+	map_height = Balance.MAP_HANDCRAFTED_HEIGHT
+	tile_size  = Balance.MAP_HANDCRAFTED_TILE_SIZE
+	var scene_root: Node = owner if owner else self
+	# Ground layer: adopt an existing TileMapLayer_ground/TileMapLayer, or make one.
+	if tile_map == null:
+		tile_map = get_node_or_null("TileMapLayer_ground") as TileMapLayer
+		if tile_map == null:
+			tile_map = get_node_or_null("TileMapLayer") as TileMapLayer
+		if tile_map == null:
+			tile_map = _create_layer("TileMapLayer_ground")
+	if tile_map.name == "TileMapLayer":
+		tile_map.name = "TileMapLayer_ground"   # normalise the name across scenes
+	# Navmesh region.
+	if get_node_or_null("NavigationRegion2D") == null:
+		var nr := NavigationRegion2D.new()
+		nr.name = "NavigationRegion2D"
+		add_child(nr)
+		nr.owner = scene_root
+		nav_region = nr
+	_resolve_layers()   # objects / Overlay / cliff / plateau
+	_setup_tileset()    # tileset + 2× scale + z-order on every layer
+	print("[HandcraftedMap] Standard layers ready. Paint your map (dirt-wall = blocking, Steps = stairs, raised-grass layer = plateau top), then Save (Ctrl+S).")
+
 func _editor_generate_caraka() -> void:
 	if not Engine.is_editor_hint():
 		return
