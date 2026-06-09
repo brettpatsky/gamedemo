@@ -61,7 +61,7 @@ const HANDCRAFTED_MAP_PATHS := {
 @onready var hud:        CanvasLayer = $HUD
 @onready var _subviewport: SubViewport = $GameViewport/SubViewport
 
-const HUD_HEIGHT := 90.0
+const HUD_HEIGHT := 46.0
 
 var _mission_ended: bool = false
 

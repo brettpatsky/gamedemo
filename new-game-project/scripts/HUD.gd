@@ -83,8 +83,14 @@ var _group_buttons: Array[Button] = []
 # get_tree().paused; the HUD itself runs PROCESS_MODE_ALWAYS so the toggle
 # button and the pause_game action keep working.
 var _paused:         bool      = false
-var _pause_button:   Button    = null
+var _pause_button:   Button    = null   # lives inside the options popup
 var _pause_overlay:  ColorRect = null
+
+# Options popup — collects STATUS / PAUSE / GOD / MENU into a small panel
+# that slides up above the bottom bar when the ⚙ button is pressed.
+var _options_button: Button        = null
+var _options_popup:  PanelContainer = null
+var _options_open:   bool          = false
 
 # Status modal — STATUS button (mouse) + dim overlay + centred card listing
 # the per-soldier hit/shots/accuracy figures that used to live in the bottom
@@ -152,12 +158,15 @@ func _ready() -> void:
 	_hide_bottom_stats_grid()
 	_build_pause_ui()
 	_build_status_ui()
+	# Hide the standalone scene buttons before _build_options_popup() reassigns
+	# _god_button to the new in-popup version.
+	_god_button.hide()
+	_menu_button.hide()
+	_build_options_popup()  # reassigns _god_button / _status_button / _pause_button
 
 	retry_button.pressed.connect(_on_retry_pressed)
 	_next_level_button.pressed.connect(_on_next_level_pressed)
-	_menu_button.pressed.connect(_on_menu_pressed)
-	_god_button.button_pressed = GameManager.god_mode
-	_god_button.toggled.connect(_on_god_toggled)
+	# _god_button and _menu_button are now the popup versions; no extra wiring needed.
 	_refresh_god_button_visual()
 	_arrow_node.draw.connect(_draw_enemy_arrow)
 
@@ -638,15 +647,11 @@ func _rebuild_group_buttons(num_groups: int, active: int, alive_groups: Array = 
 	var squad_ctrl: Node = get_tree().get_first_node_in_group("squad_controller")
 	for i in num_groups:
 		var btn := Button.new()
-		btn.text = str(i + 1)
-		btn.custom_minimum_size = Vector2(28, 28)
-		# Empty groups (whole squad wiped) are not selectable — grey them out so
-		# the player can see at a glance which groups still have soldiers.
-		# Color matches the per-soldier label so the player can instantly map
-		# the HUD number to soldiers on the field.
-		btn.add_theme_color_override("font_color", GROUP_COLORS[i % GROUP_COLORS.size()])
-		# Toggle-mode lets button_pressed show the currently commanded group.
-		btn.toggle_mode   = true
+		btn.icon = _make_group_icon(i)
+		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		btn.expand_icon    = true
+		btn.custom_minimum_size = Vector2(30, 30)
+		btn.toggle_mode    = true
 		btn.button_pressed = (i == active)
 		var is_alive: bool = alive_groups.is_empty() or alive_groups.has(i)
 		if not is_alive:
@@ -818,22 +823,7 @@ func _on_menu_pressed() -> void:
 # the centred dim-and-text overlay. Overlay uses MOUSE_FILTER_IGNORE so it's
 # purely visual — other HUD buttons stay clickable while paused.
 func _build_pause_ui() -> void:
-	_pause_button = Button.new()
-	_pause_button.text = "PAUSE"
-	_pause_button.anchor_left   = 1.0
-	_pause_button.anchor_top    = 1.0
-	_pause_button.anchor_right  = 1.0
-	_pause_button.anchor_bottom = 1.0
-	# Tucked just to the left of the GOD button (which sits at offset_left
-	# = -215). 5 px gap between them.
-	_pause_button.offset_left   = -290.0
-	_pause_button.offset_top    = -63.0
-	_pause_button.offset_right  = -220.0
-	_pause_button.offset_bottom = -27.0
-	_pause_button.add_theme_font_size_override("font_size", 18)
-	_pause_button.pressed.connect(_on_pause_pressed)
-	add_child(_pause_button)
-
+	# Button is created inside _build_options_popup(); only the overlay lives here.
 	_pause_overlay = ColorRect.new()
 	_pause_overlay.color = Color(0, 0, 0, 0.55)
 	_pause_overlay.anchor_left   = 0.0
@@ -858,6 +848,82 @@ func _build_pause_ui() -> void:
 	label.add_theme_constant_override("outline_size", 6)
 	_pause_overlay.add_child(label)
 	add_child(_pause_overlay)
+
+func _build_options_popup() -> void:
+	# ⚙ trigger button — bottom-right corner of the screen, inside the panel strip.
+	_options_button = Button.new()
+	_options_button.text = "⚙"
+	_options_button.anchor_left   = 1.0
+	_options_button.anchor_right  = 1.0
+	_options_button.anchor_top    = 1.0
+	_options_button.anchor_bottom = 1.0
+	_options_button.offset_left   = -42.0
+	_options_button.offset_top    = -44.0
+	_options_button.offset_right  = -4.0
+	_options_button.offset_bottom = -2.0
+	_options_button.add_theme_font_size_override("font_size", 20)
+	_options_button.pressed.connect(_toggle_options_popup)
+	add_child(_options_button)
+
+	# Popup panel — appears above the ⚙ button when toggled.
+	# Right-aligned to the screen edge; grows LEFTWARD so it never overflows right.
+	_options_popup = PanelContainer.new()
+	_options_popup.anchor_left   = 1.0
+	_options_popup.anchor_right  = 1.0
+	_options_popup.anchor_top    = 1.0
+	_options_popup.anchor_bottom = 1.0
+	_options_popup.offset_left   = -320.0
+	_options_popup.offset_right  = -2.0
+	_options_popup.offset_top    = -92.0
+	_options_popup.offset_bottom = -46.0
+	_options_popup.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_options_popup.hide()
+	add_child(_options_popup)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left",   6)
+	margin.add_theme_constant_override("margin_right",  6)
+	margin.add_theme_constant_override("margin_top",    4)
+	margin.add_theme_constant_override("margin_bottom", 4)
+	_options_popup.add_child(margin)
+
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 6)
+	margin.add_child(hb)
+
+	# STATUS button
+	_status_button = Button.new()
+	_status_button.text = "STATUS"
+	_status_button.pressed.connect(_toggle_status_modal)
+	hb.add_child(_status_button)
+
+	# PAUSE/RESUME button
+	_pause_button = Button.new()
+	_pause_button.text = "PAUSE"
+	_pause_button.pressed.connect(_on_pause_pressed)
+	hb.add_child(_pause_button)
+
+	# GOD toggle — mirrors the hidden scene-side GodButton
+	var god_btn := Button.new()
+	god_btn.text     = "GOD"
+	god_btn.toggle_mode    = true
+	god_btn.button_pressed = GameManager.god_mode
+	god_btn.toggled.connect(_on_god_toggled)
+	# Keep _god_button pointing at this new button so _refresh_god_button_visual works.
+	_god_button = god_btn
+	_refresh_god_button_visual()
+	hb.add_child(god_btn)
+
+	# MENU button
+	var menu_btn := Button.new()
+	menu_btn.text = "MENU"
+	menu_btn.pressed.connect(_on_menu_pressed)
+	hb.add_child(menu_btn)
+
+func _toggle_options_popup() -> void:
+	_options_open = not _options_open
+	if _options_popup:
+		_options_popup.visible = _options_open
 
 func _on_pause_pressed() -> void:
 	_toggle_pause()
@@ -898,22 +964,7 @@ func _unhandled_input(event: InputEvent) -> void:
 # _soldier_stat_labels so the existing _refresh_soldier_stats() keeps them
 # live every frame.
 func _build_status_ui() -> void:
-	_status_button = Button.new()
-	_status_button.text = "STATUS"
-	_status_button.anchor_left   = 1.0
-	_status_button.anchor_top    = 1.0
-	_status_button.anchor_right  = 1.0
-	_status_button.anchor_bottom = 1.0
-	# PAUSE sits at offset_left = -290 → -220. STATUS goes immediately to its
-	# left with a 5 px gap.
-	_status_button.offset_left   = -365.0
-	_status_button.offset_top    = -63.0
-	_status_button.offset_right  = -295.0
-	_status_button.offset_bottom = -27.0
-	_status_button.add_theme_font_size_override("font_size", 18)
-	_status_button.pressed.connect(_toggle_status_modal)
-	add_child(_status_button)
-
+	# Button is created inside _build_options_popup(); only the overlay lives here.
 	_status_overlay = ColorRect.new()
 	_status_overlay.color = Color(0, 0, 0, 0.55)
 	_status_overlay.anchor_left   = 0.0
@@ -1067,6 +1118,44 @@ func _draw_magic_dot(img: Image, cx: int, cy: int) -> void:
 func _px(img: Image, x: int, y: int, color: Color) -> void:
 	if x >= 0 and x < img.get_width() and y >= 0 and y < img.get_height():
 		img.set_pixel(x, y, color)
+
+# GROUP ICON — a coloured shield/crest for each squad group.
+# Uses the same GROUP_COLORS as the per-soldier floating labels so the player
+# can instantly map HUD icon → soldiers on the field.
+func _make_group_icon(group_index: int) -> ImageTexture:
+	var img := Image.create(24, 24, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var base: Color = GROUP_COLORS[group_index % GROUP_COLORS.size()]
+	var dark := Color(base.r * 0.40, base.g * 0.40, base.b * 0.40, 1.0)
+	var mid  := Color(base.r * 0.75, base.g * 0.75, base.b * 0.75, 1.0)
+	var bright := Color(
+		minf(base.r * 1.2 + 0.15, 1.0),
+		minf(base.g * 1.2 + 0.15, 1.0),
+		minf(base.b * 1.2 + 0.15, 1.0), 1.0)
+	# Shield outline: wide rectangle that tapers to a point at the bottom.
+	# Rows 0-15: full width (x 3..20). Rows 16-20: narrowing. Row 21: single pixel.
+	for y in 22:
+		var half_w: int
+		if y <= 15:
+			half_w = 9
+		else:
+			half_w = 9 - (y - 15) * 2
+		if half_w < 0:
+			half_w = 0
+		for x in range(12 - half_w, 12 + half_w + 1):
+			var on_edge := (x == 12 - half_w or x == 12 + half_w or y == 0 or (y == 21 and half_w == 0))
+			_px(img, x, y, dark if on_edge else base)
+	# Highlight stripe across the upper-left of the shield
+	for y in range(2, 6):
+		for x in range(5, 10):
+			_px(img, x, y, bright)
+	# Small inner gem — a 3×3 diamond in mid tone centered at (12, 10)
+	for dx in range(-2, 3):
+		for dy in range(-2, 3):
+			if abs(dx) + abs(dy) <= 2:
+				_px(img, 12 + dx, 10 + dy, mid)
+	_px(img, 12, 10, bright)  # gem centre sparkle
+	return ImageTexture.create_from_image(img)
 
 func _activate_focused_hud_button() -> void:
 	var current: Control = get_viewport().gui_get_focus_owner()
