@@ -133,6 +133,9 @@ var _current_formation: int = 1   # 3×2 on mission start (matches SquadControll
 var _rifle_ammo:        int = 0
 var _grenade_ammo:      int = 0
 var _sacrifice_avail:   int = 0
+# Running max per weapon slot (reset at mission start via show_objective).
+# Index 0 = infinite, 1 = rifle, 2 = grenade, 3 = sacrifice.
+var _ammo_max: Array[int] = [0, 0, 0, 0]
 
 # =============================================================================
 # READY
@@ -199,18 +202,44 @@ func _wire_weapon_buttons() -> void:
 		if btn == null:
 			push_warning("[HUD] Missing WeaponButton%d" % i)
 			continue
-		# Use btn.icon so it renders without relying on the scene TextureRect child.
 		if ResourceLoader.exists(WEAPON_ICONS[i]):
 			btn.icon = load(WEAPON_ICONS[i])
 			btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			btn.expand_icon = true
-		# Keep the TextureRect child in sync as a fallback for any scene-side code.
 		var icon := btn.get_node_or_null("Icon") as TextureRect
 		if icon and ResourceLoader.exists(WEAPON_ICONS[i]):
 			icon.texture = load(WEAPON_ICONS[i])
+		# Hide the old text label; replace with a colour-coded ammo bar.
+		var ammo_lbl := btn.get_node_or_null("Ammo") as Label
+		if ammo_lbl:
+			ammo_lbl.hide()
+		_add_ammo_bar(btn, i == 0)
 		btn.tooltip_text = WEAPON_NAMES[i]
 		var idx := i
 		btn.pressed.connect(func() -> void: _on_weapon_pressed(idx))
+
+func _add_ammo_bar(btn: Button, infinite: bool) -> void:
+	var bg := ColorRect.new()
+	bg.name = "AmmoBarBg"
+	bg.anchor_left   = 0.0
+	bg.anchor_right  = 1.0
+	bg.anchor_top    = 1.0
+	bg.anchor_bottom = 1.0
+	bg.offset_top    = -5.0
+	bg.color         = Color(0.08, 0.08, 0.08, 0.85)
+	bg.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(bg)
+	var fill := ColorRect.new()
+	fill.name          = "AmmoBarFill"
+	fill.anchor_left   = 0.0
+	fill.anchor_right  = 1.0
+	fill.anchor_top    = 0.0
+	fill.anchor_bottom = 1.0
+	fill.color         = Color(0.15, 0.85, 0.15)
+	fill.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+	bg.add_child(fill)
+	if infinite:
+		fill.anchor_right = 1.0   # always full green
 
 func _wire_formation_buttons() -> void:
 	for i in FORMATION_NAMES.size():
@@ -219,15 +248,11 @@ func _wire_formation_buttons() -> void:
 			push_warning("[HUD] Missing FormationButton%d" % i)
 			continue
 		var lbl := btn.get_node_or_null("Name") as Label
-		if i < FORMATION_ICONS.size() and ResourceLoader.exists(FORMATION_ICONS[i]):
-			btn.icon = load(FORMATION_ICONS[i])
-			btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			btn.expand_icon = true
-			if lbl:
-				lbl.hide()
-		else:
-			if lbl:
-				lbl.text = FORMATION_NAMES[i]
+		if lbl:
+			lbl.hide()
+		btn.icon = _make_formation_icon(i)
+		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		btn.expand_icon = true
 		btn.tooltip_text = "Formation %s" % FORMATION_NAMES[i]
 		var idx := i
 		btn.pressed.connect(func() -> void: _on_formation_pressed(idx))
@@ -311,6 +336,7 @@ func update_group_info(active: int, total: int, alive_groups: Array = []) -> voi
 	_rebuild_group_buttons(total, active - 1, alive_groups)
 
 func show_objective(level: int) -> void:
+	_ammo_max = [0, 0, 0, 0]  # let the next update_ammo call set the full-pool baseline
 	var texts := {
 		1: "OBJECTIVE: Solve the six trials and free Kid 1's parent",
 		2: "OBJECTIVE: Eliminate all enemies",
@@ -578,14 +604,30 @@ func _refresh_formation_highlight() -> void:
 		btn.button_pressed = (i == _current_formation)
 
 func _refresh_ammo_labels() -> void:
-	var ammo_per_weapon := ["∞", str(_rifle_ammo), str(_grenade_ammo), str(_sacrifice_avail)]
+	var ammo_vals := [0, _rifle_ammo, _grenade_ammo, _sacrifice_avail]
+	for i in range(1, WEAPON_NAMES.size()):
+		_ammo_max[i] = maxi(_ammo_max[i], ammo_vals[i])
 	for i in WEAPON_NAMES.size():
 		var btn := _weapon_grid.get_node_or_null("WeaponButton%d" % i) as Button
 		if btn == null:
 			continue
-		var ammo_lbl := btn.get_node_or_null("Ammo") as Label
-		if ammo_lbl:
-			ammo_lbl.text = ammo_per_weapon[i]
+		var bg := btn.get_node_or_null("AmmoBarBg") as ColorRect
+		if bg == null:
+			continue
+		var fill := bg.get_node_or_null("AmmoBarFill") as ColorRect
+		if fill == null:
+			continue
+		if i == 0:
+			continue  # infinite — stays full green from setup
+		var mx := float(_ammo_max[i])
+		var frac := 1.0 if mx <= 0.0 else clampf(float(ammo_vals[i]) / mx, 0.0, 1.0)
+		fill.anchor_right = frac
+		if frac > 0.5:
+			fill.color = Color(0.15, 0.85, 0.15)
+		elif frac > 0.25:
+			fill.color = Color(0.95, 0.75, 0.0)
+		else:
+			fill.color = Color(0.9, 0.12, 0.12)
 
 func _rebuild_group_buttons(num_groups: int, active: int, alive_groups: Array = []) -> void:
 	for b in _group_buttons:
@@ -974,6 +1016,57 @@ func _focus_next_hud_button() -> void:
 		idx = buttons.find(current)
 	var next_idx: int = (idx + 1) % buttons.size()
 	buttons[next_idx].grab_focus()
+
+# =============================================================================
+# FORMATION ICON GENERATION
+# Draws 6 pixel-art "magic orb" dots onto a 40×36 Image arranged to represent
+# each formation pattern, then wraps it in an ImageTexture for btn.icon.
+# =============================================================================
+func _make_formation_icon(index: int) -> ImageTexture:
+	var img := Image.create(40, 36, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var positions: Array[Vector2i]
+	match index:
+		0:  # 2×3 — 2 cols, 3 rows
+			positions = [Vector2i(12,6),Vector2i(28,6),
+						 Vector2i(12,18),Vector2i(28,18),
+						 Vector2i(12,30),Vector2i(28,30)]
+		1:  # 3×2 — 3 cols, 2 rows (default)
+			positions = [Vector2i(8,10),Vector2i(20,10),Vector2i(32,10),
+						 Vector2i(8,26),Vector2i(20,26),Vector2i(32,26)]
+		2:  # 1×6 — single column
+			positions = [Vector2i(20,3),Vector2i(20,9),Vector2i(20,15),
+						 Vector2i(20,21),Vector2i(20,27),Vector2i(20,33)]
+		3:  # 6×1 — single row
+			positions = [Vector2i(3,18),Vector2i(10,18),Vector2i(17,18),
+						 Vector2i(24,18),Vector2i(31,18),Vector2i(37,18)]
+		4:  # ★ — hexagonal ring
+			positions = []
+			for k in 6:
+				var angle := k * PI / 3.0 - PI / 2.0
+				positions.append(Vector2i(int(20.0 + 12.0 * cos(angle)),
+										  int(18.0 + 12.0 * sin(angle))))
+		_:
+			positions = []
+	for p in positions:
+		_draw_magic_dot(img, p.x, p.y)
+	return ImageTexture.create_from_image(img)
+
+func _draw_magic_dot(img: Image, cx: int, cy: int) -> void:
+	var outer := Color(0.9, 0.55, 0.1, 1.0)
+	var inner := Color(1.0, 0.92, 0.45, 1.0)
+	for dx in range(-2, 3):
+		for dy in range(-2, 3):
+			if abs(dx) + abs(dy) <= 2:
+				_px(img, cx + dx, cy + dy, outer)
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			if abs(dx) + abs(dy) <= 1:
+				_px(img, cx + dx, cy + dy, inner)
+
+func _px(img: Image, x: int, y: int, color: Color) -> void:
+	if x >= 0 and x < img.get_width() and y >= 0 and y < img.get_height():
+		img.set_pixel(x, y, color)
 
 func _activate_focused_hud_button() -> void:
 	var current: Control = get_viewport().gui_get_focus_owner()
