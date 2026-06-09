@@ -25,17 +25,26 @@ const _FALLBACK := {
 	"bomb":    {"count": 38, "radius": 110.0, "speed": 220.0, "life": 0.70, "color": Color(1.0, 0.3, 0.1)},
 }
 
+# Scale multiplier applied to the sprite when a PNG is present.
+# Lets the image render larger than its pixel dimensions without regenerating.
+const _SPRITE_SCALE := {
+	"hit":     1.0,
+	"grenade": 2.5,
+	"bomb":    1.0,
+}
+
 func start(size: String, tint: Color = Color.WHITE) -> void:
 	var frames: SpriteFrames = ProjectileSpriteLoader.get_explosion_frames(size)
 	if frames != null:
-		_play_sprite(frames, tint)
+		_play_sprite(frames, tint, _SPRITE_SCALE.get(size, 1.0))
 	else:
 		_play_particles(size, tint)
 
-func _play_sprite(frames: SpriteFrames, tint: Color) -> void:
+func _play_sprite(frames: SpriteFrames, tint: Color, scale_factor: float = 1.0) -> void:
 	var spr := AnimatedSprite2D.new()
 	spr.sprite_frames = frames
 	spr.modulate = tint
+	spr.scale = Vector2(scale_factor, scale_factor)
 	# Explosions shouldn't inherit parent rotation (the parent Node2D may be
 	# rotated to face the fire direction — we want the blast to be upright).
 	spr.global_rotation = 0.0

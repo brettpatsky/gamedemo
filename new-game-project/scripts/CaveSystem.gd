@@ -286,12 +286,14 @@ func _move_squad_to(centre: Vector2) -> void:
 			continue
 		@warning_ignore("integer_division")
 		var ring := Vector2(float(i % 3 - 1) * 56.0, float(i / 3) * 56.0)
-		var pos := centre + ring
+		node.global_position = centre + ring
+		# halt() after teleport: zeros velocity, sets state=IDLE, and anchors the
+		# nav agent's target to the new position without triggering path-seeking.
+		# Calling move_to(pos) instead would put soldiers in MOVING state, causing
+		# the nav agent to compute a path — soldiers placed off the navmesh (e.g.
+		# near a cliff edge at the entrance) would immediately navigate away.
 		if node.has_method("halt"):
 			node.call("halt")
-		node.global_position = pos
-		if node.has_method("move_to"):
-			node.call("move_to", pos)   # clear any in-flight nav target
 		i += 1
 
 # Freeze enemies + their bullets while the squad is safely underground.

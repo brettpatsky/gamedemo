@@ -92,7 +92,7 @@ const SACRIFICE_ARRIVAL_DIST: float = 24.0  # detonate once within this distance
 const SACRIFICE_FX_TIME:      float = 0.65  # explosion flash duration
 # Safety net for unreachable target (path blocked, click inside geometry):
 # detonate where the bomber is after this long instead of running forever.
-const SACRIFICE_TIMEOUT:      float = 6.0
+const SACRIFICE_TIMEOUT:      float = 2.0
 
 # -----------------------------------------------------------------------------
 # SOLDIER — stuck detection / unstick
