@@ -28,6 +28,8 @@ const CAVE_GAP := 1200.0
 const GARDEN_SCALE := 5.0          # 256×144 art → 1280×720 (16:9) walkable garden
 const PATH_HALF := 84.0            # half-width of the walkable path corridor (world px)
 const REVEAL_DIST := 360.0         # squad distance at which the hidden mouth fades in
+const ENTER_CLICK_RADIUS := 100.0  # click must be within this world-px of the entrance
+const ENTER_SQUAD_DIST   := 280.0  # at least one soldier must be this close to enter
 
 var parent_cage: Node2D            # the parent NPC, registered as the "parent_cage" objective
 var nav_outline_world: PackedVector2Array   # path corridor, baked into the map navmesh
@@ -97,9 +99,8 @@ func _build_entrance() -> void:
 	add_child(area)
 	_entrance_area = area
 
-# Fade the cave mouth in/out by proximity, and require the squad to LINGER on a
-# trigger (not just brush it) before crossing — so the cave isn't entered by
-# accident when pathing past the mouth.
+# Fade the cave mouth in/out by proximity. Entry is now click-based (see
+# _input); exit is still dwell-based so the player just walks to the exit marker.
 func _process(delta: float) -> void:
 	if _mouth_visual:
 		var target := 0.0
@@ -111,14 +112,14 @@ func _process(delta: float) -> void:
 				target = 1.0
 		_mouth_visual.modulate.a = lerpf(_mouth_visual.modulate.a, target, clampf(delta * 5.0, 0.0, 1.0))
 
-	if _busy or not _armed:
+	# Exit only: soldier lingers on the exit trigger while inside the cave.
+	if not _in_cave or _busy or not _armed:
 		_dwell = 0.0
 		return
-	var area: Area2D = _exit_area if _in_cave else _entrance_area
-	if area == null:
+	if _exit_area == null:
 		return
 	var touching := false
-	for b in area.get_overlapping_bodies():
+	for b in _exit_area.get_overlapping_bodies():
 		if (b as Node).is_in_group("soldiers"):
 			touching = true
 			break
@@ -126,9 +127,29 @@ func _process(delta: float) -> void:
 		_dwell += delta
 		if _dwell >= DWELL_TIME:
 			_dwell = 0.0
-			_transition(not _in_cave)
+			_transition(false)
 	else:
 		_dwell = 0.0
+
+# Entry: player right-clicks the cave mouth while at least one soldier is close.
+# Consuming the event stops SquadController from issuing a normal move order.
+func _input(event: InputEvent) -> void:
+	if _in_cave or _busy or not _armed:
+		return
+	if not event.is_action_pressed("squad_move"):
+		return
+	var screen_pos: Vector2 = event.get_position() if event is InputEventMouse \
+			else get_viewport().get_mouse_position()
+	var cam := get_tree().get_first_node_in_group("main_camera") as Camera2D
+	var world_pos: Vector2 = cam.get_canvas_transform().affine_inverse() * screen_pos \
+			if cam else get_viewport().canvas_transform.affine_inverse() * screen_pos
+	if world_pos.distance_to(_entrance_world) > ENTER_CLICK_RADIUS:
+		return
+	for s in get_tree().get_nodes_in_group("soldiers"):
+		if (s as Node2D).global_position.distance_to(_entrance_world) <= ENTER_SQUAD_DIST:
+			get_viewport().set_input_as_handled()
+			_transition(true)
+			return
 
 func _ellipse_points(rx: float, ry: float, n: int) -> PackedVector2Array:
 	var pts := PackedVector2Array()
@@ -160,9 +181,11 @@ func _build_cave_area(child_slot: int) -> void:
 		left.append(p - Vector2(PATH_HALF, 0))
 		right.append(p + Vector2(PATH_HALF, 0))
 
-	# Spawn 80% of the way from entrance to waypoint-1 so the southernmost
-	# soldier (~56 px south of spawn) lands well clear of the 34-px exit trigger.
-	_cave_spawn = cl[0].lerp(cl[1], 0.8)
+	# Spawn 92% of the way from entrance to waypoint-1.  At 80% the row-2
+	# soldiers (56 px south of spawn) land with their capsule edge only ~1 px
+	# clear of the 34-px exit trigger, causing an immediate physics overlap and
+	# instant re-exit.  92% gives ~19 px clearance with the default capsule shape.
+	_cave_spawn = cl[0].lerp(cl[1], 0.92)
 
 	var root := Node2D.new()
 	root.name = "CaveArea"
@@ -245,7 +268,10 @@ func _transition(into_cave: bool) -> void:
 	_busy = true
 	# Return the squad SOUTH of the entrance trigger so they don't instantly
 	# re-enter; the cave spawn is up by the entrance, clear of the exit trigger.
-	var dest_centre: Vector2 = _cave_spawn if into_cave else _entrance_world + Vector2(0, 96)
+	# Clamp the exit Y so row-2 soldiers (56 px further south) don't fall off
+	# the map when the cave entrance is near the map's southern edge.
+	var exit_y := minf(_entrance_world.y + 140.0, _map_rect.end.y - 120.0)
+	var dest_centre: Vector2 = _cave_spawn if into_cave else Vector2(_entrance_world.x, exit_y)
 	var rect: Rect2 = _cave_rect if into_cave else _map_rect
 
 	_fade.visible = true
