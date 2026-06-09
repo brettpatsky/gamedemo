@@ -109,6 +109,9 @@ func _ready() -> void:
 		# Mazes ship with a single-soldier rule baked into their gameplay —
 		# preserve that for handcrafted versions of mazes so squad size matches
 		# the rest of the maze pipeline (formation snap skipped, etc.).
+		# Tutorial handcrafted uses the same tall-narrow layout — allow free zoom.
+		if lvl == 1 and camera and camera.has_method("allow_free_zoom"):
+			camera.allow_free_zoom()
 		if lvl == 3 or lvl == 6:
 			effective_squad_size = 1
 	elif GameManager.current_level == 1:
