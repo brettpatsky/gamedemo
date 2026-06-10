@@ -416,17 +416,19 @@ func _spawn_enemies_at(world_pos: Vector2, count: int) -> void:
 		return
 	for i in count:
 		var enemy: Node2D = enemy_scene.instantiate()
-		# Spread evenly in a ring around the destroyed structure.
-		# 96px radius keeps every enemy clear of the 80x80 structure collision box.
+		# 160px radius clears the 220×220 rubble collision box (half-diagonal ~156px).
 		var angle := (TAU / count) * i
-		var offset := Vector2(cos(angle), sin(angle)) * 96.0
-		# Brief invulnerability so any other grenades from the salvo that
-		# destroyed the structure don't insta-kill the reinforcements before
-		# the player even sees them (spawn ring is inside grenade radius).
+		var offset := Vector2(cos(angle), sin(angle)) * 160.0
+		# Brief invulnerability so grenades that destroyed the structure don't
+		# insta-kill the reinforcements before the player sees them.
 		if "spawn_protection" in enemy:
 			enemy.spawn_protection = 1.0
 		_subviewport.add_child(enemy)
 		enemy.global_position = world_pos + offset
+		# Fade in from transparent so enemies emerge rather than pop into existence.
+		enemy.modulate.a = 0.0
+		var tw := enemy.create_tween()
+		tw.tween_property(enemy, "modulate:a", 1.0, 0.6)
 	GameManager.enemies_alive += count
 	GameManager.enemies_changed.emit(GameManager.enemies_alive)
 

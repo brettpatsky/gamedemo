@@ -9,20 +9,17 @@ const Balance = preload("res://scripts/BalanceConfig.gd")
 
 signal structure_destroyed
 
-const MAX_HEALTH: int = 90
+const MAX_HEALTH: int = 180
 
-# Damage-state textures swapped at health thresholds.
-const TEX_INTACT   := "res://resources/structures/castle_intact.png"
-const TEX_DAMAGED1 := "res://resources/structures/castle_damaged1.png"
-const TEX_DAMAGED2 := "res://resources/structures/castle_damaged2.png"
-const TEX_RUBBLE   := "res://resources/structures/castle_rubble.png"
-
-# Brief rubble display before the node is freed.
-const RUBBLE_LINGER := 0.6
+# Five destruction stages: intact → crumbling → collapsed → near-rubble → rubble.
+const TEX_STAGE1 := "res://resources/structures/castle1.png"
+const TEX_STAGE2 := "res://resources/structures/castle2.png"
+const TEX_STAGE3 := "res://resources/structures/castle3.png"
+const TEX_STAGE4 := "res://resources/structures/castle4.png"
+const TEX_STAGE5 := "res://resources/structures/castle5.png"
 
 var _health: int
 var _destroyed: bool  = false
-var _rubble_timer: float = -1.0
 var _sprite: Sprite2D = null
 
 @onready var health_bar: ProgressBar = $HealthBar
@@ -61,31 +58,22 @@ func _update_visual() -> void:
 		return
 	var hp_ratio: float = float(max(_health, 0)) / float(MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE)
 	var tex_path: String
-	if hp_ratio > 0.60:
-		tex_path = TEX_INTACT
+	if hp_ratio > 0.75:
+		tex_path = TEX_STAGE1
+	elif hp_ratio > 0.50:
+		tex_path = TEX_STAGE2
 	elif hp_ratio > 0.25:
-		tex_path = TEX_DAMAGED1
+		tex_path = TEX_STAGE3
 	else:
-		tex_path = TEX_DAMAGED2
+		tex_path = TEX_STAGE4
 	if ResourceLoader.exists(tex_path):
 		_sprite.texture = load(tex_path)
 
 func _destroy() -> void:
 	health_bar.hide()
-	var shape := get_node_or_null("CollisionShape2D") as CollisionShape2D
-	if shape:
-		shape.set_deferred("disabled", true)
-	if _sprite and ResourceLoader.exists(TEX_RUBBLE):
-		_sprite.texture = load(TEX_RUBBLE)
-	_rubble_timer = RUBBLE_LINGER
-
-func _process(delta: float) -> void:
-	if _rubble_timer < 0.0:
-		return
-	_rubble_timer -= delta
-	if _rubble_timer <= 0.0:
-		structure_destroyed.emit()
-		queue_free()
+	if _sprite and ResourceLoader.exists(TEX_STAGE5):
+		_sprite.texture = load(TEX_STAGE5)
+	structure_destroyed.emit()
 
 func _draw() -> void:
 	# Fallback shown if textures have not been imported by Godot yet.

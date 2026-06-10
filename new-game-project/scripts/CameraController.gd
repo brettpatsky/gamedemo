@@ -26,8 +26,8 @@ var _drag_start:   Vector2 = Vector2.ZERO
 var _drag_cam_pos: Vector2 = Vector2.ZERO
 var _map_rect:     Rect2   = Rect2(Vector2.ZERO, Vector2(7680.0, 6400.0))
 # When > 0, replaces the auto-computed _get_min_zoom() as the zoom floor.
-# Used by enter_cave_view so the player can zoom out freely inside the cave.
 var _zoom_floor:   float   = -1.0
+var _in_cave:      bool    = false
 
 @onready var squad: Node2D = get_tree().get_first_node_in_group("squad_controller") as Node2D
 
@@ -55,6 +55,8 @@ func refresh_map_bounds() -> void:
 	zoom = Vector2(_target_zoom, _target_zoom)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _in_cave:
+		return
 	if event is InputEventMouseButton:
 		var effective_min := _zoom_floor if _zoom_floor > 0.0 else _get_min_zoom()
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
@@ -76,6 +78,8 @@ func _process(delta: float) -> void:
 	_clamp_to_map()
 
 func _handle_keyboard_pan(delta: float) -> void:
+	if _in_cave:
+		return
 	# Action-based — covers WASD, arrow keys, AND gamepad left stick
 	# (bindings in project.godot). get_vector returns analog magnitude so the
 	# left stick gives gradient pan speed, while keys still pan at full tilt.
@@ -98,7 +102,7 @@ func _smooth_zoom(delta: float) -> void:
 	zoom = Vector2(new_z, new_z)
 
 func _soft_follow_squad(delta: float) -> void:
-	if _pan_dragging or squad == null:
+	if _in_cave or _pan_dragging or squad == null:
 		return
 	if not squad.has_method("get_centroid"):
 		return
@@ -110,15 +114,10 @@ func _soft_follow_squad(delta: float) -> void:
 # Does NOT snap position — the squad follow and clamp bring the view there naturally.
 func lock_to_rect(rect: Rect2) -> void:
 	_map_rect    = rect
-	_zoom_floor  = -1.0   # re-enable auto min-zoom for the world map
+	_in_cave     = false
+	_zoom_floor  = -1.0
 	_target_zoom = _get_min_zoom()
 
-# Use this instead of lock_to_rect when entering the cave.
-# Snaps to zoom=1.0 (full 1280×720 art visible + dark backdrop fills surplus viewport)
-# and lets the player zoom out freely down to zoom_min rather than forcing the
-# min-zoom needed to fill the screen.
-# For tall narrow maps (tutorial) where viewport width would force min-zoom
-# above zoom_min and prevent zooming out to navigate vertically.
 func allow_free_zoom() -> void:
 	_zoom_floor  = zoom_min
 	_target_zoom = zoom_min
@@ -126,7 +125,8 @@ func allow_free_zoom() -> void:
 
 func enter_cave_view(rect: Rect2) -> void:
 	_map_rect    = rect
-	_zoom_floor  = zoom_min   # freely zoomable; no forced fill
+	_in_cave     = true
+	_zoom_floor  = 1.0        # prevent zooming out past art boundary
 	_target_zoom = 1.0
 	zoom         = Vector2(1.0, 1.0)   # snap immediately while screen is black
 	position     = rect.get_center()

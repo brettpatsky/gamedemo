@@ -13,11 +13,12 @@ signal wrong_kid_entered(slot: int)
 @export var child_slot: int = 0
 
 const PARENT_TEX := "res://resources/caves/parent_npc.png"
+const FATHER_TEX := "res://resources/caves/father_npc.png"
 
 var _opened: bool = false
 var _last_wrong_time: float = -INF
 var _sprite: Sprite2D        # mother
-var _father_sprite: Sprite2D # father (colour-remapped + flipped)
+var _father_sprite: Sprite2D # father
 var _glow: Sprite2D
 var _label: Label
 
@@ -58,11 +59,8 @@ func _ready() -> void:
 	_father_sprite.z_index = 3
 	_father_sprite.z_as_relative = false
 	_father_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	var father_tex := _create_father_tex()
-	if father_tex:
-		_father_sprite.texture = father_tex
-	elif ResourceLoader.exists(PARENT_TEX):
-		_father_sprite.texture = load(PARENT_TEX)   # fallback: reuse mother
+	if ResourceLoader.exists(FATHER_TEX):
+		_father_sprite.texture = load(FATHER_TEX)
 	add_child(_father_sprite)
 
 	_label = Label.new()
@@ -150,42 +148,6 @@ func _play_save_effect() -> void:
 func is_opened() -> bool:
 	return _opened
 
-# =============================================================================
-# FATHER TEXTURE — colour-remaps the mother sprite:
-#   red hair  → warm brown
-#   teal dress → dark navy-blue
-#   outlines and skin kept intact
-# =============================================================================
-func _create_father_tex() -> ImageTexture:
-	if not ResourceLoader.exists(PARENT_TEX):
-		return null
-	var img: Image = (load(PARENT_TEX) as Texture2D).get_image()
-	if img == null:
-		return null
-	var w := img.get_width()
-	var h := img.get_height()
-	var dst := Image.create(w, h, false, Image.FORMAT_RGBA8)
-	for y in h:
-		for x in w:
-			var c: Color = img.get_pixel(x, y)
-			if c.a < 0.05:
-				dst.set_pixel(x, y, Color.TRANSPARENT)
-			else:
-				dst.set_pixel(x, y, _remap_father(c))
-	return ImageTexture.create_from_image(dst)
-
-func _remap_father(c: Color) -> Color:
-	var r := c.r;  var g := c.g;  var b := c.b;  var a := c.a
-	# Dark outlines — preserve unchanged so the figure stays sharp.
-	if r < 0.15 and g < 0.15 and b < 0.15:
-		return c
-	# Red / orange hair (R strongly dominant) → warm brown.
-	if r > 0.50 and r > g * 1.7 and r > b * 2.4:
-		return Color(r * 0.56, g * 0.52 + 0.06, b * 0.28, a)
-	# Teal / cyan dress (G and/or B dominant over R) → dark navy-blue.
-	if (g > r + 0.12 or b > r + 0.18) and (g + b) > 0.3:
-		return Color(r * 0.65, g * 0.48, minf(b * 1.15 + 0.08, 1.0), a)
-	return c
 
 # Simple radial-gradient glow (no external asset).
 func _radial_glow(size: int, col: Color) -> ImageTexture:
