@@ -257,15 +257,9 @@ func _spawn_enemies() -> void:
 func _spawn_mission_parent_and_fragment() -> void:
 	var level: int = GameManager.current_level
 	var child_slot: int = level - 1
-	var fragment_id: String = FragmentEffects.get_mission_fragment_id(level)
-	if fragment_id == "":
-		return
-	var fragment_name: String = FragmentEffects.get_display_name(fragment_id)
 
 	var cage_scene: PackedScene = load("res://scenes/parent_cage.tscn")
 	var frag_scene: PackedScene = load("res://scenes/memory_fragment.tscn")
-	if cage_scene == null and frag_scene == null:
-		return
 
 	var outer := _passable_cells.filter(func(c: Vector2i) -> bool:
 		if c.x < 3 or c.x > map_width - 4: return false
@@ -288,24 +282,63 @@ func _spawn_mission_parent_and_fragment() -> void:
 		_objective_nodes["parent_cage"] = cage
 
 	if frag_scene:
-		# Drop the fragment on the cell farthest from the cage so the player
-		# has to commit to a detour rather than grab both in one fight.
-		var best_cell: Vector2i = outer[0]
-		var best_d: int = 0
-		for c in outer:
-			var diff: Vector2i = c - cage_cell
-			var d: int = diff.x * diff.x + diff.y * diff.y
-			if d > best_d:
-				best_d = d
-				best_cell = c
-		var frag: Node2D = frag_scene.instantiate()
-		frag.position = _tile_to_world(best_cell)
-		if "fragment_id" in frag:
-			frag.set("fragment_id", fragment_id)
-		if "display_name" in frag:
-			frag.set("display_name", fragment_name)
-		add_child(frag)
-		_objective_nodes["memory_fragment"] = frag
+		var frag_ids := _pick_level_fragment_ids(3)
+		var positions := _spread_positions(outer, cage_cell, frag_ids.size())
+		var spawned: Array = []
+		for i in frag_ids.size():
+			var frag: Node2D = frag_scene.instantiate()
+			frag.position = _tile_to_world(positions[i])
+			if "fragment_id" in frag:
+				frag.set("fragment_id", frag_ids[i])
+			if "display_name" in frag:
+				frag.set("display_name", FragmentEffects.get_display_name(frag_ids[i]))
+			add_child(frag)
+			spawned.append(frag)
+		_objective_nodes["memory_fragments"] = spawned
+
+# Pick up to `count` fragment IDs not yet permanently collected this run.
+func _pick_level_fragment_ids(count: int) -> Array[String]:
+	var available: Array[String] = []
+	for id in FragmentEffects.FRAGMENT_METADATA.keys():
+		if not RunState.fragments.has(id):
+			available.append(id)
+	available.shuffle()
+	if available.size() > count:
+		available.resize(count)
+	return available
+
+# Return `count` positions spread across the outer-ring cells, staying clear
+# of `avoid`. Uses a greedy max-dispersion pass.
+func _spread_positions(cells: Array, avoid: Vector2i, count: int) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	if cells.is_empty():
+		return result
+	# Seed with the cell farthest from the cage.
+	var first: Vector2i = cells[0]
+	var best_d := 0
+	for c: Vector2i in cells:
+		var diff: Vector2i = c - avoid
+		var d: int = diff.x * diff.x + diff.y * diff.y
+		if d > best_d:
+			best_d = d
+			first = c
+	result.append(first)
+	# Each subsequent point maximises the minimum distance to already-placed ones.
+	while result.size() < count:
+		var pick: Vector2i = cells[0]
+		var pick_min := 0
+		for c: Vector2i in cells:
+			var min_d := 2147483647
+			for p: Vector2i in result:
+				var diff: Vector2i = c - p
+				var d: int = diff.x * diff.x + diff.y * diff.y
+				if d < min_d:
+					min_d = d
+			if min_d > pick_min:
+				pick_min = min_d
+				pick = c
+		result.append(pick)
+	return result
 
 # ---------------------------------------------------------------------------
 # Level 4 — spawn 5 fortified structures spread across the map.

@@ -109,7 +109,9 @@ var _under_attack_timer: float = 0.0
 # until then. The picker disables the Next Level button until the player
 # selects one of the three cards.
 var _reward_panel: PanelContainer = null
+var _reward_card_containers: Array[Control] = []
 var _reward_card_buttons: Array[Button] = []
+var _reward_card_icons: Array[TextureRect] = []
 var _reward_card_ids: Array[String] = []
 
 # Revive UI — references resolved during _wire_formation_buttons().
@@ -522,21 +524,25 @@ func show_reward_picker(ids: Array[String]) -> void:
 	if _next_level_button:
 		_next_level_button.disabled = true
 	for i in _reward_card_buttons.size():
-		var btn := _reward_card_buttons[i]
+		var card: Control = _reward_card_containers[i]
+		var btn: Button  = _reward_card_buttons[i]
+		var icon: TextureRect = _reward_card_icons[i]
 		if i < ids.size():
 			var id: String = ids[i]
 			btn.text = "%s\n\n%s" % [FragmentEffects.get_display_name(id), FragmentEffects.get_description(id)]
-			btn.show()
+			var img_path := "res://resources/fragments/%s.png" % id
+			icon.texture = load(img_path) if ResourceLoader.exists(img_path) else null
+			card.show()
 		else:
-			btn.hide()
+			card.hide()
 	_reward_card_ids = ids
 	_reward_panel.show()
 
 func _build_reward_picker() -> void:
 	_reward_panel = PanelContainer.new()
 	_reward_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_reward_panel.position = Vector2(-330, -130)
-	_reward_panel.custom_minimum_size = Vector2(660, 220)
+	_reward_panel.position = Vector2(-330, -150)
+	_reward_panel.custom_minimum_size = Vector2(660, 270)
 	_reward_panel.hide()
 	add_child(_reward_panel)
 
@@ -564,13 +570,30 @@ func _build_reward_picker() -> void:
 	vb.add_child(hb)
 
 	for i in 3:
+		# Card: icon at top, button with text below.
+		var card := VBoxContainer.new()
+		card.add_theme_constant_override("separation", 0)
+		hb.add_child(card)
+		_reward_card_containers.append(card)
+
+		var icon_wrap := CenterContainer.new()
+		icon_wrap.custom_minimum_size = Vector2(190, 60)
+		card.add_child(icon_wrap)
+
+		var icon := TextureRect.new()
+		icon.custom_minimum_size = Vector2(48, 48)
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon_wrap.add_child(icon)
+		_reward_card_icons.append(icon)
+
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(190, 140)
 		btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		btn.clip_text = false
 		var idx: int = i
 		btn.pressed.connect(func() -> void: _on_reward_card_pressed(idx))
-		hb.add_child(btn)
+		card.add_child(btn)
 		_reward_card_buttons.append(btn)
 
 func _on_reward_card_pressed(card_index: int) -> void:

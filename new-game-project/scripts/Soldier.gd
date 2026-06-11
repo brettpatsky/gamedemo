@@ -114,13 +114,7 @@ func is_continuous_fire() -> bool:
 var group_id:  int  = 0
 var is_active: bool = true   # false when this soldier belongs to an inactive group
 
-# Color per group — must match HUD.GROUP_COLORS so labels match buttons.
-const GROUP_LABEL_COLORS: Array[Color] = [
-	Color(1.0, 0.95, 0.0),   # group 1 — yellow
-	Color(0.3,  0.9, 1.0),   # group 2 — cyan
-	Color(0.5,  1.0, 0.4),   # group 3 — green
-]
-var _group_label: Label = null
+var _group_tag: Sprite2D = null
 
 # Auto-defend — idle-group soldiers fire their pistol when an enemy comes
 # within range. Tuning lives in BalanceConfig (SOLDIER_AUTODEFEND_*).
@@ -292,14 +286,13 @@ func _ready() -> void:
 	collision_layer = 2
 	collision_mask  = 1
 
-	# Floating group-number label — shown above the health bar when the squad
+	# Floating group shield icon — shown above the health bar when the squad
 	# is split. Hidden by default; SquadController calls show_group_label().
-	_group_label = Label.new()
-	_group_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_group_label.position = Vector2(-12, -62)
-	_group_label.add_theme_font_size_override("font_size", 14)
-	_group_label.hide()
-	add_child(_group_label)
+	_group_tag = Sprite2D.new()
+	_group_tag.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_group_tag.position = Vector2(0, -62)
+	_group_tag.hide()
+	add_child(_group_tag)
 
 	await get_tree().physics_frame
 
@@ -766,18 +759,47 @@ func is_downed() -> bool:
 func is_armed_bomb() -> bool:
 	return _state == State.BOMB
 
-# Show a colour-coded group number above this soldier's health bar.
+# Show a colour-coded shield icon above this soldier's health bar.
 func show_group_label(num: int) -> void:
-	if _group_label == null:
+	if _group_tag == null:
 		return
-	_group_label.text = str(num)
-	var col := GROUP_LABEL_COLORS[(num - 1) % GROUP_LABEL_COLORS.size()]
-	_group_label.add_theme_color_override("font_color", col)
-	_group_label.show()
+	_group_tag.texture = _make_group_icon(num - 1)
+	_group_tag.show()
 
 func hide_group_label() -> void:
-	if _group_label != null:
-		_group_label.hide()
+	if _group_tag != null:
+		_group_tag.hide()
+
+func _px(img: Image, x: int, y: int, color: Color) -> void:
+	if x >= 0 and x < img.get_width() and y >= 0 and y < img.get_height():
+		img.set_pixel(x, y, color)
+
+func _make_group_icon(group_index: int) -> ImageTexture:
+	const GROUP_COLORS: Array[Color] = [
+		Color(1.0, 0.95, 0.0),
+		Color(0.3,  0.9, 1.0),
+		Color(0.5,  1.0, 0.4),
+	]
+	var img := Image.create(24, 24, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var base: Color = GROUP_COLORS[group_index % GROUP_COLORS.size()]
+	var dark   := Color(base.r * 0.40, base.g * 0.40, base.b * 0.40, 1.0)
+	var mid    := Color(base.r * 0.75, base.g * 0.75, base.b * 0.75, 1.0)
+	var bright := Color(minf(base.r * 1.2 + 0.15, 1.0), minf(base.g * 1.2 + 0.15, 1.0), minf(base.b * 1.2 + 0.15, 1.0), 1.0)
+	for y in 22:
+		var half_w: int = 9 if y <= 15 else maxi(9 - (y - 15) * 2, 0)
+		for x in range(12 - half_w, 12 + half_w + 1):
+			var on_edge := (x == 12 - half_w or x == 12 + half_w or y == 0 or (y == 21 and half_w == 0))
+			_px(img, x, y, dark if on_edge else base)
+	for y in range(2, 6):
+		for x in range(5, 10):
+			_px(img, x, y, bright)
+	for dx in range(-2, 3):
+		for dy in range(-2, 3):
+			if abs(dx) + abs(dy) <= 2:
+				_px(img, 12 + dx, 10 + dy, mid)
+	_px(img, 12, 10, bright)
+	return ImageTexture.create_from_image(img)
 
 # Autonomous pistol fire for soldiers whose group is not currently commanded.
 # Fires at reduced rate and accuracy so they have a fighting chance but still

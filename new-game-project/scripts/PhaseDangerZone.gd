@@ -20,6 +20,7 @@ var damage_duration: float = 2.0
 var _elapsed:     float = 0.0
 var _tick_timer:  float = 0.0
 var _pulse_phase: float = 0.0
+var _sprite:      Sprite2D = null
 
 func configure(p_warn: float, p_damage: float) -> void:
 	warn_duration   = p_warn
@@ -36,6 +37,18 @@ func _ready() -> void:
 	var cs := CollisionShape2D.new()
 	cs.shape = shape
 	add_child(cs)
+	var tex_path := "res://resources/boss/danger_zone.png"
+	if ResourceLoader.exists(tex_path):
+		_sprite = Sprite2D.new()
+		_sprite.texture = load(tex_path)
+		_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		var size := Balance.ZONE_RADIUS * 2.0
+		var t := _sprite.texture
+		_sprite.scale = Vector2(size / t.get_width(), size / t.get_height())
+		var mat := CanvasItemMaterial.new()
+		mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		_sprite.material = mat
+		add_child(_sprite)
 	queue_redraw()
 
 func _process(delta: float) -> void:
@@ -67,25 +80,20 @@ func _draw() -> void:
 		_draw_active()
 
 func _draw_telegraph() -> void:
-	# Bright, fast-flashing outline so the danger zone is impossible to miss.
-	var t: float = clampf(_elapsed / warn_duration, 0.0, 1.0)
 	var pulse: float = 0.5 + 0.5 * sin(_pulse_phase * 14.0)
-	var fill_alpha: float = 0.10 + 0.20 * pulse + 0.15 * t
 	var ring_alpha: float = 0.55 + 0.40 * pulse
-	draw_circle(Vector2.ZERO, Balance.ZONE_RADIUS, Color(1.0, 0.20, 0.55, fill_alpha))
+	# Drive sprite visibility with the pulse so it flashes as a warning.
+	if _sprite:
+		_sprite.modulate = Color(1.0, 0.6, 0.9, 0.45 + 0.55 * pulse)
+	# Pulsing outline ring drawn on top of the sprite.
 	draw_arc(Vector2.ZERO, Balance.ZONE_RADIUS, 0.0, TAU, 64, Color(1.0, 0.45, 0.95, ring_alpha), 6.0)
-	# X mark across the centre so the player can clock the zone shape at a glance.
-	var arm: float = Balance.ZONE_RADIUS * 0.38
-	var x_col := Color(1.0, 0.6, 1.0, ring_alpha * 0.9)
-	draw_line(Vector2(-arm, -arm), Vector2( arm,  arm), x_col, 5.0)
-	draw_line(Vector2( arm, -arm), Vector2(-arm,  arm), x_col, 5.0)
 
 func _draw_active() -> void:
 	var t: float = clampf((_elapsed - warn_duration) / damage_duration, 0.0, 1.0)
 	var fade: float = 1.0 - t * 0.35
 	var pulse: float = 0.5 + 0.5 * sin(_pulse_phase * 22.0)
-	# Saturated magenta fill — clear "this is hurting you" signalling.
-	draw_circle(Vector2.ZERO, Balance.ZONE_RADIUS,        Color(1.00, 0.15, 0.55, 0.55 * fade))
-	draw_circle(Vector2.ZERO, Balance.ZONE_RADIUS * 0.80, Color(1.00, 0.40, 0.85, 0.55 * fade))
+	# Keep sprite visible at full intensity; add a hot glowing core on top.
+	if _sprite:
+		_sprite.modulate = Color(1.0, 0.5, 0.8, fade)
 	draw_circle(Vector2.ZERO, Balance.ZONE_RADIUS * 0.30, Color(1.00, 0.85, 1.00, 0.45 + 0.40 * pulse))
 	draw_arc(Vector2.ZERO, Balance.ZONE_RADIUS, 0.0, TAU, 72, Color(1.0, 0.65, 1.0, 0.90 * fade), 6.5)

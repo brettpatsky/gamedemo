@@ -65,6 +65,21 @@ func _ready() -> void:
 	_spawn_room_trigger()
 	if boss and boss.has_signal("boss_defeated"):
 		boss.boss_defeated.connect(func() -> void: boss_defeated.emit())
+	_add_floor_texture()
+
+func _add_floor_texture() -> void:
+	var tex_path := "res://resources/boss/floor.png"
+	if not ResourceLoader.exists(tex_path):
+		return
+	var spr := Sprite2D.new()
+	spr.texture = load(tex_path)
+	spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	spr.position = Vector2(_map_w_px * 0.5, ROOM_HEIGHT * 0.5)
+	var t := spr.texture
+	spr.scale = Vector2(_map_w_px / t.get_width(), ROOM_HEIGHT / t.get_height())
+	spr.z_index = 0
+	add_child(spr)
+	move_child(spr, 1)  # just after Background, behind walls and entities
 
 # =============================================================================
 # MapGenerator-compatible interface — same names Main.gd / Camera / Bullet expect

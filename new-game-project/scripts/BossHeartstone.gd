@@ -106,6 +106,14 @@ func _ready() -> void:
 	health_bar.value     = _health
 	# Dormant until the squad crosses into the boss room — BossArenaLevel's
 	# trigger zone calls activate() at that point.
+	var tex_path := "res://resources/boss/boss_heartstone.png"
+	if ResourceLoader.exists(tex_path):
+		var spr := Sprite2D.new()
+		spr.texture = load(tex_path)
+		spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		var t := spr.texture
+		spr.scale = Vector2(180.0 / t.get_width(), 180.0 / t.get_height())
+		add_child(spr)
 
 # Called by the arena trigger zone when a soldier enters the boss room.
 func activate() -> void:
@@ -272,19 +280,31 @@ func _on_totem_destroyed() -> void:
 
 func _spawn_sludge_pools() -> void:
 	_sludge_pools.clear()
+	# Compute the boss room rect so each pool free-roams the entire floor.
+	var arena: Node = get_parent()
+	var room_w: float = 1600.0
+	var room_h: float = 700.0
+	if arena and "_map_w_px" in arena:
+		room_w = arena._map_w_px
+	if arena and "ROOM_HEIGHT" in arena:
+		room_h = arena.ROOM_HEIGHT
+	# Room origin in global space (arena is usually at (0,0) but use to_global to be safe).
+	var origin: Vector2 = (arena as Node2D).to_global(Vector2.ZERO) if arena is Node2D else Vector2.ZERO
+	var room_rect := Rect2(origin, Vector2(room_w, room_h))
+	# Spread spawn positions so pools start separated.
+	var spawn_offsets: Array[Vector2] = [
+		Vector2(room_w * 0.25, room_h * 0.25),
+		Vector2(room_w * 0.75, room_h * 0.25),
+		Vector2(room_w * 0.25, room_h * 0.75),
+		Vector2(room_w * 0.75, room_h * 0.75),
+	]
 	for i in Balance.BOSS_SLUDGE_COUNT:
-		var angle: float = (TAU / float(Balance.BOSS_SLUDGE_COUNT)) * float(i) + PI * 0.25
-		var pos := global_position + Vector2(cos(angle), sin(angle)) * Balance.BOSS_SLUDGE_RADIUS_RING
 		var pool := Area2D.new()
 		pool.set_script(_SLUDGE_SCRIPT)
 		get_parent().add_child(pool)
-		pool.global_position = pos
-		# Make the pool wander around the boss so the squad can't camp out of
-		# range and snipe the totems. Each pool seeks new targets independently.
-		if pool.has_method("configure"):
-			pool.configure(global_position,
-					Balance.BOSS_SLUDGE_WANDER_MIN,
-					Balance.BOSS_SLUDGE_WANDER_MAX)
+		pool.global_position = origin + spawn_offsets[i]
+		if pool.has_method("configure_room"):
+			pool.configure_room(room_rect)
 		_sludge_pools.append(pool)
 
 func _clear_sludge_pools() -> void:
@@ -413,12 +433,6 @@ func _draw() -> void:
 	if _void_active:
 		aura_color = Color(0.85, 0.15, 1.00, 0.45 + 0.20 * pulse)
 	draw_circle(Vector2.ZERO, aura_radius, aura_color)
-	# Stone body — six-sided dark crystal.
-	var pts := PackedVector2Array()
-	for i in 6:
-		var a: float = (TAU / 6.0) * float(i) - PI * 0.5
-		pts.append(Vector2(cos(a), sin(a)) * 80.0)
-	draw_colored_polygon(pts, Color(0.12, 0.08, 0.18))
 	# Inner cracks — colour intensifies as health drops.
 	var hp_ratio: float = clampf(float(_health) / float(Balance.BOSS_MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE), 0.0, 1.0)
 	var crack_color := Color(1.0, 0.4 * (1.0 - hp_ratio), 1.0 * (1.0 - hp_ratio * 0.5), 0.8)

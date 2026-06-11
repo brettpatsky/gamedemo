@@ -74,6 +74,13 @@ var _wall_tiles: Dictionary = {}
 var _parent_cage:      Node = null
 var _memory_fragment:  Node = null
 
+# Active tutorial modal — only one open at a time.
+var _active_modal: CanvasLayer = null
+
+# Sign world positions and texts — checked in _input for proximity clicks.
+var _sign_positions: Array[Vector2] = []
+var _sign_texts:     Array[String]  = []
+
 # ---------------------------------------------------------------------------
 func _ready() -> void:
 	add_to_group("map_generator")
@@ -453,27 +460,133 @@ func _build_room_final() -> void:
 	_memory_fragment = frag
 
 # ---------------------------------------------------------------------------
-# Tutorial sign — a single-line floating instruction. Replace with proper
-# in-world prop sprites once art lands.
+# Tutorial signpost — a clickable in-world prop.  Clicks are detected in
+# _input() by proximity so they fire before SquadController._unhandled_input
+# consumes the left-click for squad movement.
 # ---------------------------------------------------------------------------
 func _add_sign(world_pos: Vector2, text: String) -> void:
-	var label := Label.new()
-	label.text = text
-	# Render glyphs at a larger size, then scale the Control down so the on-
-	# screen footprint stays roughly the same. The SubViewport upscales its
-	# render with bilinear filtering — small font sizes get blurred badly,
-	# so we rasterize big and shrink. Net result: sharper text, same layout.
-	label.add_theme_font_size_override("font_size", 28)
-	label.scale = Vector2(0.5, 0.5)
-	label.position = world_pos - Vector2(80, 12)
-	label.size = Vector2(440, 180)
-	# Don't let signs swallow clicks — soldiers need to be able to walk
-	# under them and the player needs to be able to click through them.
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.add_theme_color_override("font_color", Color(1, 0.95, 0.7))
-	label.add_theme_color_override("font_outline_color", Color(0.1, 0.1, 0.15))
-	label.add_theme_constant_override("outline_size", 5)
-	add_child(label)
+	_sign_positions.append(world_pos)
+	_sign_texts.append(text)
+
+	# Sign sprite — region picks a single 16×16 tile (top-left cell of the
+	# 7-col × 4-row tilesheet).  Scale 5× → 80×80 world px (≈1.25 tiles).
+	var spr := Sprite2D.new()
+	spr.texture = load("res://resources/caraka/Props/Sign.png")
+	spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	spr.region_enabled = true
+	spr.region_rect = Rect2(0, 0, 16, 16)
+	spr.scale = Vector2(5.0, 5.0)
+	spr.position = world_pos
+	add_child(spr)
+
+	# Blinking "?" above the sign to signal it is interactive.
+	var hint := Label.new()
+	hint.text = "?"
+	hint.position = world_pos - Vector2(12, 90)
+	hint.add_theme_font_size_override("font_size", 28)
+	hint.add_theme_color_override("font_color",         Color(1.0, 0.92, 0.28))
+	hint.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.1))
+	hint.add_theme_constant_override("outline_size", 5)
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(hint)
+	var tw := create_tween().set_loops()
+	tw.tween_property(hint, "modulate:a", 0.2, 0.55)
+	tw.tween_property(hint, "modulate:a", 1.0, 0.55)
+
+# Left-clicks near any sign open the modal; marking the event as handled
+# prevents SquadController from also issuing a move order.
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var mbe := event as InputEventMouseButton
+	if not (mbe.pressed and mbe.button_index == MOUSE_BUTTON_LEFT):
+		return
+	if _active_modal != null:
+		return   # overlay's gui_input closes the modal via call_deferred
+	var world_mouse := get_global_mouse_position()
+	for i in _sign_positions.size():
+		if (world_mouse - _sign_positions[i]).length() < 56.0:
+			_show_tutorial_modal(_sign_texts[i])
+			get_viewport().set_input_as_handled()
+			return
+
+# ---------------------------------------------------------------------------
+# Modal — full-screen dimmed overlay with the tutorial_modal.png background
+# and the instruction text. Click anywhere to dismiss.
+# ---------------------------------------------------------------------------
+const _MODAL_W := 500.0
+const _MODAL_H := 340.0
+
+func _show_tutorial_modal(text: String) -> void:
+	if _active_modal != null:
+		return
+
+	var vp_size := get_viewport().get_visible_rect().size
+
+	var modal := CanvasLayer.new()
+	modal.layer = 50
+	_active_modal = modal
+	add_child(modal)
+
+	# Transparent overlay — catches clicks to close without dimming the game.
+	var overlay := ColorRect.new()
+	overlay.size = vp_size
+	overlay.color = Color(0, 0, 0, 0)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	overlay.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and (ev as InputEventMouseButton).pressed:
+			# Deferred so _active_modal is still set when _input() runs this
+			# frame — stops the same click from immediately re-opening a sign.
+			_close_tutorial_modal.call_deferred()
+	)
+	modal.add_child(overlay)
+
+	# Panel positioned at viewport centre.
+	var panel := Control.new()
+	panel.size = Vector2(_MODAL_W, _MODAL_H)
+	panel.position = Vector2(
+		vp_size.x * 0.5 - _MODAL_W * 0.5,
+		vp_size.y * 0.5 - _MODAL_H * 0.5
+	)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	modal.add_child(panel)
+
+	# Background image.
+	var bg_path := "res://resources/tutorial_modal.png"
+	if ResourceLoader.exists(bg_path):
+		var bg := TextureRect.new()
+		bg.texture = load(bg_path)
+		bg.stretch_mode = TextureRect.STRETCH_SCALE
+		bg.size = Vector2(_MODAL_W, _MODAL_H)
+		bg.mouse_filter = Control.MOUSE_FILTER_PASS
+		panel.add_child(bg)
+
+	# Instruction text with generous inner margins.
+	const MARGIN := 52.0
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(_MODAL_W - MARGIN * 2, _MODAL_H - MARGIN * 2 - 24)
+	lbl.position = Vector2(MARGIN, MARGIN + 8)
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.add_theme_color_override("font_color", Color(0.18, 0.10, 0.04))
+	lbl.add_theme_color_override("font_outline_color", Color(1.0, 0.9, 0.65, 0.35))
+	lbl.add_theme_constant_override("outline_size", 2)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(lbl)
+
+	# Fade in.
+	panel.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(panel, "modulate:a", 1.0, 0.22)
+
+func _close_tutorial_modal() -> void:
+	if _active_modal == null:
+		return
+	_active_modal.queue_free()
+	_active_modal = null
+
 
 # ---------------------------------------------------------------------------
 # Navmesh — full background as the walkable outline, with one rectangular

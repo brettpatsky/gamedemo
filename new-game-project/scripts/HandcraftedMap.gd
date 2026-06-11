@@ -1081,12 +1081,9 @@ func _spawn_mission_parent_and_fragment() -> void:
 		_bake_navigation()
 	_spawn_world_fragment(level, foot)
 
-# The memory fragment still drops in the open world (the cave holds only the
-# parent), on a passable outer cell as far as possible from the cave entrance.
-func _spawn_world_fragment(level: int, avoid: Vector2i) -> void:
-	var fragment_id: String = FragmentEffects.get_mission_fragment_id(level)
-	if fragment_id == "":
-		return
+# Three memory fragments drop in the open world (the cave holds only the
+# parent). IDs are picked randomly from the uncollected pool.
+func _spawn_world_fragment(_level: int, avoid: Vector2i) -> void:
 	var frag_scene: PackedScene = load("res://scenes/memory_fragment.tscn")
 	if frag_scene == null:
 		return
@@ -1099,22 +1096,19 @@ func _spawn_world_fragment(level: int, avoid: Vector2i) -> void:
 	)
 	if outer.is_empty():
 		return
-	var best: Vector2i = outer[0]
-	var best_d := 0
-	for c in outer:
-		var diff: Vector2i = c - avoid
-		var d: int = diff.x * diff.x + diff.y * diff.y
-		if d > best_d:
-			best_d = d
-			best = c
-	var frag: Node2D = frag_scene.instantiate()
-	frag.position = _tile_to_world(best)
-	if "fragment_id" in frag:
-		frag.set("fragment_id", fragment_id)
-	if "display_name" in frag:
-		frag.set("display_name", FragmentEffects.get_display_name(fragment_id))
-	add_child(frag)
-	_objective_nodes["memory_fragment"] = frag
+	var frag_ids := _pick_level_fragment_ids(3)
+	var positions := _spread_positions(outer, avoid, frag_ids.size())
+	var spawned: Array = []
+	for i in frag_ids.size():
+		var frag: Node2D = frag_scene.instantiate()
+		frag.position = _tile_to_world(positions[i])
+		if "fragment_id" in frag:
+			frag.set("fragment_id", frag_ids[i])
+		if "display_name" in frag:
+			frag.set("display_name", FragmentEffects.get_display_name(frag_ids[i]))
+		add_child(frag)
+		spawned.append(frag)
+	_objective_nodes["memory_fragments"] = spawned
 
 # Foot = the walkable low-ground cell just below a plateau's south wall, near the
 # centre of the largest plateau and clear of stairs/props — where the cave mouth

@@ -198,13 +198,10 @@ const BOSS_TOTEM_SPEED_SPREAD: float = 0.45    # rad/s deviation per re-roll
 const BOSS_TOTEM_REROLL_TIME:  float = 2.2     # seconds between velocity re-rolls
 const BOSS_TOTEM_RADIUS_WOBBLE: float = 60.0   # peak in/out drift from BOSS_TOTEM_RADIUS
 const BOSS_TOTEM_WOBBLE_SPEED:  float = 1.5    # rad/s of the radius sine
-const BOSS_SLUDGE_COUNT:       int   = 3
+const BOSS_SLUDGE_COUNT:       int   = 4
 const BOSS_SLUDGE_RADIUS_RING: float = 240.0   # ring radius where pools spawn
-# Wandering sludge — pools drift toward random points within an annulus
-# around the boss so the squad can't camp out of range.
-const BOSS_SLUDGE_DRIFT_SPEED: float = 90.0    # px/s while seeking next target
-const BOSS_SLUDGE_WANDER_MIN:  float = 140.0   # inner radius of wander zone
-const BOSS_SLUDGE_WANDER_MAX:  float = 360.0   # outer radius of wander zone
+# Wandering sludge — free-roams the entire boss room so nowhere is safe.
+const BOSS_SLUDGE_DRIFT_SPEED: float = 130.0   # px/s while seeking next target
 
 # Phase 3 — projectile spiral + Void Embrace channel.
 const BOSS_PROJECTILE_INTERVAL:     float = 0.16  # seconds between spiral shots
@@ -218,7 +215,9 @@ const BOSS_VOID_WIPE_DAMAGE:        int   = 9999  # uninterrupted channel = squa
 # MEMORY TOTEM  (Boss Phase 2 objective)
 # -----------------------------------------------------------------------------
 const TOTEM_MAX_HEALTH: int   = 80
-const TOTEM_REGEN_RATE: float = 6.0   # HP/s regenerated if not actively damaged
+const TOTEM_REGEN_RATE:          float = 6.0   # HP/s regenerated if not actively damaged
+const TOTEM_CONTACT_DAMAGE:      int   = 35    # damage per tick when a soldier touches an orb
+const TOTEM_CONTACT_INTERVAL:    float = 0.6   # seconds between contact damage ticks
 
 # -----------------------------------------------------------------------------
 # SLUDGE POOL  (Boss Phase 2 hazard)

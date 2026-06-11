@@ -30,6 +30,9 @@ var parents_freed:  Array[bool] = []
 
 var missions_completed: Array[int]    = []
 var fragments:          Array[String] = []
+# Fragments found on the current level but not yet permanently chosen.
+# Cleared by claim_level_fragments() at mission end.
+var level_fragments:    Array[String] = []
 
 func _ready() -> void:
 	start_new_run()
@@ -53,6 +56,7 @@ func start_new_run() -> void:
 		parents_freed.append(false)
 	missions_completed.clear()
 	fragments.clear()
+	level_fragments.clear()
 	emit_signal("run_reset")
 
 # Snapshots the squad's state at mission end and rolls it forward into the run.
@@ -103,6 +107,24 @@ func collect_fragment(id: String) -> void:
 		return
 	fragments.append(id)
 	emit_signal("fragment_collected", id)
+
+# Called when a collectable is physically touched in the level. Adds it to
+# the temporary per-level buffer so the reward picker can offer it at the
+# end of the mission without committing it permanently yet.
+func note_found_fragment(id: String) -> void:
+	if id == "" or level_fragments.has(id):
+		return
+	level_fragments.append(id)
+
+# Returns fragments found this level (filtering out any already permanently
+# owned) and clears the buffer for the next level.
+func claim_level_fragments() -> Array[String]:
+	var out: Array[String] = []
+	for id in level_fragments:
+		if not fragments.has(id):
+			out.append(id)
+	level_fragments.clear()
+	return out
 
 # Returns the HP the kid in `slot` should spawn with next mission.
 # -1 means "use the kid's max_health" — let Soldier._ready handle the default.

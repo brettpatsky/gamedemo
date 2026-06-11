@@ -60,6 +60,7 @@ const HANDCRAFTED_MAP_PATHS := {
 @onready var squad_ctrl: Node2D      = $GameViewport/SubViewport/SquadController
 @onready var hud:        CanvasLayer = $HUD
 @onready var _subviewport: SubViewport = $GameViewport/SubViewport
+@onready var _music:     AudioStreamPlayer = $AudioStreamPlayer
 
 const HUD_HEIGHT := 46.0
 
@@ -444,12 +445,25 @@ func _on_mission_win() -> void:
 	if GameManager.current_level >= 7:
 		hud.show_mission_result("YOU WIN! ALL LEVELS COMPLETE!", Color.YELLOW, false)
 	else:
-		hud.show_mission_result("MISSION COMPLETE!", Color.GREEN, true)
-		# Offer up to 3 new fragments. roll_rewards filters out anything
-		# already in RunState.fragments, so picks never repeat. If the pool
-		# is exhausted the picker is a no-op and Next Level is enabled by
-		# default (show_mission_result(.., true) already enabled it).
-		hud.show_reward_picker(FragmentEffects.roll_rewards(3))
+		_enter_fairy_garden()
+
+func _enter_fairy_garden() -> void:
+	var found := RunState.claim_level_fragments()
+	_music.stop()
+	# Finish dimming the world to full black, then show the garden.
+	var tw := create_tween()
+	tw.tween_interval(0.4)
+	tw.tween_property($GameViewport, "modulate", Color.BLACK, 0.45) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	tw.tween_callback(func() -> void:
+		var garden := FairyGarden.new()
+		garden.setup(found)
+		garden.garden_exited.connect(_on_garden_exited)
+		add_child(garden)
+	)
+
+func _on_garden_exited() -> void:
+	advance_level()
 
 func _on_mission_fail() -> void:
 	if _mission_ended:
@@ -502,16 +516,24 @@ func _wire_parent_cage(end_mission_on_freed: bool) -> void:
 					Color(0.95, 0.75, 0.75), 2.0)
 		)
 
-# Surfaces fragment pickup as a "MEMORY RECOVERED" toast. The fragment
-# itself adds the id to RunState.fragments in its own script.
+# Surfaces fragment pickups as toasts. Handles both the three-fragment main
+# missions ("memory_fragments" array) and single-fragment maze levels.
 func _wire_memory_fragment() -> void:
-	var frag: Node = map_gen.get_objective_node("memory_fragment") if map_gen else null
-	if frag == null or not frag.has_signal("collected"):
+	if map_gen == null:
 		return
-	frag.collected.connect(func(_id: String, name_text: String) -> void:
-		hud.show_toast("MEMORY RECOVERED — %s" % name_text,
-				Color(0.7, 0.95, 1.0), 2.5)
-	)
+	var frags: Variant = map_gen.get_objective_node("memory_fragments")
+	if frags == null:
+		frags = map_gen.get_objective_node("memory_fragment")
+	if frags == null:
+		return
+	var frag_array: Array = frags if frags is Array else [frags]
+	for frag in frag_array:
+		if frag == null or not frag.has_signal("collected"):
+			continue
+		frag.collected.connect(func(_id: String, name_text: String) -> void:
+			hud.show_toast("MEMORY FOUND — %s" % name_text,
+					Color(0.7, 0.95, 1.0), 2.5)
+		)
 
 # Snapshots the squad at the moment the mission ends and rolls the result into
 # RunState. The soldiers group still contains downed kids (they're left on the

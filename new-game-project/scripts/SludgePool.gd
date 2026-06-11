@@ -22,15 +22,22 @@ var _wander_min: float   = 0.0
 var _wander_max: float   = 0.0
 var _target_pos: Vector2 = Vector2.ZERO
 var _has_anchor: bool    = false
+var _room_rect:  Rect2   = Rect2()
+var _room_mode:  bool    = false
 
-# Called by BossHeartstone immediately after add_child. Stationary pools
-# (legacy behaviour) skip the call and stay where spawned.
+# Legacy anchor-based wander (kept for back-compat).
 func configure(anchor: Vector2, wander_min: float, wander_max: float) -> void:
 	_anchor_pos = anchor
 	_wander_min = wander_min
 	_wander_max = wander_max
 	_has_anchor = true
 	_target_pos = _pick_target()
+
+# Free-roam mode: pool drifts to random positions anywhere inside room_rect.
+func configure_room(room_rect: Rect2) -> void:
+	_room_rect  = room_rect.grow(-float(Balance.SLUDGE_RADIUS))
+	_room_mode  = true
+	_target_pos = _pick_room_target()
 
 func _ready() -> void:
 	add_to_group("sludge_pools")
@@ -46,6 +53,15 @@ func _ready() -> void:
 	var cs := CollisionShape2D.new()
 	cs.shape = shape
 	add_child(cs)
+	var tex_path := "res://resources/boss/sludge_pool.png"
+	if ResourceLoader.exists(tex_path):
+		var spr := Sprite2D.new()
+		spr.texture = load(tex_path)
+		spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		var size := Balance.SLUDGE_RADIUS * 2.0
+		var t := spr.texture
+		spr.scale = Vector2(size / t.get_width(), size / t.get_height())
+		add_child(spr)
 	queue_redraw()
 
 func _process(delta: float) -> void:
@@ -84,12 +100,12 @@ func _process(delta: float) -> void:
 # new target inside the configured annulus. Stationary pools (anchor never
 # set) short-circuit so legacy behaviour is preserved.
 func _drift(delta: float) -> void:
-	if not _has_anchor:
+	if not _has_anchor and not _room_mode:
 		return
 	var to_target: Vector2 = _target_pos - global_position
 	var step: float = Balance.BOSS_SLUDGE_DRIFT_SPEED * delta
 	if to_target.length() <= step or to_target.length() <= Balance.SLUDGE_RADIUS * 0.5:
-		_target_pos = _pick_target()
+		_target_pos = _pick_room_target() if _room_mode else _pick_target()
 		return
 	global_position += to_target.normalized() * step
 
@@ -102,11 +118,13 @@ func _pick_target() -> Vector2:
 	var r: float = sqrt(lerpf(_wander_min * _wander_min, _wander_max * _wander_max, t))
 	return _anchor_pos + Vector2(cos(ang), sin(ang)) * r
 
+func _pick_room_target() -> Vector2:
+	return Vector2(
+		randf_range(_room_rect.position.x, _room_rect.end.x),
+		randf_range(_room_rect.position.y, _room_rect.end.y)
+	)
+
 func _draw() -> void:
-	# Layered violet pools — outer halo + main body + writhing inner rim.
-	draw_circle(Vector2.ZERO, Balance.SLUDGE_RADIUS,        Color(0.30, 0.05, 0.45, 0.35))
-	draw_circle(Vector2.ZERO, Balance.SLUDGE_RADIUS * 0.85, Color(0.45, 0.10, 0.65, 0.55))
-	draw_circle(Vector2.ZERO, Balance.SLUDGE_RADIUS * 0.55, Color(0.65, 0.20, 0.85, 0.65))
 	# Three slowly drifting bubbles to sell the "alive" feel.
 	for i in 3:
 		var phase: float = _anim_phase * 0.8 + float(i) * (TAU / 3.0)
