@@ -35,6 +35,7 @@ extends Node2D
 signal boss_defeated
 signal arena_locked
 
+
 const WALL_THICKNESS: float = 96.0
 const ROOM_HEIGHT:    float = 700.0   # boss room / corridor boundary
 # Winding Z-path from the spawn strip (bottom) up into the boss room.
@@ -81,6 +82,7 @@ func _ready() -> void:
 		boss.boss_defeated.connect(func() -> void: boss_defeated.emit())
 	_add_floor_texture()
 	_setup_corridor_visuals()
+	_spawn_fragments()
 
 func _add_floor_texture() -> void:
 	var tex_path := "res://resources/boss/floor.png"
@@ -162,10 +164,14 @@ func _compute_map_bounds() -> void:
 
 func _spawn_boundary_walls() -> void:
 	const T := WALL_THICKNESS
-	_add_wall(-T,        -T,         _map_w_px + 2.0 * T, T)            # top
-	_add_wall(-T,        _map_h_px,  _map_w_px + 2.0 * T, T)            # bottom
-	_add_wall(-T,        0.0,        T,                   _map_h_px)     # left
-	_add_wall(_map_w_px, 0.0,        T,                   _map_h_px)     # right
+	_add_wall(-T,        -T,         _map_w_px + 2.0 * T, T)            # top (outside)
+	_add_wall(-T,        _map_h_px,  _map_w_px + 2.0 * T, T)            # bottom (outside)
+	_add_wall(-T,        0.0,        T,                   _map_h_px)     # left (outside)
+	_add_wall(_map_w_px, 0.0,        T,                   _map_h_px)     # right (outside)
+	# The decorative edge columns inside the boss room are visual-only; block them
+	# so the squad can't walk into them.
+	_add_wall(0.0,              0.0, T, ROOM_HEIGHT)                     # inside left edge
+	_add_wall(_map_w_px - T,    0.0, T, ROOM_HEIGHT)                     # inside right edge
 
 # Winding Z-path collision. The lower region (ROOM_HEIGHT..map bottom) splits
 # into three horizontal slabs; the walkable path occupies a different x-band in
@@ -302,6 +308,33 @@ func _lock_arena() -> void:
 	# Seal the upper vertical entrance so the squad can't retreat back out.
 	_add_wall(_ax - PATH_HW, ROOM_HEIGHT, PATH_HW * 2.0, 20.0)
 	arena_locked.emit()
+
+# Spawn 3 memory fragments along the Z-path corridor so the squad can collect
+# them on the approach to the boss room. One per section: upper vertical,
+# horizontal band, lower vertical.
+func _spawn_fragments() -> void:
+	var frag_path := "res://scenes/memory_fragment.tscn"
+	if not ResourceLoader.exists(frag_path):
+		return
+	var frag_scene: PackedScene = load(frag_path)
+	var available: Array[String] = []
+	for id in FragmentEffects.FRAGMENT_METADATA.keys():
+		if not RunState.fragments.has(id):
+			available.append(id)
+	available.shuffle()
+	var positions: Array[Vector2] = [
+		Vector2(_ax,                  ROOM_HEIGHT + (BAND_Y0 - ROOM_HEIGHT) * 0.5),  # upper vertical midpoint
+		Vector2((_ax + _bx) * 0.5,   (BAND_Y0 + BAND_Y1) * 0.5),                   # horizontal band midpoint
+		Vector2(_bx,                  BAND_Y1 + (_map_h_px - BAND_Y1) * 0.5),        # lower vertical midpoint
+	]
+	for i in mini(3, available.size()):
+		var frag: Node2D = frag_scene.instantiate()
+		frag.position = positions[i]
+		if "fragment_id" in frag:
+			frag.set("fragment_id", available[i])
+		if "display_name" in frag:
+			frag.set("display_name", FragmentEffects.get_display_name(available[i]))
+		add_child(frag)
 
 func _setup_corridor_visuals() -> void:
 	# Hide the old straight ColorRect corridor elements.

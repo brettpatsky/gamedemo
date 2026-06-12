@@ -22,9 +22,10 @@ const SQUAD_SPEED     := 100.0
 const COLLECT_RADIUS  := 44.0    # distance at which an item is auto-collected
 const EXIT_Y          := 72.0    # squad y below this value triggers exit
 
-# Clearing: circle in lower-centre.
+# Clearing: ellipse fitted to the grass oval in the background art.
 var CLEARING_CENTER: Vector2
-const CLEARING_RADIUS := 165.0
+var CLEARING_RX: float = 380.0   # horizontal radius — set from SW in _ready()
+var CLEARING_RY: float = 175.0   # vertical radius   — set from SH in _ready()
 
 # Path: vertical strip from clearing top to screen top.
 const PATH_HALF_W := 58.0        # half-width of the walkable path
@@ -66,7 +67,9 @@ func _ready() -> void:
 	var vp_rect := get_viewport().get_visible_rect()
 	SW = vp_rect.size.x
 	SH = vp_rect.size.y
-	CLEARING_CENTER = Vector2(SW * 0.5, SH * 0.72)
+	CLEARING_CENTER = Vector2(SW * 0.5, SH * 0.70)
+	CLEARING_RX     = SW * 0.40
+	CLEARING_RY     = SH * 0.27
 	_squad_pos    = CLEARING_CENTER
 	_squad_target = CLEARING_CENTER
 
@@ -136,7 +139,7 @@ func _build_scene() -> void:
 
 	# ── Instruction strip at the bottom ─────────────────────────────────────
 	var inst := Label.new()
-	inst.text = "CLICK TO MOVE   ·   COLLECT MEMORIES   ·   WALK TO EXIT"
+	inst.text = "CLICK TO MOVE   ·   WALK TO YOUR REWARD   ·   WALK TO EXIT"
 	inst.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inst.custom_minimum_size = Vector2(SW, 0)
 	inst.position = Vector2(0, SH - 30)
@@ -157,10 +160,21 @@ func _build_scene() -> void:
 func _place_fragments() -> void:
 	if _fragment_ids.is_empty():
 		return
+	# Header prompting the player to choose one reward.
+	var hdr := Label.new()
+	hdr.text = "✦  CHOOSE 1 REWARD  ✦"
+	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hdr.custom_minimum_size = Vector2(SW, 0)
+	hdr.position = Vector2(0, CLEARING_CENTER.y - CLEARING_RY - 52.0)
+	hdr.add_theme_font_size_override("font_size", 20)
+	hdr.add_theme_color_override("font_color", Color(1.0, 0.92, 0.45))
+	hdr.add_theme_color_override("font_outline_color", Color.BLACK)
+	hdr.add_theme_constant_override("outline_size", 5)
+	add_child(hdr)
 	var count := _fragment_ids.size()
 	for i in count:
 		var angle := (float(i) / float(count)) * TAU - PI * 0.5
-		var pos   := CLEARING_CENTER + Vector2(cos(angle), sin(angle)) * 100.0
+		var pos   := CLEARING_CENTER + Vector2(cos(angle) * 140.0, sin(angle) * 90.0)
 		_spawn_item(_fragment_ids[i], pos)
 
 func _spawn_item(id: String, pos: Vector2) -> void:
@@ -226,11 +240,14 @@ func _on_garden_input(event: InputEvent) -> void:
 # ── Walkability ────────────────────────────────────────────────────────────────
 
 func _is_walkable(pos: Vector2) -> bool:
-	if (pos - CLEARING_CENTER).length() < CLEARING_RADIUS:
+	# Ellipse fitted to the grass oval in the background art.
+	var dx := (pos.x - CLEARING_CENTER.x) / CLEARING_RX
+	var dy := (pos.y - CLEARING_CENTER.y) / CLEARING_RY
+	if dx * dx + dy * dy < 1.0:
 		return true
-	# Path connects clearing to exit; allow slight overlap with clearing top.
+	# Vertical path strip from clearing top up to the exit arch.
 	var cx := SW * 0.5
-	if absf(pos.x - cx) <= PATH_HALF_W and pos.y < CLEARING_CENTER.y - CLEARING_RADIUS + 30.0:
+	if absf(pos.x - cx) <= PATH_HALF_W and pos.y < CLEARING_CENTER.y - CLEARING_RY + 20.0:
 		return true
 	return false
 
@@ -260,17 +277,29 @@ func _check_fragment_collection() -> void:
 			_collect_item(i, id)
 
 func _collect_item(idx: int, id: String) -> void:
-	var node := _fragment_nodes[idx] as Node2D
+	var chosen := _fragment_nodes[idx] as Node2D
 	_fragment_nodes.remove_at(idx)
 	RunState.collect_fragment(id)
-	# Pop-and-fade effect
+	# Pop-and-grow the chosen item then fade out.
 	var tw := create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(node, "scale",       Vector2(2.2, 2.2),  0.18)
-	tw.tween_property(node, "modulate:a",  0.0,                 0.30)
+	tw.tween_property(chosen, "scale",      Vector2(2.8, 2.8), 0.22)
+	tw.tween_property(chosen, "modulate:a", 0.0,               0.38)
 	tw.set_parallel(false)
-	tw.tween_callback(node.queue_free)
-	_show_notify("COLLECTED: %s" % FragmentEffects.get_display_name(id))
+	tw.tween_callback(chosen.queue_free)
+	# Fade out and discard every unchosen item.
+	for node: Node2D in _fragment_nodes:
+		var tw2 := create_tween()
+		tw2.tween_property(node, "modulate:a", 0.0, 0.45)
+		tw2.tween_callback(node.queue_free)
+	_fragment_nodes.clear()
+	_show_notify("REWARD: %s  —  %s" % [
+		FragmentEffects.get_display_name(id),
+		FragmentEffects.get_description(id)])
+	# Give the player a moment to read the reward, then transition.
+	await get_tree().create_timer(2.2).timeout
+	if not _exiting:
+		_start_exit()
 
 func _check_exit() -> void:
 	if _squad_pos.y < EXIT_Y:
