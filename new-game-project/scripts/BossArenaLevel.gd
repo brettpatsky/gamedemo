@@ -35,10 +35,21 @@ extends Node2D
 signal boss_defeated
 signal arena_locked
 
-const WALL_THICKNESS:     float = 96.0
-const ROOM_HEIGHT:        float = 700.0    # y bound between boss room (above) and corridor (below)
-const CORRIDOR_BOTTOM_Y:  float = 900.0    # y bound between corridor (above) and outside area (below)
-const CORRIDOR_HALF_W:    float = 100.0    # corridor is 200 px wide, centred horizontally
+const WALL_THICKNESS: float = 96.0
+const ROOM_HEIGHT:    float = 700.0   # boss room / corridor boundary
+# Winding Z-path from the spawn strip (bottom) up into the boss room.
+# Upper vertical enters the boss room at AX; a horizontal band crosses to BX;
+# the lower vertical drops to the spawn point at the bottom.  PATH_HW gives a
+# 300 px wide passage — enough for the whole 6-soldier formation to walk together.
+const PATH_HW:    float = 160.0    # half-width of the path (5 tiles × 32 px = 320 px wide)
+const PATH_AX_FRAC: float = 0.30   # upper vertical centre (boss-room entry)
+const PATH_BX_FRAC: float = 0.70   # lower vertical centre (spawn exit)
+const BAND_Y0:    float = 864.0    # horizontal band top  (27 × 32 — tile-aligned)
+const BAND_Y1:    float = 1024.0   # horizontal band bottom (32 × 32 — tile-aligned)
+const TERRAIN_TILESET := "res://resources/caraka_terrain_tileset.tres"
+const PATH_SEASON_SET: int = 9     # terrain_set_9 in the Caraka tileset
+const TERRAIN_PATH:    int = 2     # pavement terrain in set 9
+const TILE_PX:         float = 32.0  # 16 px art × 2.0 layer scale
 
 @onready var background:      ColorRect          = $Background
 @onready var nav_region:      NavigationRegion2D = $NavigationRegion2D
@@ -47,10 +58,13 @@ const CORRIDOR_HALF_W:    float = 100.0    # corridor is 200 px wide, centred ho
 @onready var corridor_border: ColorRect          = $CorridorBorder
 @onready var corridor_floor:  ColorRect          = $CorridorFloor
 
-var _map_w_px:        float          = 0.0
-var _map_h_px:        float          = 0.0
-var _boss_active:     bool           = false
-var _soldiers_in_room: Array[Node2D] = []
+var _map_w_px:         float          = 0.0
+var _map_h_px:         float          = 0.0
+var _ax:               float          = 0.0   # upper vertical centre x
+var _bx:               float          = 0.0   # lower vertical centre x
+var _path_layer:       TileMapLayer   = null
+var _boss_active:      bool           = false
+var _soldiers_in_room: Array[Node2D]  = []
 
 # =============================================================================
 # READY
@@ -66,6 +80,7 @@ func _ready() -> void:
 	if boss and boss.has_signal("boss_defeated"):
 		boss.boss_defeated.connect(func() -> void: boss_defeated.emit())
 	_add_floor_texture()
+	_setup_corridor_visuals()
 
 func _add_floor_texture() -> void:
 	var tex_path := "res://resources/boss/floor.png"
@@ -112,10 +127,9 @@ func get_spawn_positions(count: int) -> Array[Vector2]:
 	var result: Array[Vector2] = []
 	var base: Vector2
 	if spawn_point:
-		base = spawn_point.global_position
-	else:
-		base = to_global(Vector2(_map_w_px * 0.5, _map_h_px - 80.0))
-	# 3-wide formation — outside area is full width, so there's room to fan out.
+		spawn_point.position = Vector2(_bx, _map_h_px - 80.0)
+	base = to_global(Vector2(_bx, _map_h_px - 80.0))
+	# Squad spawns at the bottom of the lower vertical, below the winding path.
 	for i in count:
 		@warning_ignore("integer_division")
 		var col: int = i % 3
@@ -143,6 +157,8 @@ func _compute_map_bounds() -> void:
 	if background:
 		_map_w_px = background.size.x
 		_map_h_px = background.size.y
+	_ax = _map_w_px * PATH_AX_FRAC
+	_bx = _map_w_px * PATH_BX_FRAC
 
 func _spawn_boundary_walls() -> void:
 	const T := WALL_THICKNESS
@@ -151,17 +167,28 @@ func _spawn_boundary_walls() -> void:
 	_add_wall(-T,        0.0,        T,                   _map_h_px)     # left
 	_add_wall(_map_w_px, 0.0,        T,                   _map_h_px)     # right
 
-# Carves the corridor by walling off the bottom-left and bottom-right of the
-# boss room (everything outside the narrow vertical band that connects room to
-# outside area). Two inner wall blocks on collision_layer 1 — bullets stop on
-# them and soldiers can't squeeze past.
+# Winding Z-path collision. The lower region (ROOM_HEIGHT..map bottom) splits
+# into three horizontal slabs; the walkable path occupies a different x-band in
+# each, so six rectangles wall off everything to the sides of the passage.
 func _spawn_corridor_walls() -> void:
-	var centre_x: float = _map_w_px * 0.5
-	var corr_left:  float = centre_x - CORRIDOR_HALF_W
-	var corr_right: float = centre_x + CORRIDOR_HALF_W
-	var height:     float = _map_h_px - ROOM_HEIGHT
-	_add_wall(0.0,        ROOM_HEIGHT, corr_left,              height)   # left wall of corridor
-	_add_wall(corr_right, ROOM_HEIGHT, _map_w_px - corr_right, height)   # right wall of corridor
+	var hw := PATH_HW
+	var aL := _ax - hw
+	var aR := _ax + hw
+	var bL := _bx - hw
+	var bR := _bx + hw
+	var y0 := ROOM_HEIGHT     # top slab top
+	var yt := BAND_Y0         # band top
+	var yb_band := BAND_Y1    # band bottom
+	var yb := _map_h_px       # bottom slab bottom
+	# Top slab (y0..yt): walkable only in the upper vertical [aL, aR].
+	_add_wall(0.0, y0, aL,               yt - y0)
+	_add_wall(aR,  y0, _map_w_px - aR,   yt - y0)
+	# Band slab (yt..yb_band): walkable across [aL, bR].
+	_add_wall(0.0, yt, aL,               yb_band - yt)
+	_add_wall(bR,  yt, _map_w_px - bR,   yb_band - yt)
+	# Bottom slab (yb_band..yb): walkable only in the lower vertical [bL, bR].
+	_add_wall(0.0, yb_band, bL,             yb - yb_band)
+	_add_wall(bR,  yb_band, _map_w_px - bR, yb - yb_band)
 
 func _add_wall(x: float, y: float, w: float, h: float) -> void:
 	var body  := StaticBody2D.new()
@@ -175,34 +202,41 @@ func _add_wall(x: float, y: float, w: float, h: float) -> void:
 	body.add_child(col)
 	add_child(body)
 
-# Concave nav-mesh outline that traces the boss room → narrow corridor →
-# outside area shape. Twelve vertices (clockwise from top-left). The corridor
-# pinch is what forces NavigationAgent2D to thread the squad through the
-# opening rather than walking through a wall.
+# Nav polygon: wide boss room on top, then the winding Z-path traced as a
+# single concave outline down to the spawn strip. INSET keeps the path edges
+# off the collision walls so agents don't snag.
 func _bake_nav() -> void:
 	if nav_region == null:
 		return
-	const INSET := 24.0
-	var centre_x:   float = _map_w_px * 0.5
-	var corr_left:  float = centre_x - CORRIDOR_HALF_W + INSET
-	var corr_right: float = centre_x + CORRIDOR_HALF_W - INSET
-	var left:       float = INSET
-	var right:      float = _map_w_px - INSET
-	var top:        float = INSET
-	var room_bot:   float = ROOM_HEIGHT
-	var path_bot:   float = _map_h_px - INSET
+	const INSET := 18.0
+	var hw       := PATH_HW - INSET
+	var aL := _ax - hw
+	var aR := _ax + hw
+	var bL := _bx - hw
+	var bR := _bx + hw
+	var left  := INSET
+	var right := _map_w_px - INSET
+	var top   := INSET
+	var rbot  := ROOM_HEIGHT
+	var yt    := BAND_Y0
+	var yb_band := BAND_Y1
+	var pbot  := _map_h_px - INSET
 
-	# Inverted-T shape: wide boss room on top, narrow corridor below.
+	# Boss room rectangle (full width) joined to the Z-path. Clockwise.
 	var nav_poly := NavigationPolygon.new()
 	nav_poly.add_outline(PackedVector2Array([
-		nav_region.to_local(to_global(Vector2(left,        top))),
-		nav_region.to_local(to_global(Vector2(right,       top))),
-		nav_region.to_local(to_global(Vector2(right,       room_bot))),
-		nav_region.to_local(to_global(Vector2(corr_right,  room_bot))),
-		nav_region.to_local(to_global(Vector2(corr_right,  path_bot))),
-		nav_region.to_local(to_global(Vector2(corr_left,   path_bot))),
-		nav_region.to_local(to_global(Vector2(corr_left,   room_bot))),
-		nav_region.to_local(to_global(Vector2(left,        room_bot))),
+		nav_region.to_local(to_global(Vector2(left,  top))),
+		nav_region.to_local(to_global(Vector2(right, top))),
+		nav_region.to_local(to_global(Vector2(right, rbot))),
+		nav_region.to_local(to_global(Vector2(aR,    rbot))),    # right edge of upper vertical
+		nav_region.to_local(to_global(Vector2(aR,    yt))),      # down to band top
+		nav_region.to_local(to_global(Vector2(bR,    yt))),      # along band top to lower vertical
+		nav_region.to_local(to_global(Vector2(bR,    pbot))),    # down to spawn strip bottom-right
+		nav_region.to_local(to_global(Vector2(bL,    pbot))),    # spawn strip bottom-left
+		nav_region.to_local(to_global(Vector2(bL,    yb_band))), # up to band bottom
+		nav_region.to_local(to_global(Vector2(aL,    yb_band))), # along band bottom to upper vertical
+		nav_region.to_local(to_global(Vector2(aL,    rbot))),    # up left edge of upper vertical
+		nav_region.to_local(to_global(Vector2(left,  rbot))),
 	]))
 	nav_poly.make_polygons_from_outlines()
 	nav_region.navigation_polygon = nav_poly
@@ -265,11 +299,63 @@ func _lock_arena() -> void:
 	if _boss_active:
 		return
 	_boss_active = true
-	if corridor_border:
-		corridor_border.hide()
-	if corridor_floor:
-		corridor_floor.hide()
-	# Seal the corridor entrance so the squad can't retreat back out.
-	var centre_x: float = _map_w_px * 0.5
-	_add_wall(centre_x - CORRIDOR_HALF_W, ROOM_HEIGHT, CORRIDOR_HALF_W * 2.0, 20.0)
+	# Seal the upper vertical entrance so the squad can't retreat back out.
+	_add_wall(_ax - PATH_HW, ROOM_HEIGHT, PATH_HW * 2.0, 20.0)
 	arena_locked.emit()
+
+func _setup_corridor_visuals() -> void:
+	# Hide the old straight ColorRect corridor elements.
+	if corridor_border: corridor_border.hide()
+	if corridor_floor:  corridor_floor.hide()
+
+	var y0 := ROOM_HEIGHT
+	var yb := _map_h_px
+
+	# Brambles backdrop — fills the entire lower region; the path tiles draw on
+	# top, so brambles only show to the sides of the winding passage.
+	var bram_path := "res://resources/boss/brambles.png"
+	if ResourceLoader.exists(bram_path):
+		var bram := Sprite2D.new()
+		bram.texture = load(bram_path)
+		bram.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		bram.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+		bram.region_enabled = true
+		# scale 2× → region in texture space is half the on-screen size; tiles the
+		# 384-wide art ~2× across the map, one full height down.
+		bram.region_rect = Rect2(0.0, 0.0, _map_w_px * 0.5, (yb - y0) * 0.5)
+		bram.scale = Vector2(2.0, 2.0)
+		bram.centered = false
+		bram.position = Vector2(0.0, y0)
+		bram.z_index = 0
+		add_child(bram)
+
+	_paint_path_tiles()
+
+# Paints the winding Z-path with the Caraka "path" terrain (grass verges peer
+# over the dirt path), on a 2×-scaled TileMapLayer above the brambles backdrop.
+func _paint_path_tiles() -> void:
+	_path_layer = TileMapLayer.new()
+	_path_layer.name = "PathLayer"
+	_path_layer.tile_set = load(TERRAIN_TILESET)
+	_path_layer.scale = Vector2(2.0, 2.0)
+	_path_layer.z_index = 0
+	add_child(_path_layer)
+
+	var path_cells: Array[Vector2i] = []
+	var col_max := int(ceil(_map_w_px / TILE_PX))
+	var row_lo  := int(floor(ROOM_HEIGHT / TILE_PX))
+	var row_hi  := int(ceil(_map_h_px / TILE_PX))
+	for col in range(0, col_max):
+		for row in range(row_lo, row_hi):
+			var centre := Vector2((col + 0.5) * TILE_PX, (row + 0.5) * TILE_PX)
+			if _in_path(centre):
+				path_cells.append(Vector2i(col, row))
+	_path_layer.set_cells_terrain_connect(path_cells, PATH_SEASON_SET, TERRAIN_PATH, false)
+
+# True if a world-space point lies inside the walkable Z-path.
+func _in_path(p: Vector2) -> bool:
+	var hw := PATH_HW
+	var in_upper := p.x >= _ax - hw and p.x <= _ax + hw and p.y >= ROOM_HEIGHT and p.y <= BAND_Y1
+	var in_lower := p.x >= _bx - hw and p.x <= _bx + hw and p.y >= BAND_Y0 and p.y <= _map_h_px
+	var in_band  := p.x >= _ax - hw and p.x <= _bx + hw and p.y >= BAND_Y0 and p.y <= BAND_Y1
+	return in_upper or in_lower or in_band
