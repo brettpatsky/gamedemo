@@ -199,6 +199,12 @@ func on_bullet_hit(_target: Node2D) -> void:
 enum State { IDLE, MOVING, SHOOTING, BOMB, DEAD }
 var _state: State = State.IDLE
 
+# True while the soldier has an unfinished move order (a move_to destination or
+# an active formation march). After a shot the SHOOTING state resumes MOVING
+# only when this is set — without it the soldier consulted the nav agent's stale
+# target and "walked off" when fired while standing still / out of formation.
+var _has_active_move: bool = false
+
 var _health: int
 var _move_target: Vector2 = Vector2.ZERO
 var _fire_target: Vector2 = Vector2.ZERO   # exact click (used by grenades)
@@ -215,6 +221,46 @@ var _stuck_check_pos: Vector2 = Vector2.ZERO
 var _stuck_strikes:   int     = 0     # ≥ HARD_STRIKES → hard-unstick teleport
 var _unstick_timer:   float   = 0.0
 var _unstick_dir:     Vector2 = Vector2.ZERO
+var _unstick_nudged:  bool    = false # nav target nudged off _move_target; restore on expiry
+
+# Formation-march state. When _formation_active, SquadController drives this
+# soldier as part of a rigid formation: it sets _formation_goal (this soldier's
+# slot = march leader position + formation offset) every physics frame, and the
+# soldier steers straight to it (see _do_formation_move). This replaces the old
+# per-soldier corridor — one shared leader keeps the whole squad rigid instead
+# of each kid running its own nav agent and drifting out of formation.
+var _formation_active: bool    = false
+var _formation_goal:   Vector2 = Vector2.ZERO
+# While far from its slot, a soldier nav-paths to it (routing around obstacles)
+# instead of beelining; these throttle how often that path is recomputed.
+var _form_repathing:    bool  = false
+var _form_repath_timer: float = 0.0
+
+# Rescue-teleport state. _straggler_timer accumulates while the squad reports
+# this soldier stranded; _teleporting freezes it during the fade-out/in warp.
+var _straggler_timer: float  = 0.0
+var _teleporting:     bool   = false
+var _teleport_tween:  Tween  = null
+
+# Formation offset of this soldier's slot — used by the plain-move_to catch-up
+# (revive rally / group-split spread); the rigid march doesn't read it.
+var _formation_offset_cur: Vector2 = Vector2.ZERO
+
+# Cached group singletons — these are looked up several times per physics frame
+# (water/slope/footsteps/catch-up); soldiers are re-instantiated every mission
+# so the cache can never go stale across maps.
+var _map_gen_cache: Node = null
+var _squad_cache:   Node = null
+
+func _map_gen() -> Node:
+	if _map_gen_cache == null or not is_instance_valid(_map_gen_cache):
+		_map_gen_cache = get_tree().get_first_node_in_group("map_generator")
+	return _map_gen_cache
+
+func _squad() -> Node:
+	if _squad_cache == null or not is_instance_valid(_squad_cache):
+		_squad_cache = get_tree().get_first_node_in_group("squad_controller")
+	return _squad_cache
 
 # Last direction the soldier was facing — drives directional idle/shoot anims.
 var _facing: String = "down"
@@ -265,20 +311,14 @@ func _ready() -> void:
 	# Tighter arrival tolerance so soldiers don't overshoot and circle back.
 	nav_agent.path_desired_distance  = 4.0
 	nav_agent.target_desired_distance = 12.0
-	# Enable RVO avoidance so soldiers steer around static obstacles (trees/rocks)
-	# instead of grinding into them. Radius matches soldier collision footprint.
-	nav_agent.radius             = 18.0
-	nav_agent.avoidance_enabled  = true
-	nav_agent.neighbor_distance  = 120.0
-	nav_agent.max_neighbors      = 8
-	nav_agent.max_speed          = move_speed
-	if not nav_agent.velocity_computed.is_connected(_on_safe_velocity):
-		nav_agent.velocity_computed.connect(_on_safe_velocity)
-
-	# Maze movement bypasses RVO entirely — corridors are 1 tile wide so
-	# avoidance offers nothing but steers the soldier into walls.
-	if maze_mode:
-		nav_agent.avoidance_enabled = false
+	nav_agent.max_speed              = move_speed
+	# RVO avoidance is deliberately OFF. Soldiers don't physically collide with
+	# each other (layer 2 / mask 1) and static geometry is baked into the navmesh,
+	# so inter-agent avoidance has no collision to prevent — it only shoved
+	# soldiers off their formation slots and made them jostle when stopping.
+	# Separation is the formation offsets' job; routing-as-a-group is the rigid
+	# leader march's job (see formation_begin / SquadController._begin_march).
+	nav_agent.avoidance_enabled  = false
 
 	# Soldiers live on layer 2; their mask only covers layer 1 (environment/tilemap).
 	# This lets soldiers pass through each other instead of physically blocking,
@@ -299,6 +339,12 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	_shoot_cooldown    = max(_shoot_cooldown    - delta, 0.0)
 	_shoot_flash_timer = max(_shoot_flash_timer - delta, 0.0)
+
+	# Frozen mid rescue-teleport: the fade tween owns position; hold still.
+	if _teleporting:
+		velocity = Vector2.ZERO
+		return
+
 	_try_autodefend(delta)
 
 	match _state:
@@ -306,7 +352,7 @@ func _physics_process(delta: float) -> void:
 			_do_move(delta)
 		State.SHOOTING:
 			_do_shoot()
-			_state = State.MOVING if not nav_agent.is_navigation_finished() else State.IDLE
+			_state = State.MOVING if not _movement_finished() else State.IDLE
 		State.BOMB:
 			_do_bomb_charge(delta)
 		State.IDLE:
@@ -321,19 +367,106 @@ func _physics_process(delta: float) -> void:
 # PUBLIC API
 # =============================================================================
 
-func move_to(destination: Vector2) -> void:
+func move_to(destination: Vector2, formation_offset: Vector2 = Vector2.ZERO) -> void:
 	if _state == State.DEAD or _state == State.BOMB:
 		return
+	_formation_active = false
+	_unstick_nudged = false
+	_unstick_timer  = 0.0
+	_formation_offset_cur = formation_offset
 	_move_target = destination
 	nav_agent.target_position = destination
 	_stuck_timer     = Balance.SOLDIER_STUCK_CHECK_INTERVAL
 	_stuck_check_pos = global_position
 	_stuck_strikes   = 0
+	_has_active_move = true
 	_state = State.MOVING
+
+# Formation-march hooks, called by SquadController. begin puts the soldier into
+# march mode; the controller then calls set_formation_goal() each physics frame
+# with this soldier's slot (march leader position + its formation offset), and
+# the soldier steers straight there in _do_formation_move. end drops it to IDLE.
+# One shared leader driving every soldier is what keeps the squad rigid — no
+# per-soldier pathfinding to drift or split.
+func formation_begin(offset: Vector2) -> void:
+	if _state == State.DEAD or _state == State.BOMB:
+		return
+	_formation_offset_cur = offset
+	_formation_goal  = global_position
+	_formation_active = true
+	_form_repathing  = false
+	_form_repath_timer = 0.0
+	_unstick_timer   = 0.0
+	_unstick_nudged  = false
+	_has_active_move = true
+	_state = State.MOVING
+
+func set_formation_goal(goal: Vector2) -> void:
+	_formation_goal = goal
+
+func formation_end() -> void:
+	if not _formation_active:
+		return
+	_formation_active = false
+	_has_active_move = false
+	if _state == State.MOVING:
+		velocity = Vector2.ZERO
+		_state = State.IDLE
+		_play_anim("idle_" + _facing)
+		footstep.stop()
+
+# Last-resort recovery: warp the soldier onto `pos` (a navmesh point at its
+# formation slot) when it's so wedged — boxed in by forest, slot in a wall — that
+# it can't path back to the squad. Plays a fade-out / fade-in so the jump reads
+# as an intentional blink rather than a glitch. Called by SquadController when a
+# march gives up on a straggler or a soldier drifts too far from its group.
+func snap_to(pos: Vector2) -> void:
+	if _state == State.DEAD or _state == State.BOMB or _teleporting:
+		return
+	_teleporting = true
+	_straggler_timer = 0.0
+	velocity = Vector2.ZERO
+	nav_agent.target_position = pos
+	_form_repathing = false
+	_form_repath_timer = 0.0
+	footstep.stop()
+	if _teleport_tween and _teleport_tween.is_valid():
+		_teleport_tween.kill()
+	# Fade out at the old spot, hop while invisible, fade back in at the slot.
+	var fade := Balance.SQUAD_TELEPORT_FADE_TIME
+	_teleport_tween = create_tween()
+	_teleport_tween.tween_property(sprite, "modulate:a", 0.0, fade)
+	_teleport_tween.tween_callback(func() -> void: global_position = pos)
+	_teleport_tween.tween_property(sprite, "modulate:a", 1.0, fade)
+	_teleport_tween.tween_callback(func() -> void: _teleporting = false)
+
+# Accumulates the "stranded" timer from the squad's per-frame straggler check
+# and returns true once this soldier has been too far for long enough to warrant
+# the rescue teleport. Cleared whenever it's back near the group (or dead/warping).
+func tick_straggler(too_far: bool, delta: float) -> bool:
+	if _state == State.DEAD or _state == State.BOMB or _teleporting:
+		_straggler_timer = 0.0
+		return false
+	if not too_far:
+		_straggler_timer = 0.0
+		return false
+	_straggler_timer += delta
+	if _straggler_timer >= Balance.SQUAD_STRAGGLER_TELEPORT_TIME:
+		_straggler_timer = 0.0
+		return true
+	return false
+
+func clear_straggler() -> void:
+	_straggler_timer = 0.0
+
+func is_formation_marching() -> bool:
+	return _formation_active
 
 func halt() -> void:
 	if _state == State.DEAD or _state == State.BOMB:
 		return
+	_formation_active = false
+	_has_active_move = false
 	nav_agent.target_position = global_position
 	velocity = Vector2.ZERO
 	_state = State.IDLE
@@ -362,6 +495,8 @@ func arm_as_bomb(target: Vector2) -> void:
 	# the only path that can actually spend a kid).
 	if not GameManager.sacrifice_enabled:
 		return
+	_formation_active = false
+	_has_active_move = false
 	_bomb_target = target
 	_bomb_timer  = Balance.SACRIFICE_TIMEOUT
 	nav_agent.target_position = target
@@ -438,13 +573,26 @@ func _do_move(delta: float) -> void:
 			_play_anim("idle_" + _facing)
 		return
 
+	# Formation march (SquadController-driven): steer straight to the slot the
+	# controller assigned this frame. The squad moves as one rigid body.
+	if _formation_active:
+		_do_formation_move(delta)
+		return
+
 	if nav_agent.is_navigation_finished():
+		_has_active_move = false
 		_state = State.IDLE
 		_play_anim("idle_" + _facing)
 		footstep.stop()
 		return
 
 	_unstick_timer = max(_unstick_timer - delta, 0.0)
+	# A sidestep nudge moves the nav target off the real goal; restore it once
+	# the sidestep expires so the soldier still ends on its exact slot
+	# (leaving it nudged dragged soldiers ~32 px out of formation).
+	if _unstick_nudged and _unstick_timer <= 0.0:
+		_unstick_nudged = false
+		nav_agent.target_position = _move_target
 
 	# Stuck detection: if we haven't moved Balance.SOLDIER_STUCK_THRESHOLD pixels in the last
 	# Balance.SOLDIER_STUCK_CHECK_INTERVAL seconds, sidestep to escape corners
@@ -466,7 +614,6 @@ func _do_move(delta: float) -> void:
 		_stuck_check_pos = global_position
 
 	var is_unsticking := _unstick_timer > 0.0
-	var speed_mult    := _catchup_speed_mult()
 
 	var next_pos:  Vector2 = nav_agent.get_next_path_position()
 	var direction: Vector2 = (next_pos - global_position).normalized()
@@ -475,28 +622,76 @@ func _do_move(delta: float) -> void:
 	if is_unsticking:
 		direction = (direction + _unstick_dir * 1.5).normalized()
 
+	var speed_mult := _catchup_speed_mult(direction)
 	var slope_mult := _slope_speed_mult(direction)
-	var desired := direction * move_speed * _water_speed_mult() * slope_mult * speed_mult
-	if nav_agent.avoidance_enabled:
-		nav_agent.max_speed = move_speed * speed_mult
-		nav_agent.set_velocity(desired)
-	else:
-		velocity = desired
-		move_and_slide()
+	velocity = direction * move_speed * _water_speed_mult() * slope_mult * speed_mult
+	move_and_slide()
 
 	if _shoot_flash_timer <= 0.0:
 		_play_walk_anim(direction)
 
 	_play_footstep()
 
-func _on_safe_velocity(safe_velocity: Vector2) -> void:
-	# Avoidance computes velocities asynchronously — a callback queued during
-	# MOVING can fire after the soldier has died or armed as a bomb. Without
-	# this guard the corpse keeps drifting from a stale safe-velocity result.
-	if _state != State.MOVING:
+# Formation steering toward the controller-assigned slot. In formation the slot
+# is right next to the soldier, so it beelines (rigid, smooth). If it falls more
+# than REPATH_DIST behind — wedged on a prop, slowed in water, blocked at a
+# corner — it switches to nav-pathing toward the slot (routing AROUND whatever
+# blocked it) and speeds up to REJOIN_MULT to sprint back into formation. The
+# rest of the squad never waits, so one stuck soldier doesn't slow everyone.
+func _do_formation_move(delta: float) -> void:
+	_form_repath_timer = max(_form_repath_timer - delta, 0.0)
+	var to_goal := _formation_goal - global_position
+	var dist := to_goal.length()
+	if dist <= Balance.SQUAD_FORMATION_ARRIVE_EPS:
+		velocity = Vector2.ZERO
+		move_and_slide()
+		_form_repathing = false
+		if _shoot_flash_timer <= 0.0:
+			_play_anim("idle_" + _facing)
+		footstep.stop()
 		return
-	velocity = safe_velocity
+
+	# Catch-up: at/near the slot move at base speed; the further behind, the
+	# faster (up to REJOIN_MULT) so a straggler closes the gap quickly.
+	var speed_mult := 1.0
+	if dist > Balance.SOLDIER_CATCHUP_NEAR:
+		var t := clampf((dist - Balance.SOLDIER_CATCHUP_NEAR) \
+				/ (Balance.SOLDIER_CATCHUP_FAR - Balance.SOLDIER_CATCHUP_NEAR), 0.0, 1.0)
+		speed_mult = lerpf(1.0, Balance.SQUAD_FORMATION_REJOIN_MULT, t)
+
+	var dir: Vector2
+	if dist <= Balance.SQUAD_FORMATION_REPATH_DIST:
+		# In/near formation — beeline straight to the slot.
+		_form_repathing = false
+		dir = to_goal / dist
+	else:
+		# Fallen behind — route to the slot via the navmesh so we go AROUND the
+		# obstacle that dropped us, not back into it. Refresh the path on a timer
+		# (the slot keeps moving) rather than every frame.
+		if not _form_repathing or _form_repath_timer <= 0.0:
+			nav_agent.target_position = _formation_goal
+			_form_repathing = true
+			_form_repath_timer = 0.2
+		if nav_agent.is_navigation_finished():
+			dir = to_goal / dist
+		else:
+			dir = (nav_agent.get_next_path_position() - global_position).normalized()
+
+	var step := move_speed * _water_speed_mult() * _slope_speed_mult(dir) * speed_mult
+	# Arrive: never overshoot the slot in a single physics step.
+	velocity = dir * minf(step, dist / delta)
 	move_and_slide()
+	if _shoot_flash_timer <= 0.0:
+		_play_walk_anim(dir)
+	_play_footstep()
+
+# "Has this soldier finished its current move order?" Drives whether SHOOTING
+# resumes MOVING after a shot. Uses the explicit intent flag, NOT the nav agent:
+# during a formation march the nav target is stale (soldiers steer directly), so
+# consulting it made a soldier "walk off" toward an old target when fired while
+# idle or out of formation.
+func _movement_finished() -> bool:
+	return not _has_active_move
 
 func _try_unstick() -> void:
 	# Pick a perpendicular sidestep direction relative to the current heading.
@@ -509,15 +704,18 @@ func _try_unstick() -> void:
 		perp = -perp
 	_unstick_dir   = perp
 	_unstick_timer = Balance.SOLDIER_UNSTICK_DURATION
-	# Also nudge the nav target slightly so the path re-evaluates on the next tick.
-	var nudge := perp * 32.0
-	nav_agent.target_position = _move_target + nudge
+	# Nudge the nav target slightly so the path re-evaluates on the next tick
+	# (restored to _move_target in _do_move when the sidestep expires).
+	nav_agent.target_position = _move_target + perp * 32.0
+	_unstick_nudged = true
 
 # Final-resort unstick: nudge the soldier toward the next waypoint along the
-# planned path. Breaks RVO-deadlocks and corner-wedges that the sidestep nudge
-# can't escape. Uses move_and_collide (NOT a raw position set) so it slides
-# past prop corners but can never punch through a wall / cliff face — a raw
-# teleport here let wedged soldiers pop straight off a plateau through the cliff.
+# planned path. Breaks corner-wedges that the sidestep nudge can't escape. Uses
+# move_and_collide (NOT a raw position set) so it slides past prop corners but
+# can never punch through a wall / cliff face — a raw teleport here let wedged
+# soldiers pop straight off a plateau through the cliff. Only the non-formation
+# move path (revive rally / split spread) reaches this; the rigid march steers
+# directly and never enters stuck detection.
 func _hard_unstick() -> void:
 	if nav_agent.is_navigation_finished():
 		return
@@ -666,7 +864,7 @@ func _throw_grenade(target: Vector2) -> void:
 func _water_speed_mult() -> float:
 	if water_immune:
 		return 1.0
-	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	var map_gen: Node = _map_gen()
 	if map_gen and map_gen.has_method("is_water_at") and map_gen.is_water_at(global_position):
 		return Balance.SOLDIER_WATER_SPEED_MULT
 	return 1.0
@@ -674,25 +872,29 @@ func _water_speed_mult() -> float:
 # Slope speed multiplier — slower going uphill, faster going downhill.
 # MapGenerator clamps the result to ±25 %.
 func _slope_speed_mult(direction: Vector2) -> float:
-	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	var map_gen: Node = _map_gen()
 	if map_gen and map_gen.has_method("get_slope_speed_mult"):
 		return map_gen.get_slope_speed_mult(global_position, direction)
 	return 1.0
 
-# Distance-based catch-up. Soldiers near the squad centroid run at base speed;
-# stragglers smoothly ramp up to Balance.SOLDIER_CATCHUP_SPEED_MULT. This replaces the old
-# binary timer that sprinted indiscriminately after water exits / unstick
-# events, even when the soldier was already in formation.
-func _catchup_speed_mult() -> float:
-	var squad: Node = get_tree().get_first_node_in_group("squad_controller")
-	if squad == null or not squad.has_method("get_centroid"):
+# Straggler catch-up. A soldier BEHIND its own formation slot (group centroid +
+# assigned offset, and only when the slot is ahead of its heading) ramps up
+# toward CATCHUP_SPEED_MULT to rejoin. Soldiers in or ahead of position move at
+# base speed — no drag/slow-down, which was making the lead soldiers visibly
+# crawl. With the shared corridor giving everyone equal-length parallel paths
+# this rarely fires except after a stuck-recovery; it's a safety net, not the
+# primary cohesion mechanism (that's the formation offsets themselves).
+func _catchup_speed_mult(direction: Vector2) -> float:
+	var squad: Node = _squad()
+	if squad == null or not squad.has_method("get_group_centroid"):
 		return 1.0
-	var centroid: Vector2 = squad.get_centroid()
+	var centroid: Vector2 = squad.get_group_centroid(group_id)
 	if centroid == Vector2.ZERO:
 		return 1.0
-	var d: float = global_position.distance_to(centroid)
-	if d <= Balance.SOLDIER_CATCHUP_NEAR:
-		return 1.0
+	var to_slot: Vector2 = (centroid + _formation_offset_cur) - global_position
+	var d: float = to_slot.length()
+	if d <= Balance.SOLDIER_CATCHUP_NEAR or to_slot.dot(direction) < 0.0:
+		return 1.0   # in/ahead of slot — base speed
 	var t: float = clampf((d - Balance.SOLDIER_CATCHUP_NEAR) / (Balance.SOLDIER_CATCHUP_FAR - Balance.SOLDIER_CATCHUP_NEAR), 0.0, 1.0)
 	return lerpf(1.0, Balance.SOLDIER_CATCHUP_SPEED_MULT, t)
 
@@ -702,6 +904,13 @@ func _die() -> void:
 	# not called here.
 	_state = State.DEAD
 	velocity = Vector2.ZERO
+	_formation_active = false   # don't resume a stale march if revived without a rally move
+	_has_active_move = false
+	# Cancel any in-flight rescue teleport so its tween can't fight the corpse
+	# tint / drag the body after death.
+	if _teleport_tween and _teleport_tween.is_valid():
+		_teleport_tween.kill()
+	_teleporting = false
 	hide_group_label()
 	_play_anim("die")
 	# Freeze on the last frame once the die animation finishes — prevents looping
@@ -821,6 +1030,9 @@ func _try_autodefend(delta: float) -> void:
 			closest_d = d
 			closest   = e
 	if closest == null:
+		# Nothing in range — wait a beat before walking the enemy list again
+		# instead of re-scanning all ~50 enemies every physics frame.
+		_autodefend_cooldown = Balance.SOLDIER_AUTODEFEND_RESCAN
 		return
 	var dir := (closest.global_position - global_position).normalized()
 	dir = dir.rotated(randf_range(-Balance.SOLDIER_AUTODEFEND_JITTER, Balance.SOLDIER_AUTODEFEND_JITTER))
@@ -873,7 +1085,7 @@ func _build_hit_audio(path: String) -> AudioStreamPlayer2D:
 # and starts (or continues) playback. Called from _do_move and from the maze
 # mover. Surface "" = silent (water): stop the loop.
 func _play_footstep() -> void:
-	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	var map_gen: Node = _map_gen()
 	var surface: String = "dirt"
 	if map_gen and map_gen.has_method("get_surface_at"):
 		surface = map_gen.get_surface_at(global_position)

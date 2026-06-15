@@ -1,10 +1,7 @@
-[gd_scene load_steps=6 format=3 uid="uid://b3handm5escr01"]
+[gd_scene load_steps=3 format=3 uid="uid://b3handm5escr01"]
 
 [ext_resource type="Script" path="res://scripts/HandcraftedMap.gd" id="1_handm5"]
 [ext_resource type="TileSet" path="res://resources/caraka_terrain_tileset.tres" id="2_tileset"]
-[ext_resource type="PackedScene" path="res://scenes/npc_escort.tscn" id="3_npc"]
-[ext_resource type="PackedScene" path="res://scenes/escort_wall.tscn" id="4_wall"]
-[ext_resource type="PackedScene" path="res://scenes/extraction_zone.tscn" id="5_ext"]
 
 [node name="HandcraftedMap" type="Node2D" groups=["map_generator"]]
 script = ExtResource("1_handm5")
@@ -13,21 +10,3 @@ script = ExtResource("1_handm5")
 tile_set = ExtResource("2_tileset")
 
 [node name="NavigationRegion2D" type="NavigationRegion2D" parent="."]
-
-[node name="VIP" parent="." instance=ExtResource("3_npc")]
-position = Vector2(3520, 5440)
-
-[node name="Wall_North" parent="." instance=ExtResource("4_wall")]
-position = Vector2(3520, 5184)
-
-[node name="Wall_East" parent="." instance=ExtResource("4_wall")]
-position = Vector2(3776, 5440)
-
-[node name="Wall_West" parent="." instance=ExtResource("4_wall")]
-position = Vector2(3264, 5440)
-
-[node name="Wall_South" parent="." instance=ExtResource("4_wall")]
-position = Vector2(3520, 5696)
-
-[node name="ExtractionZone" parent="." instance=ExtResource("5_ext")]
-position = Vector2(3520, 576)

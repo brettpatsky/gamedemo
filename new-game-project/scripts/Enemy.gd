@@ -59,6 +59,16 @@ var bullet_damage:   int
 # Null until the audio file is dropped at the convention path.
 var _hit_audio: AudioStreamPlayer2D = null
 
+# Cached map-generator lookup — water/slope queries run every physics frame for
+# every moving enemy (~50), so the group lookup is hoisted out of the hot path.
+# Enemies are re-instantiated each mission, so the cache can't span maps.
+var _map_gen_cache: Node = null
+
+func _map_gen() -> Node:
+	if _map_gen_cache == null or not is_instance_valid(_map_gen_cache):
+		_map_gen_cache = get_tree().get_first_node_in_group("map_generator")
+	return _map_gen_cache
+
 enum State { PATROL, ALERT, ATTACK, DEAD }
 var _state: State = State.PATROL
 
@@ -339,8 +349,9 @@ func _move_toward_nav_target() -> void:
 		move_and_slide()
 	_play_walk_anim(dir)
 
-# RVO callback — mirrors Soldier._on_safe_velocity. Guards ATTACK and DEAD so a
-# stale patrol/alert velocity can't clobber strafing or corpse drift.
+# RVO callback for enemy avoidance. Guards ATTACK and DEAD so a stale
+# patrol/alert velocity can't clobber strafing or corpse drift. (Soldiers run
+# without RVO — see Soldier._ready — so this pattern lives only on enemies now.)
 func _on_safe_velocity(safe_velocity: Vector2) -> void:
 	if _state == State.ATTACK or _state == State.DEAD:
 		return
@@ -356,7 +367,7 @@ func _play_walk_anim(direction: Vector2) -> void:
 		_play_anim("walk_side")
 
 func _water_speed_mult() -> float:
-	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	var map_gen: Node = _map_gen()
 	if map_gen and map_gen.has_method("is_water_at") and map_gen.is_water_at(global_position):
 		return Balance.ENEMY_WATER_SPEED_MULT
 	return 1.0
@@ -364,7 +375,7 @@ func _water_speed_mult() -> float:
 # Slope speed multiplier — slower going uphill, faster going downhill.
 # MapGenerator clamps the result to ±25 %.
 func _slope_speed_mult(direction: Vector2) -> float:
-	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	var map_gen: Node = _map_gen()
 	if map_gen and map_gen.has_method("get_slope_speed_mult"):
 		return map_gen.get_slope_speed_mult(global_position, direction)
 	return 1.0

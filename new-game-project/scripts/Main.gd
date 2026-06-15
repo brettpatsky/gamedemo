@@ -479,7 +479,10 @@ func _on_mission_fail() -> void:
 # continues, only callbacks stop. HUD lives on its own CanvasLayer above
 # the viewport, so it keeps animating and stays at full brightness.
 func _freeze_and_fade_world() -> void:
-	_subviewport.process_mode = Node.PROCESS_MODE_DISABLED
+	# Deferred: _on_mission_win can fire from a physics callback (ExtractionZone
+	# body_entered), and disabling a subtree's CollisionObjects mid-callback is
+	# illegal. set_deferred applies it once the physics step finishes.
+	_subviewport.set_deferred("process_mode", Node.PROCESS_MODE_DISABLED)
 	# Looped audio (footsteps) doesn't stop when process is disabled, so
 	# silence anything currently playing on the soldier/enemy/NPC nodes.
 	for group in ["soldiers", "enemies"]:

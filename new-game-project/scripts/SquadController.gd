@@ -1,5 +1,7 @@
 extends Node2D
 
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
 const MAX_SOLDIERS  := 8
 # Per-weapon resend cadence for held-fire. Pistols stream slower than rifle.
 const AUTO_INTERVAL_RIFLE  := 0.07
@@ -48,8 +50,57 @@ const MAX_GROUPS  := 3
 var _num_groups:   int = 1   # how many groups the squad is split into
 var _active_group: int = 0   # 0-indexed; this group receives all orders
 
+# Active formation marches, keyed by group_id. Each entry drives one group's
+# soldiers as a rigid formation gliding along a shared navmesh path — see
+# _begin_march / _tick_marches. Multiple groups can march at once (a non-active
+# group keeps marching toward its last order), hence the per-group dictionary.
+var _marches: Dictionary = {}
+
 func _ready() -> void:
 	GameManager.soldier_died.connect(_on_soldier_died)
+
+# Drives active formation marches and the stranded-soldier rescue check.
+func _physics_process(delta: float) -> void:
+	if not _marches.is_empty():
+		_tick_marches(delta)
+	if not soldiers.is_empty():
+		_check_stragglers(delta)
+
+# Per-group safety net: any soldier that stays too far from its group's leader
+# (the march leader while moving, the group centroid while idle) for
+# SQUAD_STRAGGLER_TELEPORT_TIME gets rescue-teleported onto a navmesh point at
+# its formation slot. Runs per group so a split squad rescues each group against
+# its own leader, never dragging a soldier to a different group's position.
+func _check_stragglers(delta: float) -> void:
+	var nav_map: RID = get_world_2d().navigation_map
+	for g in _num_groups:
+		var grp := _soldiers_in_group(g)
+		if grp.size() <= 1:
+			# A lone soldier has no squad to be "far" from — clear any timer.
+			for s in grp:
+				if s.has_method("clear_straggler"):
+					s.clear_straggler()
+			continue
+		var marching: bool = _marches.has(g)
+		var ref_point: Vector2
+		if marching:
+			var m: Dictionary = _marches[g]
+			ref_point = _point_along(m.path, m.cum, m.total, m.d)
+		else:
+			ref_point = get_group_centroid(g)
+		if ref_point == Vector2.ZERO:
+			continue
+		var count := grp.size()
+		for i in count:
+			var s = grp[i]
+			if not is_instance_valid(s) or (s.has_method("is_downed") and s.is_downed()):
+				continue
+			if not s.has_method("tick_straggler"):
+				continue
+			var too_far: bool = s.global_position.distance_to(ref_point) > Balance.SQUAD_STRAGGLER_MAX_DIST
+			if s.tick_straggler(too_far, delta):
+				var slot: Vector2 = ref_point + _formation_offset(i, count)
+				s.snap_to(NavigationServer2D.map_get_closest_point(nav_map, slot))
 
 # ---------------------------------------------------------------------------
 # Input — runs after UI consumes its events.
@@ -216,6 +267,9 @@ func _cycle_group_count() -> void:
 
 	_num_groups   = (_num_groups % MAX_GROUPS) + 1
 	_active_group = 0
+	# Group membership is changing — drop every in-flight march so none keeps
+	# driving soldiers that now belong to a different group.
+	_marches.clear()
 	# Redistribute soldiers round-robin across all groups.
 	for i in soldiers.size():
 		soldiers[i].group_id = i % _num_groups
@@ -294,8 +348,138 @@ func _alive_group_ids() -> Array:
 func _issue_move_order(target: Vector2) -> void:
 	var group := _active_group_soldiers()
 	var count := group.size()
+	if count == 0:
+		return
+	# ONE navmesh path for the whole group (centroid → click). A virtual leader
+	# walks it and every soldier is pinned at leader + its (stable, index-based)
+	# formation slot, so the squad rounds obstacles together without splitting
+	# and holds its formation shape without bunching — no soldier runs its own
+	# pathfinder. Stable slot i → kid i keeps each kid in a consistent position.
+	var start := Vector2.ZERO
+	for s in group:
+		start += (s as Node2D).global_position
+	start /= float(count)
+	var path: PackedVector2Array = NavigationServer2D.map_get_path(
+			get_world_2d().navigation_map, start, target, true)
+	# Maze soldiers own their own movement; an empty/degenerate path means no
+	# route or a reform-in-place — either way fall back to plain move_to, which
+	# lands each kid directly on its slot.
+	var is_maze: bool = "maze_mode" in group[0] and group[0].maze_mode
+	if is_maze or path.size() < 2 or not group[0].has_method("formation_begin"):
+		_marches.erase(_active_group)
+		for i in count:
+			group[i].move_to(target + _formation_offset(i, count), _formation_offset(i, count))
+		return
+	_begin_march(_active_group, group, path, target)
+
+# =============================================================================
+# PRIVATE — FORMATION MARCH (rigid leader-follower; see BalanceConfig SQUAD_*)
+# =============================================================================
+
+# Sets up a march for one group: precomputes the path's cumulative arc length
+# (so the leader can be sampled at any distance), captures each soldier's stable
+# slot offset, and flips every soldier into formation mode.
+func _begin_march(gid: int, group: Array, path: PackedVector2Array, target: Vector2) -> void:
+	var count := group.size()
+	var cum := PackedFloat32Array()
+	cum.resize(path.size())
+	cum[0] = 0.0
+	for k in range(1, path.size()):
+		cum[k] = cum[k - 1] + path[k - 1].distance_to(path[k])
+	# Leader speed = slowest soldier's base speed so it never outruns the group;
+	# terrain lag on top of that is handled by the gate in _advance_march.
+	var base := INF
+	var offsets: Array = []
 	for i in count:
-		group[i].move_to(target + _formation_offset(i, count))
+		offsets.append(_formation_offset(i, count))
+		var ms: float = group[i].move_speed if "move_speed" in group[i] else 215.0
+		base = minf(base, ms)
+	if base == INF:
+		base = 215.0
+	_marches[gid] = {
+		"path": path, "cum": cum, "total": cum[path.size() - 1], "base": base,
+		"d": 0.0, "soldiers": group.duplicate(), "offsets": offsets,
+		"target": target, "settle": 0.0, "best_dist": INF,
+	}
+	for i in count:
+		group[i].formation_begin(offsets[i])
+
+func _tick_marches(delta: float) -> void:
+	var finished: Array = []
+	for gid in _marches:
+		if _advance_march(_marches[gid], delta):
+			finished.append(gid)
+	for gid in finished:
+		for s in _marches[gid].soldiers:
+			if is_instance_valid(s) and s.has_method("formation_end"):
+				s.formation_end()
+		_marches.erase(gid)
+
+# Advances one march by delta and pushes each soldier its slot for this frame.
+# The leader moves at full speed and NEVER waits for stragglers — a stuck soldier
+# rejoins on its own (see Soldier._do_formation_move). Returns true when the
+# march is complete: everyone settled, or (leader already home) no straggler has
+# gotten any closer for SETTLE_TIMEOUT — covering a slot stuck in a wall.
+func _advance_march(m: Dictionary, delta: float) -> bool:
+	m.d = minf(m.d + m.base * delta, m.total)
+	var leader: Vector2 = _point_along(m.path, m.cum, m.total, m.d)
+	var live := 0
+	var all_settled := true
+	var max_dist := 0.0
+	for i in m.soldiers.size():
+		var s = m.soldiers[i]
+		if not is_instance_valid(s) or (s.has_method("is_downed") and s.is_downed()):
+			continue
+		live += 1
+		var slot: Vector2 = leader + m.offsets[i]
+		s.set_formation_goal(slot)
+		var d_slot: float = s.global_position.distance_to(slot)
+		max_dist = maxf(max_dist, d_slot)
+		if d_slot > Balance.SQUAD_FORMATION_ARRIVE_EPS:
+			all_settled = false
+	if live == 0:
+		return true
+	# Never end mid-path — the squad keeps marching until the leader reaches the
+	# destination, even if everyone is momentarily within EPS of their moving slots.
+	if m.d < m.total:
+		return false
+	# Leader is home. Done once everyone has settled onto their final slots.
+	if all_settled:
+		return true
+	# Keep waiting while a straggler is still closing the gap; give up only once
+	# no progress has been made for SETTLE_TIMEOUT.
+	if max_dist < m.best_dist - 1.0:
+		m.best_dist = max_dist
+		m.settle = 0.0
+		return false
+	m.settle += delta
+	if m.settle < Balance.SQUAD_MARCH_SETTLE_TIMEOUT:
+		return false
+	# Given up. Any soldier still beyond rejoin range is wedged with no path back
+	# (boxed in by forest, slot in a wall) — hard-teleport it onto a navmesh point
+	# at its slot so it rejoins instead of being stranded. Soldiers merely blocked
+	# a little short of their slot are left where they are.
+	var nav_map: RID = get_world_2d().navigation_map
+	for i in m.soldiers.size():
+		var s = m.soldiers[i]
+		if not is_instance_valid(s) or (s.has_method("is_downed") and s.is_downed()):
+			continue
+		var slot: Vector2 = leader + m.offsets[i]
+		if s.global_position.distance_to(slot) > Balance.SQUAD_FORMATION_REPATH_DIST and s.has_method("snap_to"):
+			s.snap_to(NavigationServer2D.map_get_closest_point(nav_map, slot))
+	return true
+
+# Point at arc-length `d` along the polyline (linear scan — paths are short).
+func _point_along(path: PackedVector2Array, cum: PackedFloat32Array, total: float, d: float) -> Vector2:
+	if path.size() == 1 or total <= 0.0:
+		return path[path.size() - 1]
+	d = clampf(d, 0.0, total)
+	for k in range(1, path.size()):
+		if d <= cum[k]:
+			var seg := cum[k] - cum[k - 1]
+			var t := 0.0 if seg <= 0.0 else (d - cum[k - 1]) / seg
+			return path[k - 1].lerp(path[k], t)
+	return path[path.size() - 1]
 
 func _issue_fire_order(target: Vector2) -> void:
 	var group := _active_group_soldiers()
@@ -461,6 +645,21 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 
 func _on_soldier_died(soldier: Node2D) -> void:
 	remove_soldier(soldier)
+
+# Average position of one group's soldiers (bombers excluded). Used by each
+# soldier's formation-cohesion speed control, so it must reflect the soldier's
+# OWN group — get_centroid() below tracks the ACTIVE group for the camera.
+func get_group_centroid(gid: int) -> Vector2:
+	var sum := Vector2.ZERO
+	var n := 0
+	for s in soldiers:
+		if s.group_id != gid:
+			continue
+		if s.has_method("is_armed_bomb") and s.is_armed_bomb():
+			continue
+		sum += s.global_position
+		n += 1
+	return sum / float(n) if n > 0 else Vector2.ZERO
 
 # Returns the average position of the active group (falls back to all soldiers).
 # CameraController uses this to softly follow the group.

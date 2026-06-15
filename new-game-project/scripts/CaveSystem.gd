@@ -146,6 +146,8 @@ func _input(event: InputEvent) -> void:
 	if world_pos.distance_to(_entrance_world) > ENTER_CLICK_RADIUS:
 		return
 	for s in get_tree().get_nodes_in_group("soldiers"):
+		if (s as Node).is_in_group("escort_npc"):
+			continue
 		if (s as Node2D).global_position.distance_to(_entrance_world) <= ENTER_SQUAD_DIST:
 			get_viewport().set_input_as_handled()
 			_transition(true)
@@ -309,6 +311,8 @@ func _move_squad_to(centre: Vector2) -> void:
 	for s in get_tree().get_nodes_in_group("soldiers"):
 		var node := s as Node2D
 		if node == null:
+			continue
+		if node.is_in_group("escort_npc"):
 			continue
 		@warning_ignore("integer_division")
 		var ring := Vector2(float(i % 3 - 1) * 56.0, float(i / 3) * 56.0)

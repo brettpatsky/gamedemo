@@ -274,7 +274,12 @@ func _check_fragment_collection() -> void:
 		var node := _fragment_nodes[i] as Node2D
 		if (_squad_pos - node.position).length() < COLLECT_RADIUS:
 			var id: String = node.get_meta("fragment_id", "")
+			# Claiming one reward discards every other item AND clears
+			# _fragment_nodes inside _collect_item, so stop iterating now —
+			# continuing would index the freshly-emptied array out of bounds
+			# (the crash when 2+ rewards were on offer).
 			_collect_item(i, id)
+			return
 
 func _collect_item(idx: int, id: String) -> void:
 	var chosen := _fragment_nodes[idx] as Node2D

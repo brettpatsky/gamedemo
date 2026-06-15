@@ -116,6 +116,9 @@ func _nearest_soldier() -> Node2D:
 
 func release() -> void:
 	_freed = true
+	# Raised above the prison sprite while caged so the captive is visible inside
+	# it; drop back to the normal band once freed so it blends with the squad.
+	z_index = 0
 
 func is_freed() -> bool:
 	return _freed

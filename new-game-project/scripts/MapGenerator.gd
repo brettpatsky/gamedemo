@@ -38,6 +38,11 @@ var _elevation_noise: FastNoiseLite = null
 var _enemy_exclusion_centre: Vector2i = Vector2i.ZERO
 var _enemy_exclusion_radius: int = 0
 
+# Cave entrance cell (set by HandcraftedMap when it builds the parent-rescue
+# cave). The escort prison is kept well clear of it so the VIP never spawns on
+# top of — or inside — the cave mouth. (-1, -1) = no cave this mission.
+var _cave_foot_cell: Vector2i = Vector2i(-1, -1)
+
 # ---------------------------------------------------------------------------
 func _ready() -> void:
 	add_to_group("map_generator")
@@ -53,12 +58,23 @@ func generate(_seed_value: int = 0) -> void:
 # ---------------------------------------------------------------------------
 # Camera / squad helpers
 # ---------------------------------------------------------------------------
+# map_to_local() errors if the layer has no TileSet yet. The camera's _ready can
+# query bounds before the handcrafted map has assigned its tileset (Main re-calls
+# refresh_map_bounds once it's ready); fall back to a tile_size-based estimate so
+# those early calls return sane values instead of spamming engine errors.
+func _has_tileset() -> bool:
+	return tile_map != null and tile_map.tile_set != null
+
 func get_map_centre() -> Vector2:
 	@warning_ignore("integer_division")
 	var centre_tile := Vector2i(map_width / 2, map_height / 2)
+	if not _has_tileset():
+		return Vector2(centre_tile) * float(tile_size)
 	return tile_map.to_global(tile_map.map_to_local(centre_tile))
 
 func get_map_rect() -> Rect2:
+	if not _has_tileset():
+		return Rect2(Vector2.ZERO, Vector2(map_width, map_height) * float(tile_size))
 	# map_to_local returns the CENTRE of a tile; add half-tile to reach the
 	# actual outer corners so the camera clamps to the visible edge.
 	var half_tile := Vector2(tile_size, tile_size) * 0.5
@@ -402,22 +418,38 @@ func _spawn_fortified_structure() -> void:
 # shelter — only the wall is between the NPC and incoming fire.
 # ---------------------------------------------------------------------------
 func _spawn_escort_mission() -> void:
-	# Pick an NPC spot in the bottom band of the map with clearance for walls.
+	# Pick an NPC spot in the bottom band of the map, on passable ground and well
+	# clear of the rescue cave so the VIP is never trapped inside it.
+	var cave := _cave_foot_cell
+	var has_cave := cave.x >= 0
 	var npc_zone := _passable_cells.filter(func(c: Vector2i) -> bool:
 		if c.x < 4 or c.x > map_width  - 5: return false
 		if c.y < 4 or c.y > map_height - 5: return false
+		if has_cave and absi(c.x - cave.x) + absi(c.y - cave.y) <= 14: return false
 		return float(c.y) / map_height > 0.78
 	)
 	if npc_zone.is_empty():
 		npc_zone = _passable_cells.filter(func(c: Vector2i) -> bool:
-			return c.x >= 4 and c.x <= map_width - 5 \
-				and c.y >= 4 and c.y <= map_height - 5 \
-				and float(c.y) / map_height > 0.70
+			if c.x < 4 or c.x > map_width - 5: return false
+			if c.y < 4 or c.y > map_height - 5: return false
+			if has_cave and absi(c.x - cave.x) + absi(c.y - cave.y) <= 14: return false
+			return float(c.y) / map_height > 0.70
 		)
 	if npc_zone.is_empty():
 		return
 	npc_zone.shuffle()
 	var npc_cell: Vector2i = npc_zone[0]
+
+	# Drop the prison first, then the VIP at its centre with a higher z_index so
+	# the captive reads as trapped INSIDE the cell rather than hidden behind it.
+	var prison_scene: PackedScene = load("res://scenes/vip_prison.tscn")
+	if prison_scene == null:
+		push_warning("[MapGenerator] vip_prison.tscn not found.")
+	else:
+		var prison: Node2D = prison_scene.instantiate()
+		prison.position = _tile_to_world(npc_cell)
+		add_child(prison)
+		_objective_nodes["escort_walls"] = [prison]
 
 	var npc_scene: PackedScene = load("res://scenes/npc_escort.tscn")
 	if npc_scene == null:
@@ -425,6 +457,7 @@ func _spawn_escort_mission() -> void:
 		return
 	var npc: Node2D = npc_scene.instantiate()
 	npc.position = _tile_to_world(npc_cell)
+	npc.z_index = 2
 	add_child(npc)
 	_objective_nodes["escort_npc"] = npc
 
@@ -432,29 +465,6 @@ func _spawn_escort_mission() -> void:
 	# pocket of safety while the squad fights its way over.
 	_enemy_exclusion_centre = npc_cell
 	_enemy_exclusion_radius = 6
-
-	# Build a ring of destructible walls around the NPC (cardinal directions,
-	# 2 tiles out). The squad only needs to take down one to free the NPC.
-	var wall_scene: PackedScene = load("res://scenes/escort_wall.tscn")
-	if wall_scene == null:
-		push_warning("[MapGenerator] escort_wall.tscn not found.")
-	else:
-		var wall_offsets: Array[Vector2i] = [
-			Vector2i( 0, -2),  # north — facing the squad
-			Vector2i( 2,  0),
-			Vector2i(-2,  0),
-			Vector2i( 0,  2),
-		]
-		var walls: Array[Node2D] = []
-		for off in wall_offsets:
-			var cell: Vector2i = npc_cell + off
-			if cell.x < 1 or cell.x > map_width - 2: continue
-			if cell.y < 1 or cell.y > map_height - 2: continue
-			var wall: Node2D = wall_scene.instantiate()
-			wall.position = _tile_to_world(cell)
-			add_child(wall)
-			walls.append(wall)
-		_objective_nodes["escort_walls"] = walls
 
 	# Extraction zone at the top of the map. Keep a 2-tile margin from every
 	# edge so the (now larger) zone disc never lands flush against the wall

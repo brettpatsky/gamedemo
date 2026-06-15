@@ -105,14 +105,50 @@ const SOLDIER_UNSTICK_DURATION:     float = 0.35  # how long the sidestep nudge 
 const SOLDIER_STUCK_HARD_STRIKES:   int   = 4     # consecutive strikes → teleport
 
 # -----------------------------------------------------------------------------
-# SOLDIER — catch-up rubberbanding
+# SOLDIER — squad formation march (rigid leader-follower)
 # -----------------------------------------------------------------------------
-# Stragglers smoothly ramp from base speed (near the squad centroid) up to
-# CATCHUP_SPEED_MULT at CATCHUP_FAR away. Stops slow kids being left behind
-# without making the whole squad sprint constantly.
+# A squad move order builds ONE navmesh path (group centroid → click) and walks a
+# virtual "leader" along it at full speed. Every soldier is held rigidly at
+# leader + its fixed formation offset, so the squad moves as a single body — no
+# splits, no bunching, because no soldier runs its own pathfinder.
+#
+# The leader NEVER waits for stragglers: the squad keeps moving even if some get
+# stuck. A soldier that falls more than REPATH_DIST from its slot (wedged on a
+# prop, slowed by water, blocked at a corner) switches from straight-line
+# following to nav-pathing toward its slot — routing AROUND whatever blocked it —
+# and speeds up to REJOIN_MULT to sprint back into formation. ARRIVE_EPS is how
+# close it must sit to its slot to count as settled.
+const SQUAD_FORMATION_ARRIVE_EPS:  float = 6.0
+const SQUAD_FORMATION_REPATH_DIST: float = 96.0   # past this from its slot → nav-path + sprint to rejoin
+const SQUAD_FORMATION_REJOIN_MULT: float = 1.8    # max catch-up speed while rejoining
+# Once the leader reaches the destination, end the march when everyone has
+# settled OR no straggler has gotten any closer for this long (covers a slot
+# that landed in a wall / off-navmesh and can't be reached precisely).
+const SQUAD_MARCH_SETTLE_TIMEOUT:  float = 0.7
+
+# -----------------------------------------------------------------------------
+# SOLDIER — stranded-soldier rescue teleport
+# -----------------------------------------------------------------------------
+# Safety net for a soldier that can't path back to the squad (boxed in by forest,
+# wedged with no route). If it stays farther than MAX_DIST from its group's
+# leader (the march leader while moving, the group centroid while idle) for
+# TELEPORT_TIME continuously, it warps onto a navmesh point at its formation
+# slot, with a quick fade-out / fade-in so the jump reads as intentional. Per
+# group, so a split squad rescues each group against its own leader.
+const SQUAD_STRAGGLER_MAX_DIST:      float = 700.0  # px from the group leader before counting as stranded
+const SQUAD_STRAGGLER_TELEPORT_TIME: float = 2.0    # must stay stranded this long before the rescue warp
+const SQUAD_TELEPORT_FADE_TIME:      float = 0.18   # seconds for each of fade-out and fade-in
+
+# -----------------------------------------------------------------------------
+# SOLDIER — formation cohesion (straggler catch-up, non-march moves)
+# -----------------------------------------------------------------------------
+# Used only by plain move_to moves (revive rally, group-split spread) — the
+# rigid march above keeps formation itself. A soldier behind its slot ramps up
+# toward CATCHUP_SPEED_MULT to rejoin; in/ahead of slot it moves at base speed
+# (no drag). Ramp runs from NEAR (slot deviation where it starts) to FAR.
 const SOLDIER_CATCHUP_SPEED_MULT: float = 1.5
-const SOLDIER_CATCHUP_NEAR:       float = 110.0  # below this distance, no bonus
-const SOLDIER_CATCHUP_FAR:        float = 320.0  # at this distance, full bonus
+const SOLDIER_CATCHUP_NEAR:       float = 70.0   # below this slot deviation, no effect
+const SOLDIER_CATCHUP_FAR:        float = 300.0  # at this deviation, full effect
 
 # -----------------------------------------------------------------------------
 # SOLDIER — autodefend (idle-group return fire)
@@ -123,6 +159,9 @@ const SOLDIER_CATCHUP_FAR:        float = 320.0  # at this distance, full bonus
 const SOLDIER_AUTODEFEND_RANGE:    float = 280.0
 const SOLDIER_AUTODEFEND_COOLDOWN: float = 1.5
 const SOLDIER_AUTODEFEND_JITTER:   float = 0.35  # radians of aim wobble
+# Re-scan period when no enemy is in range — the scan walks every live enemy,
+# so idle-group soldiers must not run it every physics frame.
+const SOLDIER_AUTODEFEND_RESCAN:   float = 0.25
 
 # Visual flash after firing (sprite stays on the "shoot" frame this long).
 const SOLDIER_SHOOT_FLASH_DURATION: float = 0.18
