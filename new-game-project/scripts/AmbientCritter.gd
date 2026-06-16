@@ -3,25 +3,29 @@
 # A small rabbit that wanders the map between pauses. Purely visual — no
 # collision, no gameplay effect. Reacts to bullets by sprinting away briefly,
 # and refuses to wander into water tiles.
-# Cycles through sit / crouch / leap sprites while moving; shows the idle
-# sit pose while paused. Falls back to the old circle silhouette if textures
-# are not yet imported.
+# Uses AnimatedSprite2D with PixelLab-generated frames:
+#   idle  — sitting, nose twitching (9 frames at 6 fps)
+#   hop   — bounding forward       (9 frames at 12 fps)
+# Falls back to the old circle-draw if textures are missing.
 # =============================================================================
 class_name AmbientCritter
 extends Node2D
 
 const Balance = preload("res://scripts/BalanceConfig.gd")
 
-const TEX_RABBIT := "res://resources/environment/ambient/rabbit_base.png"
+const DIR_RABBIT := "res://resources/environment/ambient/rabbit/"
+const IDLE_BASE  := DIR_RABBIT + "idle_base.png"
+const HOP_FRAMES := 9
+const IDLE_FRAMES := 9
 
 var _target:       Vector2 = Vector2.ZERO
 var _pause_timer:  float   = 0.0
 var _scared_timer: float   = 0.0
 var _map_rect:     Rect2   = Rect2()
 var _facing_left:  bool    = false
-var _hop_phase:    float   = 0.0
 
-var _sprite: Sprite2D = null
+var _anim:    AnimatedSprite2D = null
+var _has_tex: bool             = false
 
 func setup(spawn_pos: Vector2, map_rect: Rect2) -> void:
 	global_position = spawn_pos
@@ -32,19 +36,55 @@ func setup(spawn_pos: Vector2, map_rect: Rect2) -> void:
 	_pick_new_target()
 
 func _ready() -> void:
-	_sprite       = Sprite2D.new()
-	_sprite.scale = Vector2(1.5, 1.5)
-	add_child(_sprite)
-	_refresh_sprite()
+	_anim = AnimatedSprite2D.new()
+	_anim.scale = Vector2(1.5, 1.5)
+	add_child(_anim)
+	_build_sprite_frames()
+	if _has_tex:
+		_anim.play("idle")
+
+func _build_sprite_frames() -> void:
+	# Check all frames exist before committing to the animated path.
+	if not ResourceLoader.exists(IDLE_BASE):
+		return
+	for i in HOP_FRAMES:
+		if not ResourceLoader.exists(DIR_RABBIT + "hop_%d.png" % i):
+			return
+	for i in IDLE_FRAMES:
+		if not ResourceLoader.exists(DIR_RABBIT + "idle_%d.png" % i):
+			return
+
+	var sf := SpriteFrames.new()
+
+	# ── idle ──────────────────────────────────────────────────────────────────
+	sf.add_animation("idle")
+	sf.set_animation_speed("idle", 6.0)
+	sf.set_animation_loop("idle", true)
+	for i in IDLE_FRAMES:
+		sf.add_frame("idle", load(DIR_RABBIT + "idle_%d.png" % i))
+
+	# ── hop ───────────────────────────────────────────────────────────────────
+	sf.add_animation("hop")
+	sf.set_animation_speed("hop", 12.0)
+	sf.set_animation_loop("hop", true)
+	for i in HOP_FRAMES:
+		sf.add_frame("hop", load(DIR_RABBIT + "hop_%d.png" % i))
+
+	_anim.sprite_frames = sf
+	_has_tex = true
 
 func _process(delta: float) -> void:
-	_hop_phase    += delta * 8.0
-	_scared_timer  = maxf(_scared_timer - delta, 0.0)
+	_scared_timer = maxf(_scared_timer - delta, 0.0)
 	_check_for_bullets()
+
+	if not _has_tex:
+		queue_redraw()
 
 	if _pause_timer > 0.0:
 		_pause_timer -= delta
-		_refresh_sprite()
+		if _has_tex and _anim.animation != "idle":
+			_anim.play("idle")
+		_anim.flip_h = _facing_left
 		return
 
 	var diff: Vector2 = _target - global_position
@@ -60,20 +100,10 @@ func _process(delta: float) -> void:
 	var step: Vector2 = diff.normalized() * speed * delta
 	global_position += step
 	_facing_left     = step.x < 0.0
-	_refresh_sprite()
-
-func _refresh_sprite() -> void:
-	if _sprite == null:
-		return
-	_sprite.flip_h = _facing_left
-	if _sprite.texture == null and ResourceLoader.exists(TEX_RABBIT):
-		_sprite.texture = load(TEX_RABBIT)
-	# Subtle scale-bob while moving so the hop reads without swapping frames.
-	if _pause_timer > 0.0:
-		_sprite.scale = Vector2(1.5, 1.5)
-	else:
-		var bob: float = 1.0 + sin(_hop_phase) * 0.12
-		_sprite.scale = Vector2(1.5 * bob, 1.5 * bob)
+	if _has_tex:
+		if _anim.animation != "hop":
+			_anim.play("hop")
+		_anim.flip_h = _facing_left
 
 func _check_for_bullets() -> void:
 	var r_sq: float = Balance.AMBIENT_CRITTER_SPOOK_RADIUS * Balance.AMBIENT_CRITTER_SPOOK_RADIUS
@@ -112,18 +142,17 @@ func _pick_new_target() -> void:
 	_target = t
 
 func _draw() -> void:
-	# Fallback circle silhouette if textures haven't been imported yet.
-	if _sprite != null and _sprite.texture != null:
+	if _has_tex:
 		return
-	var bob: float = 0.0 if _pause_timer > 0.0 else sin(_hop_phase) * 1.5
+	# Fallback circle silhouette shown until textures are imported.
 	var body  := Color(0.45, 0.30, 0.22)
 	var belly := Color(0.78, 0.66, 0.55)
 	var ear_x: float  = 2.0 if _facing_left else -2.0
 	var head_x: float = -5.0 if _facing_left else 5.0
-	draw_circle(Vector2(0, bob),           6.0, body)
-	draw_circle(Vector2(0, 2.0 + bob),     3.0, belly)
-	draw_circle(Vector2(head_x, -3 + bob), 3.5, body)
-	draw_line(Vector2(head_x - 1.0 + ear_x, -6 + bob),
-			Vector2(head_x - 1.0 + ear_x, -10 + bob), body, 1.5)
-	draw_line(Vector2(head_x + 1.0 + ear_x, -6 + bob),
-			Vector2(head_x + 1.0 + ear_x, -10 + bob), body, 1.5)
+	draw_circle(Vector2(0, 0),           6.0, body)
+	draw_circle(Vector2(0, 2.0),         3.0, belly)
+	draw_circle(Vector2(head_x, -3), 3.5, body)
+	draw_line(Vector2(head_x - 1.0 + ear_x, -6),
+			Vector2(head_x - 1.0 + ear_x, -10), body, 1.5)
+	draw_line(Vector2(head_x + 1.0 + ear_x, -6),
+			Vector2(head_x + 1.0 + ear_x, -10), body, 1.5)
