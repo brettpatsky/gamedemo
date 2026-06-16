@@ -63,9 +63,11 @@ func _process(delta: float) -> void:
 		_bird_timer = randf_range(Balance.AMBIENT_BIRD_FLOCK_MIN_SEC,
 				Balance.AMBIENT_BIRD_FLOCK_MAX_SEC)
 		_spawn_bird_flock()
-	# Top up critters if any have despawned.
-	if get_tree().get_nodes_in_group("ambient_critters").size() < Balance.AMBIENT_CRITTER_TARGET:
-		_spawn_critter()
+	# Top up each critter type independently if any have despawned.
+	if get_tree().get_nodes_in_group("critter_bunny").size() < Balance.AMBIENT_CRITTER_TARGET:
+		_spawn_critter(AmbientCritter.Type.BUNNY)
+	elif get_tree().get_nodes_in_group("critter_fox").size() < Balance.AMBIENT_FOX_TARGET:
+		_spawn_critter(AmbientCritter.Type.FOX)
 
 # Pulls the viewport size and the camera's zoom into our view-extent vars.
 # Cheap; running every frame so weather + fog stay in sync if the window
@@ -212,36 +214,42 @@ func _spawn_bird_flock() -> void:
 	var dir:   int = 1 if randf() < 0.5 else -1
 	var cam_pos: Vector2 = _camera.global_position
 	var y_offset: float = _view_half_h * Balance.AMBIENT_BIRD_SKY_BAND_RATIO + randf_range(-50.0, 60.0)
+	# All birds in a flock are the same species; type varies flock-to-flock.
+	# DARK is excluded — the silhouette style clashes with the coloured sprites.
+	const FLOCK_TYPES := [AmbientBird.BirdType.BLUE_JAY, AmbientBird.BirdType.RED_ROBIN,
+			AmbientBird.BirdType.YELLOW_CANARY, AmbientBird.BirdType.GREEN_PARAKEET]
+	var btype: AmbientBird.BirdType = FLOCK_TYPES[randi() % FLOCK_TYPES.size()]
 	for i in count:
 		var bird := AmbientBird.new()
 		var start_x: float = cam_pos.x - float(dir) * (_view_half_w + 100.0 + float(i) * 26.0)
 		var start_y: float = cam_pos.y + y_offset + randf_range(-15.0, 15.0)
-		# Travel a couple of screen widths so they cross the visible area
-		# even if the player has scrolled along their direction of travel.
 		# add_child first — setup writes global_position which needs a parent.
 		parent.add_child(bird)
-		bird.setup(Vector2(start_x, start_y), dir, _view_half_w * 4.0)
+		bird.setup(Vector2(start_x, start_y), dir, _view_half_w * 4.0, btype)
 
 # ---------------------------------------------------------------------------
 # Critters — pool of wanderers in random map cells.
 # ---------------------------------------------------------------------------
 func _spawn_initial_critters() -> void:
 	for i in Balance.AMBIENT_CRITTER_TARGET:
-		_spawn_critter()
+		_spawn_critter(AmbientCritter.Type.BUNNY)
+	for i in Balance.AMBIENT_FOX_TARGET:
+		_spawn_critter(AmbientCritter.Type.FOX)
 
-func _spawn_critter() -> void:
+func _spawn_critter(critter_type: AmbientCritter.Type) -> void:
 	var parent: Node = get_parent()
 	if parent == null:
 		return
 	var c := AmbientCritter.new()
-	c.add_to_group("ambient_critters")
+	# Type must be set BEFORE add_child() — _ready() runs synchronously inside
+	# add_child() and reads the type to join the correct group. If we set it
+	# after, every critter defaults to BUNNY and the fox group stays empty,
+	# causing the top-up check to fire every frame.
+	c.type = critter_type
 	var x: float = randf_range(_map_rect.position.x + 64.0, _map_rect.end.x - 64.0)
 	var y: float = randf_range(_map_rect.position.y + 64.0, _map_rect.end.y - 64.0)
-	# IMPORTANT: add to the tree BEFORE calling setup() — setup() picks a
-	# wander target via map_gen lookup through get_tree(), which returns
-	# null for orphan nodes.
 	parent.add_child(c)
-	c.setup(Vector2(x, y), _map_rect)
+	c.setup(Vector2(x, y), _map_rect, critter_type)
 
 # Draws the fog tint when FOG is active. The rect is centred on AmbientLayer
 # (which tracks the camera each frame), and sized from the live viewport

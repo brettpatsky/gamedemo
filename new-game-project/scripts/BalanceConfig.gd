@@ -413,26 +413,33 @@ const AMBIENT_BIRD_SHADOW_RADIUS_Y: float = 2.5
 const AMBIENT_BIRD_BODY_COLOR: Color = Color(0.08, 0.08, 0.10, 0.75)
 
 # -----------------------------------------------------------------------------
-# AMBIENT — wandering critters (rabbit-ish)
+# AMBIENT — wandering critters (bunny + fox)
 # -----------------------------------------------------------------------------
-# Target population on each map. AmbientLayer tops up any that despawn.
-const AMBIENT_CRITTER_TARGET: int = 4
-# Walk / sprint pacing. Sprint kicks in when a bullet whizzes past.
+# Target populations on each map. AmbientLayer tops up each type independently.
+const AMBIENT_CRITTER_TARGET: int = 4   # bunnies
+const AMBIENT_FOX_TARGET:     int = 1   # foxes
+# Walk / sprint pacing. Sprint kicks in when threatened.
 const AMBIENT_CRITTER_MOVE_SPEED:   float = 55.0
 const AMBIENT_CRITTER_SPRINT_SPEED: float = 160.0
+const AMBIENT_FOX_MOVE_SPEED:       float = 75.0   # foxes wander a little faster
+const AMBIENT_FOX_SPRINT_SPEED:     float = 200.0
 # How long they pause between wander hops (random in [MIN, MAX]).
 const AMBIENT_CRITTER_PAUSE_MIN: float = 1.5
 const AMBIENT_CRITTER_PAUSE_MAX: float = 4.0
+const AMBIENT_FOX_PAUSE_MIN:     float = 0.5   # foxes are more restless
+const AMBIENT_FOX_PAUSE_MAX:     float = 2.5
 # Wander distance per hop (random in [MIN, MAX]).
 const AMBIENT_CRITTER_WANDER_MIN: float = 60.0
 const AMBIENT_CRITTER_WANDER_MAX: float = 180.0
 # Bullets within SPOOK_RADIUS make the critter sprint FLEE_DIST away for
 # SCARED_TIME seconds. Bigger SPOOK_RADIUS = jumpier critters.
-const AMBIENT_CRITTER_SPOOK_RADIUS: float = 80.0
-const AMBIENT_CRITTER_SCARED_TIME:  float = 1.5
-const AMBIENT_CRITTER_FLEE_DIST:    float = 130.0
+const AMBIENT_CRITTER_SPOOK_RADIUS:  float = 80.0
+const AMBIENT_CRITTER_THREAT_RADIUS: float = 120.0  # soldiers / enemies / fox→bunny
+const AMBIENT_CRITTER_SCARED_TIME:   float = 1.5
+const AMBIENT_CRITTER_FLEE_DIST:     float = 130.0
 # Attempts to re-roll wander targets that landed on water before giving up.
 const AMBIENT_CRITTER_WATER_RETRIES: int = 5
+
 
 # -----------------------------------------------------------------------------
 # WEATHER — emission window
