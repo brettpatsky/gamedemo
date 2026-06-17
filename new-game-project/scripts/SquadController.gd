@@ -346,6 +346,9 @@ func _alive_group_ids() -> Array:
 # =============================================================================
 
 func _issue_move_order(target: Vector2) -> void:
+	if not GameManager.squad_has_moved:
+		GameManager.squad_has_moved = true
+		GameManager.squad_first_moved.emit()
 	var group := _active_group_soldiers()
 	var count := group.size()
 	if count == 0:
@@ -482,6 +485,9 @@ func _point_along(path: PackedVector2Array, cum: PackedFloat32Array, total: floa
 	return path[path.size() - 1]
 
 func _issue_fire_order(target: Vector2) -> void:
+	if not GameManager.squad_has_moved:
+		GameManager.squad_has_moved = true
+		GameManager.squad_first_moved.emit()
 	var group := _active_group_soldiers()
 	if group.is_empty():
 		return

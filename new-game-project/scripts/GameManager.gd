@@ -23,6 +23,7 @@ signal revives_changed(remaining)     # HUD updates the revive-potion counter
 # enable/disable the corresponding buttons in real time.
 signal sacrifice_enabled_changed(enabled: bool)
 signal revive_enabled_changed(enabled: bool)
+signal squad_first_moved               # enemies activate when this fires
 
 
 # ---------------------------------------------------------------------------
@@ -39,6 +40,9 @@ var current_level: int = 1            # persists across scene reloads (1–3)
 # session-local (resets to false on quit). Other levels are unaffected —
 # tutorial / mazes / boss always use their own hand-authored scenes.
 var use_handcrafted_maps: bool = false
+# Set to true the first time the player issues a move order each mission.
+# Enemies stand idle until this flips so the squad has time to orient.
+var squad_has_moved: bool = false
 # Cheat: when true, Soldier.take_damage() is a no-op for the entire squad.
 # Toggled by the GOD button next to MAIN MENU on the HUD. Persists across
 # retries / next-level transitions so it stays on once enabled.
@@ -103,6 +107,7 @@ var soldier_hits:  Array[int] = []
 var soldier_alive: Array[bool] = []
 
 func reset_squad_stats(size: int) -> void:
+	squad_has_moved = false
 	soldier_shots.resize(size)
 	soldier_hits.resize(size)
 	soldier_alive.resize(size)

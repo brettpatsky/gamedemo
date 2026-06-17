@@ -157,6 +157,12 @@ func _physics_process(delta: float) -> void:
 	if _state == State.DEAD:
 		return
 
+	# Stand completely idle until the player issues their first move order.
+	# Prevents the squad getting swarmed before they've had a chance to look around.
+	if not GameManager.squad_has_moved and not dummy_mode:
+		_play_anim("idle")
+		return
+
 	# Dummy targets bypass the normal AI entirely.
 	if dummy_mode:
 		_tick_stuck_check(delta)

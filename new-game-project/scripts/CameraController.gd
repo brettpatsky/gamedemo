@@ -131,6 +131,14 @@ func enter_cave_view(rect: Rect2) -> void:
 	zoom         = Vector2(1.0, 1.0)   # snap immediately while screen is black
 	position     = rect.get_center()
 
+func exit_cave_view(rect: Rect2) -> void:
+	_map_rect    = rect
+	_in_cave     = false
+	_zoom_floor  = -1.0
+	# Keep the cave zoom (1.0) rather than snapping to min-zoom — at min-zoom
+	# _clamp_to_map centres on the map and the squad goes off-screen.
+	_target_zoom = clampf(zoom.x, _get_min_zoom(), zoom_max)
+
 func _clamp_to_map() -> void:
 	var half_vp: Vector2 = get_viewport_rect().size * 0.5 / zoom.x
 	# When the map is narrower/shorter than the viewport at the current zoom,

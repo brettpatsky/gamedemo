@@ -366,9 +366,10 @@ func _spawn_fortified_structure() -> void:
 		return
 
 	# Five non-overlapping zones covering different parts of the map.
-	# Border-padded by 6 tiles to keep structures well clear of map edges.
+	# Border-padded by 10 tiles — structure sprite is 320px (5 tiles) wide at 2.5×
+	# scale, so center must be 2.5+ tiles from edge; 10 gives comfortable clearance.
 	# Minimum 20-tile gap between any two placed structures avoids clumping.
-	const PAD       := 6
+	const PAD       := 10
 	const MIN_TILES := 20
 	var zone_filters: Array[Callable] = [
 		func(c: Vector2i) -> bool:  # top strip

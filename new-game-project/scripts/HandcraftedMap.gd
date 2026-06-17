@@ -538,10 +538,11 @@ func _stamp_plateaus() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = _elevation_noise.seed
 	const BORDER := 4
-	const MAX_PLATEAUS := 2
 	const SPACING := 18
+	# 3-6 smaller plateaus per map for visual variety.
+	var max_plateaus: int = rng.randi_range(3, 6)
 	# Spawn band kept fully clear (slightly larger than _force_flat_zones' 0.40-0.60
-	# box so plateaus never get clipped, while leaving room for large plateaus).
+	# box so plateaus never get clipped, while leaving enough room around each).
 	var sx0 := 0.38 * map_width
 	var sx1 := 0.62 * map_width
 	var sy0 := 0.38 * map_height
@@ -561,7 +562,7 @@ func _stamp_plateaus() -> void:
 		var tmp := candidates[i]; candidates[i] = candidates[j]; candidates[j] = tmp
 	var placed: Array[Rect2i] = []
 	for c in candidates:
-		if placed.size() >= MAX_PLATEAUS:
+		if placed.size() >= max_plateaus:
 			break
 		var rect := _fit_plateau_rect(c, rng, placed, sx0, sx1, sy0, sy1, BORDER)
 		if rect.size.x == 0:
@@ -587,8 +588,8 @@ func _stamp_plateaus() -> void:
 # Returns a zero-size Rect2i if it can't fit.
 func _fit_plateau_rect(c: Vector2i, rng: RandomNumberGenerator, placed: Array[Rect2i],
 		sx0: float, sx1: float, sy0: float, sy1: float, border: int, force: bool = false) -> Rect2i:
-	var rx := rng.randi_range(15, 18)
-	var ry := rng.randi_range(13, 16)
+	var rx := rng.randi_range(8, 12)
+	var ry := rng.randi_range(6, 10)
 	var x0 := c.x - rx
 	var x1 := c.x + rx
 	var y0 := c.y - ry

@@ -68,6 +68,7 @@ var _mission_ended: bool = false
 
 # ---------------------------------------------------------------------------
 func _ready() -> void:
+	randomize()   # re-seed global RNG from OS entropy so each run has a different map
 	add_to_group("main_scene")
 
 	# SubViewportContainer is a Control child of a Node2D, so anchors don't
@@ -198,6 +199,10 @@ func _ready() -> void:
 
 	hud.update_soldier_count(effective_squad_size)
 	hud.show_objective(GameManager.current_level)
+
+	var ls := get_node_or_null("/root/LoadingScreen")
+	if ls and ls.has_method("hide_loading"):
+		ls.hide_loading()
 
 # ---------------------------------------------------------------------------
 # Maze click handler (levels 3 and 6): SubViewportContainer._gui_input consumes
@@ -565,7 +570,16 @@ func _persist_run_state() -> void:
 # ---------------------------------------------------------------------------
 func advance_level() -> void:
 	GameManager.advance_level()
+	_show_loading_screen()
+	await get_tree().process_frame
 	get_tree().reload_current_scene()
 
 func restart() -> void:
+	_show_loading_screen()
+	await get_tree().process_frame
 	get_tree().reload_current_scene()
+
+func _show_loading_screen() -> void:
+	var ls := get_node_or_null("/root/LoadingScreen")
+	if ls and ls.has_method("show_loading"):
+		ls.show_loading()
