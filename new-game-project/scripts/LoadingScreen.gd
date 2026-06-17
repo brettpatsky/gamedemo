@@ -1,6 +1,6 @@
 # =============================================================================
 # LoadingScreen.gd  — autoload singleton (CanvasLayer)
-# Covers the screen with a pixel-art splash during scene reloads.
+# Covers the screen with a randomly chosen pixel-art splash during scene reloads.
 #
 # Usage:
 #   LoadingScreen.show_loading()   # before reload_current_scene()
@@ -8,10 +8,18 @@
 # =============================================================================
 extends CanvasLayer
 
-const ART_PATH := "res://resources/loading_screen.png"
+const ART_PATHS: Array[String] = [
+	"res://resources/loading_screen_1.png",
+	"res://resources/loading_screen_2.png",
+	"res://resources/loading_screen_3.png",
+	"res://resources/loading_screen_4.png",
+	"res://resources/loading_screen_5.png",
+	"res://resources/loading_screen_6.png",
+]
 
-var _root:  Control     = null   # faded as a unit (CanvasLayer has no modulate)
-var _tween: Tween       = null
+var _root:  Control = null   # faded as a unit (CanvasLayer has no modulate)
+var _art:   TextureRect = null
+var _tween: Tween = null
 
 func _ready() -> void:
 	layer   = 100
@@ -26,13 +34,11 @@ func _ready() -> void:
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_root.add_child(bg)
 
-	var art := TextureRect.new()
-	art.expand_mode  = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	if ResourceLoader.exists(ART_PATH):
-		art.texture = load(ART_PATH)
-	_root.add_child(art)
+	_art = TextureRect.new()
+	_art.expand_mode  = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_root.add_child(_art)
 
 	var lbl := Label.new()
 	lbl.text                 = "Loading..."
@@ -48,6 +54,7 @@ func show_loading() -> void:
 	if _tween:
 		_tween.kill()
 		_tween = null
+	_pick_random_art()
 	_root.modulate.a = 1.0
 	visible          = true
 
@@ -61,3 +68,12 @@ func hide_loading() -> void:
 		visible          = false
 		_root.modulate.a = 1.0
 	)
+
+func _pick_random_art() -> void:
+	var available: Array[String] = ART_PATHS.filter(
+		func(p: String) -> bool: return ResourceLoader.exists(p)
+	)
+	if available.is_empty():
+		return
+	var path: String = available[randi() % available.size()]
+	_art.texture = load(path)
