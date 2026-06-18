@@ -278,6 +278,13 @@ func _transition(into_cave: bool) -> void:
 	_in_cave = into_cave
 	_set_world_frozen(into_cave)
 	_move_squad_to(dest_centre)
+	# Drop any in-flight march (e.g. the half-finished walk to the exit marker)
+	# so a stale leader can't make _check_stragglers rescue-teleport the squad
+	# off-field ~1 s after the transition. Must run AFTER the teleport so the
+	# halt anchors each soldier to its new position.
+	var squad := get_tree().get_first_node_in_group("squad_controller")
+	if squad and squad.has_method("halt_all"):
+		squad.halt_all()
 
 	var cam := get_tree().get_first_node_in_group("main_camera") as Camera2D
 	if cam:

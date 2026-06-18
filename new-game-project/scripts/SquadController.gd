@@ -91,6 +91,7 @@ func _check_stragglers(delta: float) -> void:
 		if ref_point == Vector2.ZERO:
 			continue
 		var count := grp.size()
+		var offs := _group_offsets(grp)
 		for i in count:
 			var s = grp[i]
 			if not is_instance_valid(s) or (s.has_method("is_downed") and s.is_downed()):
@@ -99,7 +100,7 @@ func _check_stragglers(delta: float) -> void:
 				continue
 			var too_far: bool = s.global_position.distance_to(ref_point) > Balance.SQUAD_STRAGGLER_MAX_DIST
 			if s.tick_straggler(too_far, delta):
-				var slot: Vector2 = ref_point + _formation_offset(i, count)
+				var slot: Vector2 = ref_point + offs[i]
 				s.snap_to(NavigationServer2D.map_get_closest_point(nav_map, slot))
 
 # ---------------------------------------------------------------------------
@@ -252,6 +253,19 @@ func can_revive() -> bool:
 		func(n: Node2D) -> bool: return is_instance_valid(n)
 	).is_empty()
 
+# Cancels every in-flight formation march and stops all soldiers where they
+# stand. Called by CaveSystem around a cave teleport: a march still running when
+# the squad enters/leaves (e.g. the unfinished walk to the exit marker) would
+# otherwise linger as a stale leader far off-field. _check_stragglers then
+# measures the relocated squad against that off-field leader, finds everyone
+# "too far", and rescue-teleports the whole squad away ~1 s after they exit.
+# Mirrors the _marches.clear() + halt() pattern in _cycle_group_count.
+func halt_all() -> void:
+	_marches.clear()
+	for s in soldiers:
+		if is_instance_valid(s) and s.has_method("halt"):
+			s.halt()
+
 # =============================================================================
 # PRIVATE — GROUP MANAGEMENT
 # =============================================================================
@@ -283,8 +297,9 @@ func _cycle_group_count() -> void:
 			var angle := (TAU / _num_groups) * g - PI / 2.0
 			var spread := Vector2(cos(angle), sin(angle)) * 160.0
 			var grp := _soldiers_in_group(g)
+			var offs := _group_offsets(grp)
 			for i in grp.size():
-				grp[i].move_to(center + spread + _formation_offset(i, grp.size()))
+				grp[i].move_to(center + spread + offs[i])
 	else:
 		# Collapsing back to one group — automatically reform into formation so
 		# soldiers regroup without the player having to issue a manual move.
@@ -370,8 +385,9 @@ func _issue_move_order(target: Vector2) -> void:
 	var is_maze: bool = "maze_mode" in group[0] and group[0].maze_mode
 	if is_maze or path.size() < 2 or not group[0].has_method("formation_begin"):
 		_marches.erase(_active_group)
+		var offs := _group_offsets(group)
 		for i in count:
-			group[i].move_to(target + _formation_offset(i, count), _formation_offset(i, count))
+			group[i].move_to(target + offs[i], offs[i])
 		return
 	_begin_march(_active_group, group, path, target)
 
@@ -392,9 +408,8 @@ func _begin_march(gid: int, group: Array, path: PackedVector2Array, target: Vect
 	# Leader speed = slowest soldier's base speed so it never outruns the group;
 	# terrain lag on top of that is handled by the gate in _advance_march.
 	var base := INF
-	var offsets: Array = []
+	var offsets: Array = _group_offsets(group)
 	for i in count:
-		offsets.append(_formation_offset(i, count))
 		var ms: float = group[i].move_speed if "move_speed" in group[i] else 215.0
 		base = minf(base, ms)
 	if base == INF:
@@ -612,9 +627,29 @@ func _is_continuous_weapon() -> bool:
 # PRIVATE — FORMATION MATH
 # =============================================================================
 
-func _formation_offset(index: int, _total: int) -> Vector2:
+# Returns one formation offset per soldier in `group`, in the same order.
+# Each kid's slot is keyed off its STABLE slot_index (its identity), NOT its
+# position in the live array — so when a squadmate dies and the array compacts,
+# every survivor keeps the exact spot it already held instead of being shuffled
+# onto a neighbour's slot (which made the squad lurch sideways on the next move).
+# The offsets are then re-centred on the group so their mean is zero for any set
+# of survivors, keeping the formation balanced on the leader (a lone soldier
+# sits exactly on it).
+func _group_offsets(group: Array) -> Array:
 	var f: Array = FORMATIONS[_formation_index]
-	return f[index] if index < f.size() else Vector2.ZERO
+	var raw: Array = []
+	var mean := Vector2.ZERO
+	for s in group:
+		var slot: int = s.slot_index if "slot_index" in s and s.slot_index >= 0 else 0
+		var off: Vector2 = f[slot] if slot < f.size() else Vector2.ZERO
+		raw.append(off)
+		mean += off
+	if not raw.is_empty():
+		mean /= float(raw.size())
+	var out: Array = []
+	for off in raw:
+		out.append(off - mean)
+	return out
 
 func _cycle_formation() -> void:
 	_formation_index = (_formation_index + 1) % FORMATIONS.size()
@@ -670,14 +705,20 @@ func get_group_centroid(gid: int) -> Vector2:
 # Returns the average position of the active group (falls back to all soldiers).
 # CameraController uses this to softly follow the group.
 # Soldiers armed as walking bombs are excluded so the camera stays on the
-# rest of the squad rather than chasing the bomber across the map.
+# rest of the squad rather than chasing the bomber across the map. Downed
+# soldiers are excluded too: they stay where they fell, so after a cave exit
+# (which teleports only the living back to the entrance) they would otherwise
+# drag the centroid toward the dead bodies and leave the live squad off-screen.
 func get_centroid() -> Vector2:
-	var src := _active_group_soldiers()
-	src = src.filter(func(s: Node2D) -> bool:
-		return not (s.has_method("is_armed_bomb") and s.is_armed_bomb()))
+	var usable := func(s: Node2D) -> bool:
+		if s.has_method("is_armed_bomb") and s.is_armed_bomb():
+			return false
+		if s.has_method("is_downed") and s.is_downed():
+			return false
+		return true
+	var src := _active_group_soldiers().filter(usable)
 	if src.is_empty():
-		src = soldiers.filter(func(s: Node2D) -> bool:
-			return not (s.has_method("is_armed_bomb") and s.is_armed_bomb()))
+		src = soldiers.filter(usable)
 	if src.is_empty():
 		src = soldiers
 	if src.is_empty():

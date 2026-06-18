@@ -28,6 +28,9 @@ var _map_rect:     Rect2   = Rect2(Vector2.ZERO, Vector2(7680.0, 6400.0))
 # When > 0, replaces the auto-computed _get_min_zoom() as the zoom floor.
 var _zoom_floor:   float   = -1.0
 var _in_cave:      bool    = false
+# Player's zoom level captured on cave entry, re-applied on exit so leaving the
+# cave returns to exactly the view they had outside (-1 = nothing saved).
+var _saved_zoom:   float   = -1.0
 
 @onready var squad: Node2D = get_tree().get_first_node_in_group("squad_controller") as Node2D
 
@@ -124,6 +127,7 @@ func allow_free_zoom() -> void:
 	zoom         = Vector2(zoom_min, zoom_min)
 
 func enter_cave_view(rect: Rect2) -> void:
+	_saved_zoom  = zoom.x     # remember the player's outside zoom for the exit
 	_map_rect    = rect
 	_in_cave     = true
 	_zoom_floor  = 1.0        # prevent zooming out past art boundary
@@ -135,9 +139,15 @@ func exit_cave_view(rect: Rect2) -> void:
 	_map_rect    = rect
 	_in_cave     = false
 	_zoom_floor  = -1.0
-	# Keep the cave zoom (1.0) rather than snapping to min-zoom — at min-zoom
-	# _clamp_to_map centres on the map and the squad goes off-screen.
-	_target_zoom = clampf(zoom.x, _get_min_zoom(), zoom_max)
+	# Restore the player's pre-cave zoom (falling back to the current cave zoom if
+	# nothing was saved). Snap it immediately while the screen is still black so
+	# the fade-in shows the restored view rather than smooth-zooming to it. Never
+	# drop to min-zoom — there _clamp_to_map centres on the map and the squad
+	# goes off-screen.
+	var restore: float = _saved_zoom if _saved_zoom > 0.0 else zoom.x
+	_target_zoom = clampf(restore, _get_min_zoom(), zoom_max)
+	zoom         = Vector2(_target_zoom, _target_zoom)
+	_saved_zoom  = -1.0
 
 func _clamp_to_map() -> void:
 	var half_vp: Vector2 = get_viewport_rect().size * 0.5 / zoom.x
