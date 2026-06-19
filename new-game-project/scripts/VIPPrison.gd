@@ -13,9 +13,15 @@ const Balance = preload("res://scripts/BalanceConfig.gd")
 signal wall_destroyed
 
 const MAX_HEALTH: int = 40
-# Pixel-art prison sprite (generate via PixelLab into this path). Until it's
-# present the _draw fallback below renders a cage so the mission still reads.
-const TEX_PRISON := "res://resources/environment/vip_prison.png"
+# Five destruction stages (intact -> rubble), swapped by remaining-health ratio,
+# mirroring the FortifiedStructure castles on mission 4. Generated via PixelLab.
+# Until they're present the _draw fallback below renders a cage so the mission
+# still reads.
+const TEX_STAGE1 := "res://resources/environment/vip_prison1.png"
+const TEX_STAGE2 := "res://resources/environment/vip_prison2.png"
+const TEX_STAGE3 := "res://resources/environment/vip_prison3.png"
+const TEX_STAGE4 := "res://resources/environment/vip_prison4.png"
+const TEX_STAGE5 := "res://resources/environment/vip_prison5.png"
 
 var _health: int
 var _sprite: Sprite2D = null
@@ -33,15 +39,36 @@ func _ready() -> void:
 	_sprite.z_index = 1
 	_sprite.scale = Vector2(2.0, 2.0)
 	add_child(_sprite)
-	if ResourceLoader.exists(TEX_PRISON):
-		_sprite.texture = load(TEX_PRISON)
+	_update_visual()
 	queue_redraw()
 
 func take_damage(amount: int, _element: int = 0) -> void:
 	_health -= amount
 	health_bar.value = _health
+	_update_visual()
 	if _health <= 0:
 		_destroy()
+
+# Swap the prison sprite to the stage matching current health so it visibly
+# crumbles as the squad shoots it down. Falls through to the _draw cage if no
+# stage texture has been imported yet.
+func _update_visual() -> void:
+	if _sprite == null:
+		return
+	var hp_ratio: float = float(maxi(_health, 0)) / float(MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE)
+	var tex_path: String
+	if hp_ratio > 0.80:
+		tex_path = TEX_STAGE1
+	elif hp_ratio > 0.60:
+		tex_path = TEX_STAGE2
+	elif hp_ratio > 0.40:
+		tex_path = TEX_STAGE3
+	elif hp_ratio > 0.20:
+		tex_path = TEX_STAGE4
+	else:
+		tex_path = TEX_STAGE5
+	if ResourceLoader.exists(tex_path):
+		_sprite.texture = load(tex_path)
 
 func _destroy() -> void:
 	wall_destroyed.emit()

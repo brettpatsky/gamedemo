@@ -381,7 +381,8 @@ func _setup_objective() -> void:
 			if npc:
 				npc.escort_killed.connect(_on_mission_fail)
 				npc.health_changed.connect(hud.update_escort_health)
-				hud.update_escort_health(npc.get_health(), npc.MAX_HEALTH)
+				var npc_max: int = npc.get_max_health() if npc.has_method("get_max_health") else npc.MAX_HEALTH
+				hud.update_escort_health(npc.get_health(), npc_max)
 				hud.set_escort_targets(npc, zone)
 				npc.joined_squad.connect(hud.on_escort_joined)
 			# Any sheltering wall destroyed frees the NPC and topples the rest.

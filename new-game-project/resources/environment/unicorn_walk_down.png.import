@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ex2555unl02n"
-path="res://.godot/imported/vip_prison.png-2c818361e0aa844c234628347d61101e.ctex"
+uid="uid://dop5eb8vncef6"
+path="res://.godot/imported/unicorn_walk_down.png-6521da1ec5c77f8020b38c28da3f1eec.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/environment/vip_prison.png"
-dest_files=["res://.godot/imported/vip_prison.png-2c818361e0aa844c234628347d61101e.ctex"]
+source_file="res://resources/environment/unicorn_walk_down.png"
+dest_files=["res://.godot/imported/unicorn_walk_down.png-6521da1ec5c77f8020b38c28da3f1eec.ctex"]
 
 [params]
 

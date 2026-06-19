@@ -18,6 +18,19 @@ const MOVE_SPEED: float = 130.0
 # and made the NPC physically jam against squad capsules.
 const FOLLOW_DIST: float = 70.0
 
+# Animated unicorn: a 4-direction quadruped (PixelLab horse character) with
+# idle + walk strips per facing, so it animates like the squad while following.
+# Files: unicorn_<idle|walk>_<down|up|left|right>.png (horizontal strips of
+# square frames). Falls back to the _draw circle until the art is imported.
+const UNICORN_ART_DIR  := "res://resources/environment/"
+const UNICORN_FACINGS  := ["down", "up", "left", "right"]
+const UNICORN_SCALE     := 1.15   # shown near 1:1 from the ~112px native frame
+const UNICORN_Y_OFFSET  := 28.0   # nudge down so it stands on the stall floor
+const UNICORN_WALK_FPS  := 10.0
+const UNICORN_IDLE_FPS  := 6.0
+var _anim:   AnimatedSprite2D = null
+var _facing: String = "down"
+
 var _health: int = MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE
 var _dead:   bool = false
 var _freed:  bool = false   # set true once a sheltering wall is destroyed
@@ -39,8 +52,88 @@ func _ready() -> void:
 	_health              = MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE
 	health_bar.max_value = _health
 	health_bar.value     = _health
+	_style_health_bar()
+	_build_unicorn_sprite()
+	# Disable our body collision while caged so the prison's StaticBody2D doesn't
+	# eject us out the side on spawn — the VIP must sit visibly INSIDE the stable.
+	# It's invulnerable until freed anyway; release() turns collision back on.
+	$CollisionShape2D.disabled = true
 	queue_redraw()
 	await get_tree().physics_frame
+
+# Build the 4-direction unicorn AnimatedSprite2D from the idle/walk strips.
+# Each file is a horizontal strip of SQUARE frames (frame size == strip height),
+# so the frame count is width/height — no hardcoded dimensions. Leaves _anim
+# null (so the _draw fallback shows) if no art is present yet.
+func _build_unicorn_sprite() -> void:
+	var frames := SpriteFrames.new()
+	frames.remove_animation(&"default")
+	var added := 0
+	for facing in UNICORN_FACINGS:
+		added += _add_unicorn_anim(frames, "idle_" + facing,
+				UNICORN_ART_DIR + "unicorn_idle_" + facing + ".png", UNICORN_IDLE_FPS)
+		added += _add_unicorn_anim(frames, "walk_" + facing,
+				UNICORN_ART_DIR + "unicorn_walk_" + facing + ".png", UNICORN_WALK_FPS)
+	if added == 0:
+		return   # art not imported yet — keep the _draw fallback
+	_anim = AnimatedSprite2D.new()
+	_anim.sprite_frames   = frames
+	_anim.scale           = Vector2(UNICORN_SCALE, UNICORN_SCALE)
+	_anim.position        = Vector2(0, UNICORN_Y_OFFSET)
+	_anim.texture_filter  = CanvasItem.TEXTURE_FILTER_NEAREST
+	_anim.z_index         = 1
+	add_child(_anim)
+	_play_unicorn("idle_down")
+
+# Slices a horizontal strip of square frames into one looping animation.
+# Returns 1 if the strip exists and was added, else 0.
+func _add_unicorn_anim(frames: SpriteFrames, anim: String, path: String, fps: float) -> int:
+	if not ResourceLoader.exists(path):
+		return 0
+	var tex: Texture2D = load(path)
+	if tex == null or tex.get_height() <= 0:
+		return 0
+	var fh: int = tex.get_height()
+	@warning_ignore("integer_division")
+	var cols: int = maxi(1, tex.get_width() / fh)
+	frames.add_animation(anim)
+	frames.set_animation_loop(anim, true)
+	frames.set_animation_speed(anim, fps)
+	for i in cols:
+		var atlas := AtlasTexture.new()
+		atlas.atlas  = tex
+		atlas.region = Rect2(i * fh, 0, fh, fh)
+		frames.add_frame(anim, atlas)
+	return 1
+
+# Plays an animation if present, else falls back to idle_down (then any).
+func _play_unicorn(anim: String) -> void:
+	if _anim == null or _anim.sprite_frames == null:
+		return
+	if not _anim.sprite_frames.has_animation(anim):
+		anim = "idle_down"
+		if not _anim.sprite_frames.has_animation(anim):
+			return
+	if _anim.animation != anim:
+		_anim.play(anim)
+
+func _dir_to_facing(dir: Vector2) -> String:
+	if absf(dir.y) > absf(dir.x):
+		return "up" if dir.y < 0.0 else "down"
+	return "left" if dir.x < 0.0 else "right"
+
+# Clean green-on-dark fill so the VIP reads at a glance, matching the other
+# unit health bars rather than the default grey ProgressBar.
+func _style_health_bar() -> void:
+	health_bar.show_percentage = false
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.05, 0.05, 0.07, 0.75)
+	bg.set_corner_radius_all(2)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(0.35, 0.92, 0.45)
+	fill.set_corner_radius_all(2)
+	health_bar.add_theme_stylebox_override("background", bg)
+	health_bar.add_theme_stylebox_override("fill", fill)
 
 func _physics_process(delta: float) -> void:
 	if _dead:
@@ -48,6 +141,7 @@ func _physics_process(delta: float) -> void:
 	# Stay put inside the shelter until the squad blows open a wall.
 	if not _freed:
 		velocity = Vector2.ZERO
+		_play_unicorn("idle_down")   # face the camera while waiting in the stable
 		move_and_slide()
 		return
 	# Track the nearest live squad member rather than the centroid so the NPC
@@ -66,6 +160,12 @@ func _physics_process(delta: float) -> void:
 		velocity = (next - global_position).normalized() * MOVE_SPEED
 	else:
 		velocity = Vector2.ZERO
+	# Drive the directional walk/idle animation from movement.
+	if velocity.length() > 5.0:
+		_facing = _dir_to_facing(velocity)
+		_play_unicorn("walk_" + _facing)
+	else:
+		_play_unicorn("idle_" + _facing)
 	move_and_slide()
 
 # Same stuck-recovery escalation as Soldier/Enemy. Important here because a
@@ -116,6 +216,10 @@ func _nearest_soldier() -> Node2D:
 
 func release() -> void:
 	_freed = true
+	# Re-enable body collision now that the stable is gone, so the freed VIP can
+	# take fire and be blocked by terrain like a normal unit. Deferred because the
+	# prison is queue_free'd in the same frame this is called.
+	$CollisionShape2D.set_deferred("disabled", false)
 	# Raised above the prison sprite while caged so the captive is visible inside
 	# it; drop back to the normal band once freed so it blends with the squad.
 	z_index = 0
@@ -129,6 +233,9 @@ func has_joined_squad() -> bool:
 func get_health() -> int:
 	return _health
 
+func get_max_health() -> int:
+	return MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE
+
 func take_damage(amount: int, _element: int = 0) -> void:
 	# Invulnerable inside the shelter — a stray enemy shot before the squad
 	# arrives shouldn't be able to kill the NPC before they can be freed.
@@ -136,7 +243,7 @@ func take_damage(amount: int, _element: int = 0) -> void:
 		return
 	_health -= amount
 	health_bar.value = _health
-	health_changed.emit(_health, MAX_HEALTH)
+	health_changed.emit(_health, get_max_health())
 	if _health <= 0:
 		_die()
 
@@ -148,6 +255,9 @@ func _die() -> void:
 	queue_free()
 
 func _draw() -> void:
+	# Fallback marker shown only until the unicorn sprite is generated/imported.
+	if _anim != null:
+		return
 	draw_circle(Vector2.ZERO, 14.0, Color(0.1, 0.85, 0.85))
 	draw_arc(Vector2.ZERO, 14.0, 0.0, TAU, 24, Color(0.0, 0.5, 0.6), 2.5)
 	draw_circle(Vector2.ZERO, 4.0, Color(0.0, 0.4, 0.5))
