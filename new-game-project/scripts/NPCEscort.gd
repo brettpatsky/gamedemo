@@ -23,7 +23,8 @@ const FOLLOW_DIST: float = 70.0
 # Files: unicorn_<idle|walk>_<down|up|left|right>.png (horizontal strips of
 # square frames). Falls back to the _draw circle until the art is imported.
 const UNICORN_ART_DIR  := "res://resources/environment/"
-const UNICORN_FACINGS  := ["down", "up", "left", "right"]
+const UNICORN_FACINGS  := ["down", "up", "left", "right",
+		"down_right", "down_left", "up_right", "up_left"]
 const UNICORN_SCALE     := 1.15   # shown near 1:1 from the ~112px native frame
 const UNICORN_Y_OFFSET  := 28.0   # nudge down so it stands on the stall floor
 const UNICORN_WALK_FPS  := 10.0
@@ -117,10 +118,18 @@ func _play_unicorn(anim: String) -> void:
 	if _anim.animation != anim:
 		_anim.play(anim)
 
+# 8-way facing from a movement vector (Godot y is down, so positive angle = down).
+# Buckets the heading into 45° octants. Returns the current facing for a zero
+# vector so a stopped unicorn keeps its last orientation.
 func _dir_to_facing(dir: Vector2) -> String:
-	if absf(dir.y) > absf(dir.x):
-		return "up" if dir.y < 0.0 else "down"
-	return "left" if dir.x < 0.0 else "right"
+	if dir == Vector2.ZERO:
+		return _facing
+	var deg := rad_to_deg(dir.angle())
+	if deg < 0.0:
+		deg += 360.0
+	var idx: int = int(round(deg / 45.0)) % 8
+	return ["right", "down_right", "down", "down_left",
+			"left", "up_left", "up", "up_right"][idx]
 
 # Clean green-on-dark fill so the VIP reads at a glance, matching the other
 # unit health bars rather than the default grey ProgressBar.
