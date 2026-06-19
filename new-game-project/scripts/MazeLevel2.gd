@@ -67,8 +67,8 @@ const _MEMORY_FRAGMENT_SCENE: PackedScene = preload("res://scenes/memory_fragmen
 
 var _map_w_px: float = 0.0
 var _map_h_px: float = 0.0
-var _parent_cage:     Node = null
-var _memory_fragment: Node = null
+var _parent_cage:      Node  = null
+var _memory_fragments: Array = []
 
 func _ready() -> void:
 	add_to_group("map_generator")
@@ -111,21 +111,21 @@ func get_objective_node(key: String) -> Variant:
 		return get_exit_zone()
 	if key == "parent_cage":
 		return _parent_cage
+	if key == "memory_fragments":
+		return _memory_fragments
 	if key == "memory_fragment":
-		return _memory_fragment
+		return _memory_fragments[0] if not _memory_fragments.is_empty() else null
 	return null
 
-# Places the current mission's parent cage and themed fragment in two random
-# open cells of the maze, far from the spawn corner. Mirrors the logic in
-# MazeLevel.gd (kept duplicated rather than shared via a base class because
-# the two mazes' grids and CELL_SIZE happen to match but conceptually each
-# script owns its own layout).
+# Places the parent cage and THREE memory-fragment collectables in random open
+# cells of the maze. Candidate cells skip the spawn halo (so nothing lands on
+# the squad's start) and the exit halo (so a collectable is never sitting on the
+# exit trigger, where walking onto it would end the level instead of letting the
+# player grab it). Mirrors the logic in MazeLevel.gd (kept duplicated rather than
+# shared via a base class because conceptually each script owns its own layout).
 func _spawn_mission_parent_and_fragment() -> void:
 	var level: int = GameManager.current_level
-	var fragment_id: String = FragmentEffects.get_mission_fragment_id(level)
-	if fragment_id == "":
-		return
-	var fragment_name: String = FragmentEffects.get_display_name(fragment_id)
+	var exit_c := _exit_cell()
 
 	var open_cells: Array[Vector2i] = []
 	for row_idx in MAZE_LAYOUT.size():
@@ -133,9 +133,15 @@ func _spawn_mission_parent_and_fragment() -> void:
 		for col_idx in row.length():
 			if row[col_idx] != ".":
 				continue
+			# Spawn is at (1,1); skip a 4-cell halo so nothing lands on the
+			# squad's starting position.
 			var diff_x: int = col_idx - 1
 			var diff_y: int = row_idx - 1
 			if diff_x * diff_x + diff_y * diff_y < 16:
+				continue
+			# Skip the exit cell and its 8 neighbours so collectables stay clear
+			# of the exit trigger.
+			if exit_c.x >= 0 and absi(col_idx - exit_c.x) <= 1 and absi(row_idx - exit_c.y) <= 1:
 				continue
 			open_cells.append(Vector2i(col_idx, row_idx))
 	if open_cells.is_empty():
@@ -145,31 +151,86 @@ func _spawn_mission_parent_and_fragment() -> void:
 
 	if _PARENT_CAGE_SCENE:
 		var cage: Node2D = _PARENT_CAGE_SCENE.instantiate()
-		cage.position = Vector2(cage_cell.x * CELL_SIZE + _HALF_CELL,
-				cage_cell.y * CELL_SIZE + _HALF_CELL)
+		cage.position = _cell_centre(cage_cell)
 		if "child_slot" in cage:
 			cage.set("child_slot", level - 1)
 		add_child(cage)
 		_parent_cage = cage
 
 	if _MEMORY_FRAGMENT_SCENE:
-		var best_cell: Vector2i = open_cells[0]
-		var best_d: int = 0
-		for c in open_cells:
-			var diff: Vector2i = c - cage_cell
-			var d: int = diff.x * diff.x + diff.y * diff.y
-			if d > best_d:
-				best_d = d
-				best_cell = c
-		var frag: Node2D = _MEMORY_FRAGMENT_SCENE.instantiate()
-		frag.position = Vector2(best_cell.x * CELL_SIZE + _HALF_CELL,
-				best_cell.y * CELL_SIZE + _HALF_CELL)
-		if "fragment_id" in frag:
-			frag.set("fragment_id", fragment_id)
-		if "display_name" in frag:
-			frag.set("display_name", fragment_name)
-		add_child(frag)
-		_memory_fragment = frag
+		# Three distinct, not-yet-collected fragments, spread out from the cage
+		# and each other so the player explores to find them all.
+		var frag_ids := _pick_fragment_ids(3)
+		var frag_cells := _spread_cells(open_cells, cage_cell, frag_ids.size())
+		var spawned: Array = []
+		for i in mini(frag_ids.size(), frag_cells.size()):
+			var frag: Node2D = _MEMORY_FRAGMENT_SCENE.instantiate()
+			frag.position = _cell_centre(frag_cells[i])
+			if "fragment_id" in frag:
+				frag.set("fragment_id", frag_ids[i])
+			if "display_name" in frag:
+				frag.set("display_name", FragmentEffects.get_display_name(frag_ids[i]))
+			add_child(frag)
+			spawned.append(frag)
+		_memory_fragments = spawned
+
+# Cell -> world-space centre of that cell.
+func _cell_centre(c: Vector2i) -> Vector2:
+	return Vector2(c.x * CELL_SIZE + _HALF_CELL, c.y * CELL_SIZE + _HALF_CELL)
+
+# The maze exit's grid cell, derived from the Exit node's actual position so it
+# tracks any hand-edits to the scene. Returns (-1,-1) if there's no Exit node.
+func _exit_cell() -> Vector2i:
+	var exit: Node = get_exit_zone()
+	if exit is Node2D:
+		var p: Vector2 = (exit as Node2D).position
+		return Vector2i(floori(p.x / CELL_SIZE), floori(p.y / CELL_SIZE))
+	return Vector2i(-1, -1)
+
+# Up to `count` fragment IDs not yet permanently collected this run (mirrors
+# MapGenerator._pick_level_fragment_ids so maze rewards match the other levels).
+func _pick_fragment_ids(count: int) -> Array[String]:
+	var available: Array[String] = []
+	for id in FragmentEffects.FRAGMENT_METADATA.keys():
+		if not RunState.fragments.has(id):
+			available.append(id)
+	available.shuffle()
+	if available.size() > count:
+		available.resize(count)
+	return available
+
+# Greedy max-dispersion pick of `count` cells: first the one farthest from the
+# cage, then each next maximising its minimum distance to the cage and all
+# already-picked cells, so the three collectables spread across the maze.
+func _spread_cells(cells: Array[Vector2i], avoid: Vector2i, count: int) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	if cells.is_empty():
+		return result
+	var first: Vector2i = cells[0]
+	var best_d := -1
+	for c in cells:
+		var diff: Vector2i = c - avoid
+		var d: int = diff.x * diff.x + diff.y * diff.y
+		if d > best_d:
+			best_d = d
+			first = c
+	result.append(first)
+	while result.size() < count and result.size() < cells.size():
+		var pick: Vector2i = cells[0]
+		var pick_score := -1
+		for c in cells:
+			if result.has(c):
+				continue
+			var diff0: Vector2i = c - avoid
+			var min_d: int = diff0.x * diff0.x + diff0.y * diff0.y
+			for r in result:
+				var diff: Vector2i = c - r
+				min_d = mini(min_d, diff.x * diff.x + diff.y * diff.y)
+			if min_d > pick_score:
+				pick_score = min_d
+				pick = c
+		result.append(pick)
+	return result
 
 func generate(_seed_value: int = 0) -> void:
 	GameManager.enemies_alive = 0

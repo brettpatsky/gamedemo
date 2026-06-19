@@ -53,6 +53,13 @@ var _notify_label:  Label = null
 var _hint_timer:    float = 0.0
 var _fade_rect:     ColorRect = null
 
+# Hover tooltip — shows a reward's name + effect when the mouse is over its item,
+# so the player can read what each reward does before walking the squad onto one.
+const HOVER_RADIUS := 56.0
+var _tooltip:      PanelContainer = null
+var _tooltip_name: Label = null
+var _tooltip_desc: Label = null
+
 # ── Public setup ───────────────────────────────────────────────────────────────
 
 func setup(fragment_ids: Array[String]) -> void:
@@ -84,6 +91,7 @@ func _process(delta: float) -> void:
 	_move_squad(delta)
 	_check_fragment_collection()
 	_check_exit()
+	_update_hover()
 	if _hint_timer > 0.0:
 		_hint_timer -= delta
 		if _hint_timer <= 0.0 and _notify_label:
@@ -139,7 +147,7 @@ func _build_scene() -> void:
 
 	# ── Instruction strip at the bottom ─────────────────────────────────────
 	var inst := Label.new()
-	inst.text = "CLICK TO MOVE   ·   WALK TO YOUR REWARD   ·   WALK TO EXIT"
+	inst.text = "CLICK TO MOVE   ·   HOVER A REWARD TO SEE WHAT IT DOES   ·   WALK ONTO ONE TO CLAIM IT"
 	inst.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inst.custom_minimum_size = Vector2(SW, 0)
 	inst.position = Vector2(0, SH - 30)
@@ -148,6 +156,9 @@ func _build_scene() -> void:
 	inst.add_theme_color_override("font_outline_color", Color.BLACK)
 	inst.add_theme_constant_override("outline_size", 3)
 	add_child(inst)
+
+	# Reward hover tooltip (built above the items, below the fade overlay).
+	_build_tooltip()
 
 	# ── Black fade overlay — on top of everything; faded out on entry, in on exit ─
 	_fade_rect = ColorRect.new()
@@ -226,6 +237,74 @@ func _build_exit_sign() -> void:
 	tw.tween_property(lbl, "modulate:a", 1.00, 0.70)
 
 # ── Input ──────────────────────────────────────────────────────────────────────
+
+func _build_tooltip() -> void:
+	var panel := PanelContainer.new()
+	panel.visible = false
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE   # never eat squad clicks
+	panel.z_index = 10
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.05, 0.06, 0.09, 0.94)
+	sb.border_color = Color(1.0, 0.92, 0.45, 0.95)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(6)
+	sb.content_margin_left = 12.0
+	sb.content_margin_right = 12.0
+	sb.content_margin_top = 9.0
+	sb.content_margin_bottom = 9.0
+	panel.add_theme_stylebox_override("panel", sb)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 4)
+	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(vb)
+
+	_tooltip_name = Label.new()
+	_tooltip_name.add_theme_font_size_override("font_size", 16)
+	_tooltip_name.add_theme_color_override("font_color", Color(1.0, 0.92, 0.45))
+	_tooltip_name.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(_tooltip_name)
+
+	_tooltip_desc = Label.new()
+	_tooltip_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tooltip_desc.custom_minimum_size = Vector2(240, 0)
+	_tooltip_desc.add_theme_font_size_override("font_size", 13)
+	_tooltip_desc.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0))
+	_tooltip_desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(_tooltip_desc)
+
+	add_child(panel)
+	_tooltip = panel
+
+# Shows the reward tooltip for whichever item the mouse is hovering (within
+# HOVER_RADIUS), positioned just above-right of it and clamped to the screen.
+func _update_hover() -> void:
+	if _tooltip == null:
+		return
+	if _fragment_nodes.is_empty():
+		_tooltip.visible = false
+		return
+	var mouse := get_viewport().get_mouse_position()
+	var best: Node2D = null
+	var best_d := HOVER_RADIUS
+	for node: Node2D in _fragment_nodes:
+		var d := (mouse - node.position).length()
+		if d <= best_d:
+			best_d = d
+			best = node
+	if best == null:
+		_tooltip.visible = false
+		return
+	var id: String = best.get_meta("fragment_id", "")
+	_tooltip_name.text = FragmentEffects.get_display_name(id)
+	_tooltip_desc.text = FragmentEffects.get_description(id)
+	_tooltip.visible = true
+	var size := _tooltip.get_combined_minimum_size()
+	var pos := best.position + Vector2(22.0, -size.y - 18.0)
+	pos.x = clampf(pos.x, 8.0, SW - size.x - 8.0)
+	pos.y = clampf(pos.y, 8.0, SH - size.y - 8.0)
+	_tooltip.position = pos
+	_tooltip.size = size
 
 func _on_garden_input(event: InputEvent) -> void:
 	if _exiting:
