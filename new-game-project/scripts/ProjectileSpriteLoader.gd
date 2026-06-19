@@ -25,10 +25,10 @@ const _CONFIGS: Dictionary = {
 	"enemygreen": { "cols": 5, "rows": 7, "fw": 64, "fh": 48, "fps": 14.0 },
 	# Potion / grenade in-flight (64×64, single frame, loops while airborne)
 	"grenade":           { "cols": 1, "rows": 1, "fw": 64,  "fh": 64,  "fps": 12.0 },
-	# Potion explosion (192×192, single frame shown for ~0.65 s)
-	"explosion_grenade": { "cols": 1, "rows": 1, "fw": 192, "fh": 192, "fps": 1.5  },
-	# Sacrifice explosion (256×256, single frame shown for ~1.0 s)
-	"explosion_bomb":    { "cols": 1, "rows": 1, "fw": 256, "fh": 256, "fps": 1.0  },
+	# Potion explosion (1728×192 = 9 frames of 192×192, plays once over ~0.6 s)
+	"explosion_grenade": { "cols": 9, "rows": 1, "fw": 192, "fh": 192, "fps": 15.0 },
+	# Sacrifice explosion (2304×256 = 9 frames of 256×256, plays once over ~0.7 s)
+	"explosion_bomb":    { "cols": 9, "rows": 1, "fw": 256, "fh": 256, "fps": 13.0 },
 }
 
 # Element index → sprite key (matches Elements.E enum order: NONE=0, FIRE=1, ICE=2, LIGHTNING=3)
