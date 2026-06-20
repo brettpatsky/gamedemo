@@ -11,6 +11,10 @@ const Balance = preload("res://scripts/BalanceConfig.gd")
 @export var male_frames:   SpriteFrames
 @export var female_frames: SpriteFrames
 @export var bullet_scene:  PackedScene
+# When set, build the AnimatedSprite2D's SpriteFrames at runtime from per-anim
+# strip PNGs in this folder (<idle|walk|shoot>_<facing>.png). Used for Lua's
+# high-quality 8-direction set; leaving it empty keeps the .tscn-embedded frames.
+@export var frames_dir: String = ""
 
 # Maze mode swaps _do_move for SoldierMazeMover.tick — see SoldierMazeMover.gd
 # for the rationale. Set by Main.gd on level 4 / 5 soldiers.
@@ -264,6 +268,14 @@ func _squad() -> Node:
 
 # Last direction the soldier was facing — drives directional idle/shoot anims.
 var _facing: String = "down"
+# True when the active SpriteFrames has diagonal animations (Lua's 8-way set).
+# Other kids keep 4-way frames, so _dir_to_facing stays 4-way for them.
+var _use_8way: bool = false
+# Briefly after a shot, the soldier keeps facing the AIM direction even while
+# walking, so she looks at her target while strafing instead of snapping to her
+# movement heading between shots. Set in _do_shoot/_throw_grenade.
+var _aim_hold: float  = 0.0
+var _aim_face: String = ""
 
 func _ready() -> void:
 	# Per-slot stats win when Main has assigned slot_index (every normal
@@ -298,6 +310,14 @@ func _ready() -> void:
 		sprite.sprite_frames = female_frames
 	elif male_frames:
 		sprite.sprite_frames = male_frames
+
+	# Lua (and any future kid) can supply a folder of high-quality directional
+	# strips that replace the embedded frames at runtime.
+	if frames_dir != "":
+		_build_frames_from_dir(frames_dir)
+	# Diagonal animations present -> drive movement/aim with 8-way facing.
+	_use_8way = sprite.sprite_frames != null \
+			and sprite.sprite_frames.has_animation(&"walk_up_right")
 
 	health_bar.max_value = max_health
 	health_bar.value     = _health
@@ -339,6 +359,7 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	_shoot_cooldown    = max(_shoot_cooldown    - delta, 0.0)
 	_shoot_flash_timer = max(_shoot_flash_timer - delta, 0.0)
+	_aim_hold          = max(_aim_hold          - delta, 0.0)
 
 	# Frozen mid rescue-teleport: the fade tween owns position; hold still.
 	if _teleporting:
@@ -798,6 +819,8 @@ func _do_shoot() -> void:
 
 	var dir: Vector2 = (_bullet_aim - global_position).normalized()
 	_facing = _dir_to_facing(dir)
+	_aim_face = _facing
+	_aim_hold = 0.5
 	_play_anim("shoot_" + _facing)
 	_shoot_flash_timer = Balance.SOLDIER_SHOOT_FLASH_DURATION
 	gunshot.pitch_scale = randf_range(0.9, 1.1)
@@ -842,6 +865,8 @@ func _throw_grenade(target: Vector2) -> void:
 
 	var dir: Vector2 = (target - global_position).normalized()
 	_facing = _dir_to_facing(dir)
+	_aim_face = _facing
+	_aim_hold = 0.5
 	_play_anim("shoot_" + _facing)
 	_shoot_flash_timer = Balance.SOLDIER_SHOOT_FLASH_DURATION
 
@@ -1108,9 +1133,88 @@ func _play_footstep() -> void:
 # =============================================================================
 
 func _dir_to_facing(dir: Vector2) -> String:
+	if _use_8way:
+		# 8-way octant facing (Godot y is down, so positive angle = down). A zero
+		# vector keeps the current facing so a stopped soldier doesn't snap.
+		if dir == Vector2.ZERO:
+			return _facing
+		var deg := rad_to_deg(dir.angle())
+		if deg < 0.0:
+			deg += 360.0
+		var idx: int = int(round(deg / 45.0)) % 8
+		return ["right", "down_right", "down", "down_left",
+				"left", "up_left", "up", "up_right"][idx]
 	if abs(dir.y) > abs(dir.x):
 		return "up" if dir.y < 0 else "down"
 	return "left" if dir.x < 0 else "right"
+
+# Builds the AnimatedSprite2D's SpriteFrames at runtime from per-anim strip PNGs
+# in `dir` (<idle|walk|shoot>_<facing>.png — horizontal strips of square frames).
+# Carries over any existing "die" animation and normalises on-screen size to
+# match the other kids. No-ops (keeps embedded frames) if nothing loads.
+func _build_frames_from_dir(dir: String) -> void:
+	var specs := {
+		"idle":  {"fps": 6.0,  "loop": true},
+		"walk":  {"fps": 10.0, "loop": true},
+		"shoot": {"fps": 12.0, "loop": false},
+	}
+	var facings := ["down", "up", "left", "right",
+			"down_right", "down_left", "up_right", "up_left"]
+	var nf := SpriteFrames.new()
+	nf.remove_animation(&"default")
+	var frame_h := 0
+	var added := 0
+	for prefix in specs:
+		for facing in facings:
+			var path: String = dir.path_join("%s_%s.png" % [prefix, facing])
+			if not ResourceLoader.exists(path):
+				continue
+			var tex: Texture2D = load(path)
+			if tex == null or tex.get_height() <= 0:
+				continue
+			frame_h = tex.get_height()
+			@warning_ignore("integer_division")
+			var cols: int = maxi(1, tex.get_width() / frame_h)
+			var anim := "%s_%s" % [prefix, facing]
+			nf.add_animation(anim)
+			nf.set_animation_loop(anim, specs[prefix]["loop"])
+			nf.set_animation_speed(anim, specs[prefix]["fps"])
+			for i in cols:
+				var atlas := AtlasTexture.new()
+				atlas.atlas  = tex
+				atlas.region = Rect2(i * frame_h, 0, frame_h, frame_h)
+				nf.add_frame(anim, atlas)
+			added += 1
+	if added == 0:
+		return
+	# Preserve the death pose from the embedded frames, if any.
+	var old := sprite.sprite_frames
+	if old != null and old.has_animation(&"die"):
+		nf.add_animation(&"die")
+		nf.set_animation_loop(&"die", old.get_animation_loop(&"die"))
+		nf.set_animation_speed(&"die", old.get_animation_speed(&"die"))
+		for i in old.get_frame_count(&"die"):
+			nf.add_frame(&"die", old.get_frame_texture(&"die", i),
+					old.get_frame_duration(&"die", i))
+	sprite.sprite_frames = nf
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	# Normalise scale by the character's ACTUAL drawn height, not the (much taller,
+	# padded) canvas — v3 frames have lots of empty space, so scaling by frame
+	# height made her tiny. Measure the opaque bounds of a standing frame and size
+	# her to ~77 px tall to match the other kids (64 px frame x 1.2 scale).
+	var ref_path: String = dir.path_join("idle_down.png")
+	if not ResourceLoader.exists(ref_path):
+		ref_path = dir.path_join("walk_down.png")
+	var char_h: int = frame_h
+	if ResourceLoader.exists(ref_path):
+		var rimg: Image = (load(ref_path) as Texture2D).get_image()
+		if rimg != null:
+			var ur: Rect2i = rimg.get_used_rect()
+			if ur.size.y > 0:
+				char_h = ur.size.y
+	if char_h > 0:
+		var s := 76.8 / float(char_h)
+		sprite.scale = Vector2(s, s)
 
 func _play_anim(anim_name: String) -> void:
 	if sprite.sprite_frames == null or not sprite.sprite_frames.has_animation(anim_name):
@@ -1119,7 +1223,12 @@ func _play_anim(anim_name: String) -> void:
 		sprite.play(anim_name)
 
 func _play_walk_anim(direction: Vector2) -> void:
-	_facing = _dir_to_facing(direction)
+	# Keep facing the aim direction for a beat after firing (strafe-while-shooting)
+	# instead of snapping to the movement heading between shots.
+	if _aim_hold > 0.0 and _aim_face != "":
+		_facing = _aim_face
+	else:
+		_facing = _dir_to_facing(direction)
 	var anim := "walk_" + _facing
 	if sprite.sprite_frames and sprite.sprite_frames.has_animation(anim):
 		sprite.flip_h = false

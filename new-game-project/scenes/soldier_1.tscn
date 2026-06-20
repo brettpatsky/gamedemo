@@ -652,6 +652,7 @@ animations = [{
 
 [node name="Soldier1" unique_id=1556563602 instance=ExtResource("1_base")]
 is_female = true
+frames_dir = "res://resources/lua8/"
 
 [node name="AnimatedSprite2D" parent="." index="1" unique_id=2107077424]
 scale = Vector2(1.2, 1.2)
