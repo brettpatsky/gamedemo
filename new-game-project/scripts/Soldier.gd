@@ -937,7 +937,12 @@ func _die() -> void:
 		_teleport_tween.kill()
 	_teleporting = false
 	hide_group_label()
-	_play_anim("die")
+	# Prefer a directional death (die_<facing>, 8-way set); fall back to the single
+	# non-directional "die" carried over from the embedded frames (other kids).
+	var death_anim := "die_" + _facing
+	if sprite.sprite_frames == null or not sprite.sprite_frames.has_animation(death_anim):
+		death_anim = "die"
+	_play_anim(death_anim)
 	# Freeze on the last frame once the die animation finishes — prevents looping
 	# even if the SpriteFrames loop flag is inadvertently set.
 	sprite.animation_finished.connect(_on_die_anim_finished, CONNECT_ONE_SHOT)
@@ -1157,6 +1162,7 @@ func _build_frames_from_dir(dir: String) -> void:
 		"idle":  {"fps": 6.0,  "loop": true},
 		"walk":  {"fps": 10.0, "loop": true},
 		"shoot": {"fps": 12.0, "loop": false},
+		"die":   {"fps": 10.0, "loop": false},
 	}
 	var facings := ["down", "up", "left", "right",
 			"down_right", "down_left", "up_right", "up_left"]
@@ -1173,6 +1179,7 @@ func _build_frames_from_dir(dir: String) -> void:
 			if tex == null or tex.get_height() <= 0:
 				continue
 			frame_h = tex.get_height()
+			var strip_img: Image = tex.get_image()
 			@warning_ignore("integer_division")
 			var cols: int = maxi(1, tex.get_width() / frame_h)
 			var anim := "%s_%s" % [prefix, facing]
@@ -1180,10 +1187,13 @@ func _build_frames_from_dir(dir: String) -> void:
 			nf.set_animation_loop(anim, specs[prefix]["loop"])
 			nf.set_animation_speed(anim, specs[prefix]["fps"])
 			for i in cols:
-				var atlas := AtlasTexture.new()
-				atlas.atlas  = tex
-				atlas.region = Rect2(i * frame_h, 0, frame_h, frame_h)
-				nf.add_frame(anim, atlas)
+				# Each frame becomes its OWN mipmapped texture (not an atlas region):
+				# mipmaps don't bleed neighbouring frames, and with linear+mipmap
+				# filtering she stays smooth — not blocky — when the camera zooms
+				# right in, and shimmer-free when zoomed out.
+				var sub: Image = strip_img.get_region(Rect2i(i * frame_h, 0, frame_h, frame_h))
+				sub.generate_mipmaps()
+				nf.add_frame(anim, ImageTexture.create_from_image(sub))
 			added += 1
 	if added == 0:
 		return
@@ -1197,7 +1207,10 @@ func _build_frames_from_dir(dir: String) -> void:
 			nf.add_frame(&"die", old.get_frame_texture(&"die", i),
 					old.get_frame_duration(&"die", i))
 	sprite.sprite_frames = nf
-	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	# Linear + mipmaps: she's a detailed (non-pixel-art) sprite, so smooth filtering
+	# reads far better than nearest at any zoom (no blocky pixels zoomed in, no
+	# shimmer zoomed out). The other kids keep their own nearest pixel-art filter.
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	# Normalise scale by the character's ACTUAL drawn height, not the (much taller,
 	# padded) canvas — v3 frames have lots of empty space, so scaling by frame
 	# height made her tiny. Measure the opaque bounds of a standing frame and size

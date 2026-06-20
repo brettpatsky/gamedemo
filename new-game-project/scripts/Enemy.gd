@@ -25,6 +25,13 @@ var bullet_damage:   int
 
 @export var bullet_scene: PackedScene
 
+# When set, build the AnimatedSprite2D's SpriteFrames at runtime from per-anim
+# strip PNGs in this folder (<idle|walk|shoot|die>_<facing>.png). Used for the
+# corrupted mushroom's high-quality 8-direction set; leaving it empty keeps the
+# .tscn-embedded 4-way frames. Mirrors Soldier.gd's frames_dir but also builds
+# an 8-way directional `die` (the kids share a single death pose; enemies don't).
+@export var frames_dir: String = ""
+
 # -----------------------------------------------------------------------------
 # Dummy / training-target mode — tutorial Puzzle 1 uses this so the squad
 # has stationary practice targets that retreat instead of shooting back.
@@ -72,6 +79,14 @@ func _map_gen() -> Node:
 enum State { PATROL, ALERT, ATTACK, DEAD }
 var _state: State = State.PATROL
 
+# Last direction the enemy was facing — drives directional idle/walk/shoot/die
+# anims when an 8-way frames_dir set is loaded. Stays "down" for the legacy
+# 4-way embedded frames (which use flip_h instead).
+var _facing: String = "down"
+# True when the active SpriteFrames has diagonal animations (the mushroom's
+# 8-way set). Legacy enemies keep 4-way frames, so _dir_to_facing stays 4-way.
+var _use_8way: bool = false
+
 var _health:           int
 var _target:           Node2D = null
 var _patrol_timer:     float  = 0.0
@@ -113,6 +128,14 @@ func _ready() -> void:
 	health_bar.max_value = max_health
 	health_bar.value     = _health
 	_style_health_bar()
+
+	# Build the high-quality 8-direction SpriteFrames from strip PNGs if a
+	# frames_dir is set (the corrupted mushroom). Diagonal anims present ->
+	# drive movement/aim/death with 8-way facing; otherwise keep 4-way flip_h.
+	if frames_dir != "":
+		_build_frames_from_dir(frames_dir)
+	_use_8way = sprite.sprite_frames != null \
+			and sprite.sprite_frames.has_animation(&"walk_up_right")
 	_hit_audio = _build_hit_audio("res://resources/audio/sfx/enemy_hit.ogg")
 	_spawn_protection_timer = spawn_protection
 	# Randomise weakness + resistance for combat enemies if the spawner
@@ -160,7 +183,7 @@ func _physics_process(delta: float) -> void:
 	# Stand completely idle until the player issues their first move order.
 	# Prevents the squad getting swarmed before they've had a chance to look around.
 	if not GameManager.squad_has_moved and not dummy_mode:
-		_play_anim("idle")
+		_play_idle()
 		return
 
 	# Dummy targets bypass the normal AI entirely.
@@ -232,7 +255,7 @@ func _tick_flee(delta: float) -> void:
 	if nav_agent.is_navigation_finished():
 		velocity = Vector2.ZERO
 		move_and_slide()
-		_play_anim("idle")
+		_play_idle()
 		return
 	var next: Vector2 = nav_agent.get_next_path_position()
 	var dir:  Vector2 = (next - global_position).normalized()
@@ -288,12 +311,26 @@ func _tick_attack(delta: float) -> void:
 	velocity = _strafe_dir * move_speed * Balance.ENEMY_STRAFE_SPEED_MULT * _water_speed_mult()
 	move_and_slide()
 	var dir: Vector2 = (_target.global_position - global_position).normalized()
-	if dir.x != 0:
-		sprite.flip_h = dir.x < 0
-	_play_anim("shoot")
-	if _shoot_cooldown <= 0.0:
-		_fire(dir)
-		_shoot_cooldown = Balance.ENEMY_SHOOT_COOLDOWN
+	if _use_8way:
+		# Face the target while strafing. Replay the one-shot spit from frame 0 on
+		# each actual shot; between shots (once the spit has finished) hold an aim
+		# idle facing the target so the muzzle splatter doesn't linger on screen.
+		_facing = _dir_to_facing(dir)
+		sprite.flip_h = false
+		if _shoot_cooldown <= 0.0:
+			_fire(dir)
+			_shoot_cooldown = Balance.ENEMY_SHOOT_COOLDOWN
+			sprite.play("shoot_" + _facing)
+			sprite.set_frame_and_progress(0, 0.0)
+		elif not (String(sprite.animation).begins_with("shoot_") and sprite.is_playing()):
+			_play_anim("idle_" + _facing)
+	else:
+		if dir.x != 0:
+			sprite.flip_h = dir.x < 0
+		_play_anim("shoot")
+		if _shoot_cooldown <= 0.0:
+			_fire(dir)
+			_shoot_cooldown = Balance.ENEMY_SHOOT_COOLDOWN
 	var dist: float = global_position.distance_to(_target.global_position)
 	if dist > attack_range * 1.2:
 		_state = State.ALERT
@@ -365,6 +402,11 @@ func _on_safe_velocity(safe_velocity: Vector2) -> void:
 	move_and_slide()
 
 func _play_walk_anim(direction: Vector2) -> void:
+	if _use_8way:
+		_facing = _dir_to_facing(direction)
+		sprite.flip_h = false
+		_play_anim("walk_" + _facing)
+		return
 	if abs(direction.y) > abs(direction.x):
 		sprite.flip_h = false
 		_play_anim("walk_up" if direction.y < 0 else "walk_down")
@@ -410,8 +452,121 @@ func _fire(direction: Vector2) -> void:
 	gunshot.play()
 
 func _play_anim(anim_name: String) -> void:
+	if sprite.sprite_frames == null or not sprite.sprite_frames.has_animation(anim_name):
+		return
 	if sprite.animation != anim_name:
 		sprite.play(anim_name)
+
+# Idle in the last-faced direction (8-way set) or the plain "idle" (4-way).
+func _play_idle() -> void:
+	if _use_8way:
+		_play_anim("idle_" + _facing)
+	else:
+		_play_anim("idle")
+
+# Maps a movement/aim vector to a facing string. 8-way returns one of eight
+# octants (matching the mushroom's directional anims); 4-way collapses to
+# up/down/left/right. A zero vector keeps the current facing so a stopped
+# enemy doesn't snap. Mirrors Soldier._dir_to_facing.
+func _dir_to_facing(dir: Vector2) -> String:
+	if _use_8way:
+		if dir == Vector2.ZERO:
+			return _facing
+		var deg := rad_to_deg(dir.angle())
+		if deg < 0.0:
+			deg += 360.0
+		var idx: int = int(round(deg / 45.0)) % 8
+		return ["right", "down_right", "down", "down_left",
+				"left", "up_left", "up", "up_right"][idx]
+	if abs(dir.y) > abs(dir.x):
+		return "up" if dir.y < 0 else "down"
+	return "left" if dir.x < 0 else "right"
+
+# Builds the AnimatedSprite2D's SpriteFrames at runtime from per-anim strip PNGs
+# in `dir` (<idle|walk|shoot|die>_<facing>.png — horizontal strips of square
+# frames). Unlike Soldier._build_frames_from_dir, `die` is built as a full 8-way
+# one-shot set (enemies have a directional death, not a single shared pose);
+# falls back to carrying over the embedded single "die" if no die strips exist.
+# No-ops (keeps embedded frames) if nothing loads.
+func _build_frames_from_dir(dir: String) -> void:
+	var specs := {
+		"idle":  {"fps": 6.0,  "loop": true},
+		"walk":  {"fps": 8.0,  "loop": true},
+		# One-shot: _tick_attack restarts it from frame 0 on each actual shot so the
+		# spore-spit (and its muzzle splatter) plays once per shot, then the enemy
+		# drops back to idle_<facing> between shots. Looping it left the splatter on
+		# screen the whole time while strafing; freezing it (no restart) stuck the
+		# enemy mid-spit.
+		"shoot": {"fps": 12.0, "loop": false},
+		"die":   {"fps": 10.0, "loop": false},
+	}
+	var facings := ["down", "up", "left", "right",
+			"down_right", "down_left", "up_right", "up_left"]
+	var nf := SpriteFrames.new()
+	nf.remove_animation(&"default")
+	var frame_h := 0
+	var added := 0
+	var die_added := 0
+	for prefix in specs:
+		for facing in facings:
+			var path: String = dir.path_join("%s_%s.png" % [prefix, facing])
+			if not ResourceLoader.exists(path):
+				continue
+			var tex: Texture2D = load(path)
+			if tex == null or tex.get_height() <= 0:
+				continue
+			frame_h = tex.get_height()
+			var strip_img: Image = tex.get_image()
+			@warning_ignore("integer_division")
+			var cols: int = maxi(1, tex.get_width() / frame_h)
+			var anim := "%s_%s" % [prefix, facing]
+			nf.add_animation(anim)
+			nf.set_animation_loop(anim, specs[prefix]["loop"])
+			nf.set_animation_speed(anim, specs[prefix]["fps"])
+			for i in cols:
+				# Each frame becomes its OWN mipmapped texture (not an atlas region)
+				# so mipmaps don't bleed neighbouring frames and linear+mipmap
+				# filtering stays crisp zoomed in, shimmer-free zoomed out.
+				var sub: Image = strip_img.get_region(Rect2i(i * frame_h, 0, frame_h, frame_h))
+				sub.generate_mipmaps()
+				nf.add_frame(anim, ImageTexture.create_from_image(sub))
+			added += 1
+			if prefix == "die":
+				die_added += 1
+	if added == 0:
+		return
+	# If no directional die strips were supplied, preserve the embedded single
+	# "die" pose so death still animates. (With the mushroom's 8-way die set
+	# this branch is skipped — _die plays die_<facing> instead.)
+	if die_added == 0:
+		var old := sprite.sprite_frames
+		if old != null and old.has_animation(&"die"):
+			nf.add_animation(&"die")
+			nf.set_animation_loop(&"die", old.get_animation_loop(&"die"))
+			nf.set_animation_speed(&"die", old.get_animation_speed(&"die"))
+			for i in old.get_frame_count(&"die"):
+				nf.add_frame(&"die", old.get_frame_texture(&"die", i),
+						old.get_frame_duration(&"die", i))
+	sprite.sprite_frames = nf
+	# Linear + mipmaps: a detailed (non-pixel-art) sprite reads far better with
+	# smooth filtering than nearest at any zoom.
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	# Normalise scale by the figure's ACTUAL drawn height (opaque bounds), not the
+	# padded v3 canvas, so it isn't rendered tiny. Target ~96 px tall so the
+	# enemy reads slightly larger/heavier than the 77 px kids.
+	var ref_path: String = dir.path_join("idle_down.png")
+	if not ResourceLoader.exists(ref_path):
+		ref_path = dir.path_join("walk_down.png")
+	var char_h: int = frame_h
+	if ResourceLoader.exists(ref_path):
+		var rimg: Image = (load(ref_path) as Texture2D).get_image()
+		if rimg != null:
+			var ur: Rect2i = rimg.get_used_rect()
+			if ur.size.y > 0:
+				char_h = ur.size.y
+	if char_h > 0:
+		var s := 96.0 / float(char_h)
+		sprite.scale = Vector2(s, s)
 
 # =============================================================================
 # PUBLIC — damage / death
@@ -483,7 +638,12 @@ func take_damage(amount: int, element: int = 0) -> void:
 func _die() -> void:
 	_state = State.DEAD
 	velocity = Vector2.ZERO
-	_play_anim("die")
+	# 8-way set has a directional death (die_<facing>); fall back to the single
+	# "die" pose for the legacy 4-way frames.
+	if _use_8way and sprite.sprite_frames.has_animation("die_" + _facing):
+		_play_anim("die_" + _facing)
+	else:
+		_play_anim("die")
 	# Remove from the "enemies" group immediately so the HUD's closest-enemy
 	# arrow (and any other live-enemy query) stops considering this corpse.
 	# Otherwise the node lingers in the group for ~2s while the fade tween
