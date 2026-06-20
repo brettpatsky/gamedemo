@@ -1170,6 +1170,7 @@ func _build_frames_from_dir(dir: String) -> void:
 	nf.remove_animation(&"default")
 	var frame_h := 0
 	var added := 0
+	var die_added := 0
 	for prefix in specs:
 		for facing in facings:
 			var path: String = dir.path_join("%s_%s.png" % [prefix, facing])
@@ -1195,11 +1196,15 @@ func _build_frames_from_dir(dir: String) -> void:
 				sub.generate_mipmaps()
 				nf.add_frame(anim, ImageTexture.create_from_image(sub))
 			added += 1
+			if prefix == "die":
+				die_added += 1
 	if added == 0:
 		return
-	# Preserve the death pose from the embedded frames, if any.
+	# Preserve the death pose from the embedded frames ONLY when the folder didn't
+	# supply a directional die set (die_<facing>.png). Characters with their own
+	# 8-way die (e.g. Cameron) skip this; _die() plays die_<facing> for them.
 	var old := sprite.sprite_frames
-	if old != null and old.has_animation(&"die"):
+	if die_added == 0 and old != null and old.has_animation(&"die"):
 		nf.add_animation(&"die")
 		nf.set_animation_loop(&"die", old.get_animation_loop(&"die"))
 		nf.set_animation_speed(&"die", old.get_animation_speed(&"die"))

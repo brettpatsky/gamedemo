@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://3rn0c85bwa8r"
-path="res://.godot/imported/fairy_garden.png-92967517ae24d89a14003d558b8f94d1.ctex"
+uid="uid://ddskb3ixji2xc"
+path="res://.godot/imported/walk_down.png-f97de7460472face0f6ae37924fe1fed.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/caves/fairy_garden.png"
-dest_files=["res://.godot/imported/fairy_garden.png-92967517ae24d89a14003d558b8f94d1.ctex"]
+source_file="res://resources/cameron8/walk_down.png"
+dest_files=["res://.godot/imported/walk_down.png-f97de7460472face0f6ae37924fe1fed.ctex"]
 
 [params]
 

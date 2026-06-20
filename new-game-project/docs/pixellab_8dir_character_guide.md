@@ -9,15 +9,17 @@ The game already has the runtime plumbing — **both `Soldier.gd` (the kids) and
 So for a new character you mostly **generate art + composite strips + point a
 scene at the folder**.
 
-Two integrations exist; they differ only in the death animation:
-- **`Soldier.gd`** (kids): builds 8-way `idle/walk/shoot`, **carries over a single
-  shared `die`** pose from the embedded frames.
-- **`Enemy.gd`** (mushroom): builds 8-way `idle/walk/shoot` **and a full 8-way
-  directional `die`** (`die_<facing>`, one-shot). Falls back to the embedded
-  single `die` if no `die_*` strips are present.
+Both `Soldier.gd` and `Enemy.gd` build 8-way `idle/walk/shoot` AND an optional
+full 8-way directional `die` (`die_<facing>`, one-shot): supply `die_*.png` strips
+and `_die()` plays the directional death; omit them and it falls back to the single
+shared `die` pose carried over from the embedded frames. So death quality is per
+character, decided purely by whether you supply die strips — no code change.
 
-Reference implementations: Lua = `scenes/soldier_1.tscn` + `resources/lua8/`;
-Corrupted Mushroom enemy = `scenes/enemy.tscn` + `resources/mushroom8/`.
+Reference implementations:
+- Lua = `scenes/soldier_1.tscn` + `resources/lua8/` (single fallback die)
+- Cameron (ice battle mage) = `scenes/soldier_2.tscn` + `resources/cameron8/`
+  (full 8-way die)
+- Corrupted Mushroom enemy = `scenes/enemy.tscn` + `resources/mushroom8/` (8-way die)
 
 ---
 
@@ -39,6 +41,23 @@ plus local compositing:
 
 Everything else (download, composite, mirror, integrate) is local PowerShell +
 one scene edit. Poll with `get_character` between steps; don't burn prompts.
+
+### Description rules for first-try success (hard-won — read before prompting)
+These five rules eliminated almost all of our re-rolls:
+1. **Muted / low-saturation on big surfaces** (cap, cloak, robe). Vivid/rainbow
+   large areas flicker because v3 re-colours them unevenly per frame (§1).
+2. **Hold weapons/props in ONE fixed orientation** (staff upright & vertical; bow
+   upright/steady) and animate the body, not the prop. Add "keep it steady the
+   whole time" + "the gem/tip always visible". Dramatic thrusts rotate the prop and
+   lose/misplace its details (§3).
+3. **Describe body MOTION, not EFFECTS.** No spell/fireball/spore/spray/arrow in the
+   action text — the engine spawns the projectile/VFX (§3).
+4. **Coherent single palette** stated explicitly ("coherent blue and silver, not
+   rainbow") + child proportions in the description (v3 ignores the proportions
+   param) (§1).
+5. **Always verify all 8 directions exist** after each animation; v3 silently
+   drops/fails directions. Mirror from a clean opposite (4 pairs, §4a) or
+   re-queue the single direction.
 
 ---
 
@@ -152,15 +171,27 @@ into the animation.** v3 renders any "spell / spore / spit / fireball / burst"
 differently every frame and every direction, so the effect ends up wildly
 inconsistent (we got yellow blobs in one dir, white sprays in another, nothing in
 a third). The game spawns projectiles and VFX in-engine anyway, so the sprite only
-needs the **body's attack pose**. Word the fire/attack action as a pure body move:
-a head/weapon **thrust or lunge**, arm extension, recoil — no emitted matter.
+needs the **body's attack pose** — no emitted matter.
+
+**KEEP HELD WEAPONS/PROPS IN A STABLE ORIENTATION — animate the body, not the prop
+swinging across the frame.** This is the single biggest first-try win. A big
+"thrust/lunge/swing the staff forward" makes v3 rotate the prop wildly: the staff
+tilts every which way, the crystal/gem on the tip gets misplaced or vanishes, and
+in some directions the prop ends up facing a different way than the body. We
+fought this for ~4 re-rolls on Cameron's cast. The fix that worked first-try
+everywhere: **hold the weapon in one fixed orientation (staff upright & vertical)
+the whole time, with only a small gesture to "fire"** (a quick downward tap / tiny
+raise). Spell out the constraint in the description: "keeping the staff upright and
+steady the whole time, the gem on top always visible".
 
 Action descriptions that worked well:
-- **idle:**  `"standing still, breathing gently, holding her glowing crystal staff steady in one hand"`
-- **walk:**  `"walking forward, holding her glowing crystal staff in one hand"`
-- **fire/cast (kid, prop thrust):** `"thrusting her glowing crystal staff forward, arm extended toward the front"` (NO "cast a spell" / glow burst)
-- **fire/attack (enemy, body lunge):** `"rearing its head and hunched body back then thrusting sharply forward in an attacking lunge, fanged mouth opening wide"` (NO "spew spores / spit" — that bakes in the muzzle FX)
-- **die:** `"staggering and collapsing to the ground, defeated and dying, falling down"` (a dissolve/spore-cloud death also varies per frame — keep it to the body crumpling)
+- **idle:**  `"standing still, breathing gently, holding her staff upright and steady in one hand"`
+- **walk:**  `"walking forward, holding her staff upright in one hand"`
+- **fire/cast (kid, STABLE prop):** `"holding her tall staff upright and vertical in one hand, keeping the staff upright and steady the whole time with the glowing crystal on top always visible, giving a small quick downward tap to cast"` (NO forward thrust, NO glow burst)
+- **fire/attack (enemy, body lunge — no prop):** `"rearing its head and hunched body back then thrusting sharply forward in an attacking lunge, fanged mouth opening wide"` (props-free bodies CAN lunge; NO "spew spores/spit")
+- **fire/attack (bow, STABLE prop):** keep the bow in one orientation too —
+  `"holding the bow steady and upright in front of her, drawing the bowstring back and releasing it, keeping the bow steady the whole time"` (let the in-engine arrow be the projectile; don't describe a flying arrow)
+- **die:** `"staggering and collapsing to the ground, defeated and dying, falling down, still holding her weapon"` (a dissolve/spore-cloud death also varies per frame — keep it to the body crumpling; "still holding her weapon" keeps the prop)
 
 Sequencing (8-slot limit): queue idle (8 jobs) → poll `get_character` until done
 → queue walk → poll → queue fire → poll → queue die. Composite each as it
@@ -192,8 +223,27 @@ animation (include `die` for enemies):
 
 (A held prop ends up in the opposite hand — normal for a mirrored sprite,
 unnoticed in motion. The mushroom has no prop, so mirroring is lossless.)
-Mirroring also **fills in any direction v3 silently dropped** — we mirrored
-`die_left` from `die_right` rather than wait on a re-gen.
+
+**The four horizontal mirror pairs** (flip X swaps left↔right facing):
+`left↔right` (W↔E), `up_left↔up_right` (NW↔NE), **and also `down_left↔down_right`
+(SW↔SE)**. So if ANY single direction comes out bad — not just the usual W/NW —
+mirror it from its clean opposite. We fixed a tilted `shoot_down_right` from a
+clean `shoot_down_left`, and a poor `shoot_right`/`shoot_up_right` from
+`shoot_left`/`shoot_up_left`. Mirroring is deterministic, so prefer it over a
+re-roll whenever a clean opposite exists. The only directions with NO mirror
+partner are **straight down (south)** and **straight up (north)** — those must be
+re-generated if bad.
+
+**Single-direction re-roll** (for `down`/`up`, or when both sides are bad):
+`delete_animation(type, direction="south", confirm=true)` then re-queue that one
+direction (`directions:["south"]`, 2 gens). Note: re-queued/added single
+directions often **lag or never appear in the bulk `download` zip** — fetch them
+straight from the `get_character` frame URLs instead (that always has them).
+
+Mirroring also **fills in any direction v3 silently dropped or failed** — v3
+intermittently drops a direction (we lost `die/west` once and 3 die diagonals
+another time, and a whole `idle/south` job failed). Always verify all 8 are
+present before compositing; mirror or re-queue the missing ones.
 
 ### 4b. North (straight up) leans
 Two acceptable choices — pick per taste:
@@ -351,9 +401,11 @@ That's it. At runtime the actor's `_build_frames_from_dir()`:
   (once `is_playing()` is false) show `idle_<facing>` so the spit plays once per
   shot. Kids avoid this naturally — their SHOOTING state is brief and re-entered
   per shot.
-- **Death:** `Soldier.gd` carries over the embedded single `die`; **`Enemy.gd`
-  additionally builds `die_<facing>.png` as a one-shot 8-way set** and `Enemy._die()`
-  plays `die_<facing>` (falling back to single `die` if no `die_*` strips exist).
+- **Death (both actors):** if `die_<facing>.png` strips are present, builds them as
+  a one-shot 8-way set and `_die()` plays `die_<facing>`; otherwise carries over the
+  embedded single `die`. (The builder only carries the embedded die when zero
+  directional die strips were supplied — supplying any `die_*` switches the actor to
+  the directional death.)
 - Sets `_use_8way = true` because diagonal anims exist → `_dir_to_facing()`
   returns 8 octants (`down,up,left,right,down_right,down_left,up_right,up_left`).
   Actors without diagonals stay 4-way automatically.

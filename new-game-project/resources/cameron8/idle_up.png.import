@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bnyklhh0k5wij"
-path="res://.godot/imported/base_topdown_frame2.png-7e24e420431edbf02873c18febc8c7ba.ctex"
+uid="uid://2gm8snfemtr1"
+path="res://.godot/imported/idle_up.png-79a92fb6810824a394453d67fa4fa6d5.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/characters/character_1/base_topdown_frame2.png"
-dest_files=["res://.godot/imported/base_topdown_frame2.png-7e24e420431edbf02873c18febc8c7ba.ctex"]
+source_file="res://resources/cameron8/idle_up.png"
+dest_files=["res://.godot/imported/idle_up.png-79a92fb6810824a394453d67fa4fa6d5.ctex"]
 
 [params]
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://udfo1530u0ju"
-path="res://.godot/imported/base.png-c29af2d1e07f9739685c7f8b4666610c.ctex"
+uid="uid://7hcksbq2yrsv"
+path="res://.godot/imported/die_up_right.png-77bc5fd6c57cce29b9cde0dcaa02d92d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/characters/character_1/base.png"
-dest_files=["res://.godot/imported/base.png-c29af2d1e07f9739685c7f8b4666610c.ctex"]
+source_file="res://resources/cameron8/die_up_right.png"
+dest_files=["res://.godot/imported/die_up_right.png-77bc5fd6c57cce29b9cde0dcaa02d92d.ctex"]
 
 [params]
 
