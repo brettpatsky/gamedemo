@@ -653,6 +653,7 @@ animations = [{
 
 [node name="Soldier6" unique_id=508779960 instance=ExtResource("1_base")]
 is_female = true
+frames_dir = "res://resources/rindy8/"
 
 [node name="AnimatedSprite2D" parent="." index="1" unique_id=2107077424]
 scale = Vector2(1.2, 1.2)
