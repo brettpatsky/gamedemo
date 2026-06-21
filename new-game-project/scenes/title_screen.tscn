@@ -1,21 +1,36 @@
 [gd_scene format=3 uid="uid://hhybejs82qhl"]
 
 [ext_resource type="Script" uid="uid://1tt34ime3jia" path="res://scripts/TitleScreen.gd" id="1_fgkus"]
-[ext_resource type="Texture2D" uid="uid://brctfdq8nsmpt" path="res://resources/lua.png" id="2_lua"]
-[ext_resource type="Texture2D" uid="uid://b7v7ojvwnbu7e" path="res://resources/friend1.png" id="3_friend1"]
-[ext_resource type="Texture2D" uid="uid://cv5wae5ivvx5g" path="res://resources/friend2.png" id="4_friend2"]
+[ext_resource type="Texture2D" uid="uid://hpq3quyi2mr0" path="res://resources/lua8/idle_down.png" id="2_lua"]
+[ext_resource type="Texture2D" uid="uid://bxas5h7qbp5wy" path="res://resources/cameron8/idle_down.png" id="3_cam"]
+[ext_resource type="Texture2D" uid="uid://bryp8rmug85rf" path="res://resources/siena8/idle_down.png" id="4_sie"]
+[ext_resource type="Texture2D" uid="uid://ctk6tqwbmg7oa" path="res://resources/piper8/idle_down.png" id="5_pip"]
+[ext_resource type="Texture2D" uid="uid://jt62b872i555" path="res://resources/livy8/idle_down.png" id="6_liv"]
+[ext_resource type="Texture2D" uid="uid://c00gp64fp1ffg" path="res://resources/rindy8/idle_down.png" id="7_rin"]
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_idle"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_lua"]
 atlas = ExtResource("2_lua")
-region = Rect2(0, 1536, 64, 64)
+region = Rect2(26, 28, 67, 67)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_friend1"]
-atlas = ExtResource("3_friend1")
-region = Rect2(0, 1536, 64, 64)
+[sub_resource type="AtlasTexture" id="AtlasTexture_cameron"]
+atlas = ExtResource("3_cam")
+region = Rect2(25, 26, 66, 66)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_friend2"]
-atlas = ExtResource("4_friend2")
-region = Rect2(0, 1536, 64, 64)
+[sub_resource type="AtlasTexture" id="AtlasTexture_siena"]
+atlas = ExtResource("4_sie")
+region = Rect2(25, 28, 67, 67)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_piper"]
+atlas = ExtResource("5_pip")
+region = Rect2(29, 28, 67, 67)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_livy"]
+atlas = ExtResource("6_liv")
+region = Rect2(30, 29, 70, 70)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rindy"]
+atlas = ExtResource("7_rin")
+region = Rect2(27, 28, 68, 68)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_fgkus"]
 bg_color = Color(0.11764706, 0.16470589, 0.27058825, 1)
@@ -140,7 +155,7 @@ theme_override_constants/separation = 8
 [node name="Portrait" type="TextureRect" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard1/Margin/VBox/Header" unique_id=1191034911]
 custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
-texture = SubResource("AtlasTexture_idle")
+texture = SubResource("AtlasTexture_lua")
 expand_mode = 1
 stretch_mode = 5
 
@@ -240,7 +255,7 @@ theme_override_constants/separation = 8
 [node name="Portrait" type="TextureRect" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard2/Margin/VBox/Header" unique_id=910161483]
 custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
-texture = SubResource("AtlasTexture_friend1")
+texture = SubResource("AtlasTexture_cameron")
 expand_mode = 1
 stretch_mode = 5
 
@@ -248,7 +263,7 @@ stretch_mode = 5
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 16
-text = "Friend 1"
+text = "Cameron"
 
 [node name="HPRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard2/Margin/VBox" unique_id=1427728395]
 layout_mode = 2
@@ -340,7 +355,7 @@ theme_override_constants/separation = 8
 [node name="Portrait" type="TextureRect" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard3/Margin/VBox/Header" unique_id=1423475149]
 custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
-texture = SubResource("AtlasTexture_friend2")
+texture = SubResource("AtlasTexture_siena")
 expand_mode = 1
 stretch_mode = 5
 
@@ -348,7 +363,7 @@ stretch_mode = 5
 layout_mode = 2
 theme_override_colors/font_color = Color(0.3, 0.9, 1, 1)
 theme_override_font_sizes/font_size = 16
-text = "Friend 2"
+text = "Siena"
 
 [node name="HPRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard3/Margin/VBox" unique_id=1376602767]
 layout_mode = 2
@@ -440,7 +455,7 @@ theme_override_constants/separation = 8
 [node name="Portrait" type="TextureRect" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard4/Margin/VBox/Header" unique_id=2146953415]
 custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
-texture = SubResource("AtlasTexture_idle")
+texture = SubResource("AtlasTexture_piper")
 expand_mode = 1
 stretch_mode = 5
 
@@ -448,7 +463,7 @@ stretch_mode = 5
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.55, 0.1, 1)
 theme_override_font_sizes/font_size = 16
-text = "Friend 3"
+text = "Piper"
 
 [node name="HPRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard4/Margin/VBox" unique_id=1594538037]
 layout_mode = 2
@@ -540,7 +555,7 @@ theme_override_constants/separation = 8
 [node name="Portrait" type="TextureRect" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard5/Margin/VBox/Header" unique_id=470355766]
 custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
-texture = SubResource("AtlasTexture_friend1")
+texture = SubResource("AtlasTexture_livy")
 expand_mode = 1
 stretch_mode = 5
 
@@ -548,7 +563,7 @@ stretch_mode = 5
 layout_mode = 2
 theme_override_colors/font_color = Color(0.3, 1, 0.4, 1)
 theme_override_font_sizes/font_size = 16
-text = "Friend 4"
+text = "Livy"
 
 [node name="HPRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard5/Margin/VBox" unique_id=1055391466]
 layout_mode = 2
@@ -640,7 +655,7 @@ theme_override_constants/separation = 8
 [node name="Portrait" type="TextureRect" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard6/Margin/VBox/Header" unique_id=1210682311]
 custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
-texture = SubResource("AtlasTexture_friend2")
+texture = SubResource("AtlasTexture_rindy")
 expand_mode = 1
 stretch_mode = 5
 
@@ -648,7 +663,7 @@ stretch_mode = 5
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.3, 0.9, 1)
 theme_override_font_sizes/font_size = 16
-text = "Friend 5"
+text = "Rindy"
 
 [node name="HPRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard6/Margin/VBox" unique_id=1315771530]
 layout_mode = 2

@@ -1237,7 +1237,11 @@ func _build_frames_from_dir(dir: String) -> void:
 func _play_anim(anim_name: String) -> void:
 	if sprite.sprite_frames == null or not sprite.sprite_frames.has_animation(anim_name):
 		return
-	if sprite.animation != anim_name:
+	# Also (re)start when the right animation is selected but not actually playing.
+	# Some soldier .tscn files pre-set animation = &"idle_down" on the sprite, so on
+	# first load the name already matches and a plain name-change guard would skip
+	# play() — leaving the kid frozen on frame 0 until they walked and stopped.
+	if sprite.animation != anim_name or not sprite.is_playing():
 		sprite.play(anim_name)
 
 func _play_walk_anim(direction: Vector2) -> void:
