@@ -276,15 +276,25 @@ faces camera), so only the two horizontals need this. Verify by Reading the stri
 the prop must be present in **every** frame.
 
 ### 4b. North (straight up) leans
-Two acceptable choices — pick per taste:
-- **Keep the animated v3 north** even though it leans slightly (Lua's final pick —
-  it animates and reads fine alongside the mirrored up_left/up_right).
-- **Static true-north:** copy the **base north rotation** (`.../rotations/north.png`,
-  a clean straight back) into `idle_up/walk_up/shoot_up` as a 1‑frame strip.
-  Correct facing but no animation on the up direction.
+**First check WHERE the lean comes from — the base north ROTATION.** A fresh v3
+character usually renders a clean **straight-back** north rotation on its own
+(Piper, Siena, Cameron all did), and the animations inherit that — straight north,
+no work needed. But if the **base** `.../rotations/north.png` is itself a ¾
+back-right view (the *original* Lua was — she predates the refined process), then
+**every** up animation interpolates from that ¾ base frame and leans, and
+**re-rolling the up animations CANNOT fix it** — not with any wording, not as a
+single-dir re-roll (we tried both; both kept leaning). The lean is baked into the
+character. Download `rotations/north.png` and look before spending gens.
 
-If you re-generate north to try for straight ("back fully to camera, not turning"),
-it usually still leans — don't waste many gens on it.
+- **Base north is straight** → just animate normally; north comes out straight.
+- **Base north is ¾ (leaning)** → the only real fix is to **regenerate the base
+  character** (full rebuild, §1 + re-animate all 8). That's what fixed Lua —
+  a fresh v3 base gave a straight-back north, then all 32 strips were rebuilt.
+- **Don't want to rebuild?** Acceptable fallbacks for a leaning base: keep the
+  animated (leaning) north, OR drop a **static true-north** 1-frame strip from the
+  base north rotation into `idle_up/walk_up/shoot_up` (correct facing, no animation
+  on up — but NOT for `die_up`: a downed soldier stays on the field as a corpse, so
+  death needs the collapse-to-ground motion, which a static frame can't provide).
 
 ---
 
