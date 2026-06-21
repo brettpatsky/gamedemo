@@ -652,6 +652,8 @@ animations = [{
 }]
 
 [node name="Soldier3" unique_id=1345304078 instance=ExtResource("1_base")]
+is_female = true
+frames_dir = "res://resources/siena8/"
 
 [node name="AnimatedSprite2D" parent="." index="1" unique_id=2107077424]
 scale = Vector2(1.2, 1.2)

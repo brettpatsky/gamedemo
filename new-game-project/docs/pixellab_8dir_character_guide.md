@@ -58,6 +58,22 @@ These five rules eliminated almost all of our re-rolls:
 5. **Always verify all 8 directions exist** after each animation; v3 silently
    drops/fails directions. Mirror from a clean opposite (4 pairs, §4a) or
    re-queue the single direction.
+6. **v3 LOVES putting hoods UP.** Ask for a hood/cape and it will almost always
+   render the hood pulled over the head and hide the hair — even when you write
+   "hood down". Both the bow-Siena and the first staff-Siena rebuild came out
+   hood-up despite asking otherwise. For a **bare-headed** look you must negate it
+   emphatically: "BARE-HEADED, NO hood, NOTHING covering her head, head fully
+   uncovered, her braid/hair clearly visible" AND describe the cape as "collar lies
+   flat on her shoulders, NEVER pulled up over her head". Even then, **check the
+   south + north rotations before animating** and re-roll the base (cheap, ~2 gens)
+   if the hood is up. Don't animate a hood-up base hoping it improves — it won't.
+
+### Where to dump preview images for the user to review
+When you download rotations/frames for the **user** to eyeball (base-character
+approval, bad-direction checks), save them into the repo folder
+**`new-game-project/temp/`** (gitignored) — NOT the system `%TEMP%`. The user can
+open that folder directly to review. Use the system temp only for throwaway build
+scratch (zip extraction, etc.) that the user never needs to see.
 
 ---
 
@@ -245,6 +261,20 @@ intermittently drops a direction (we lost `die/west` once and 3 die diagonals
 another time, and a whole `idle/south` job failed). Always verify all 8 are
 present before compositing; mirror or re-queue the missing ones.
 
+### 4c. Held prop "grows in" / flickers on the PROFILE directions (east/west)
+On the pure side profiles the staff hand can face *away* from camera, so v3 may
+animate the staff **absent in the first frames then appearing** (Siena's staff-staff
+"comes into existence then disappears on loop" idle_right/left bug). A single-dir
+re-roll usually does NOT fix it (the model keeps occluding the prop early), and
+mirroring the opposite side is useless because **both** profiles have the same flaw.
+Fix that worked: **rebuild the side strip from only its staff-present tail frames**
+as a short ping-pong loop (e.g. take frames `[4,5,6,5]` of the existing strip — the
+staff is fully up & stable there), then **mirror that clean strip to the other side**
+so both match. The idle reads as a subtle breathing-in-place with the prop always
+held. Cardinal **down** and the **diagonals** usually keep the prop fine (the hand
+faces camera), so only the two horizontals need this. Verify by Reading the strip:
+the prop must be present in **every** frame.
+
 ### 4b. North (straight up) leans
 Two acceptable choices — pick per taste:
 - **Keep the animated v3 north** even though it leans slightly (Lua's final pick —
@@ -420,13 +450,23 @@ builders: idle 6, walk 8–10, shoot 12, die 10.
 The build path is fully checkable without the editor:
 ```
 & "<godot.exe>" --headless --path <project> --import          # import strips, scan for errors
-& "<godot.exe>" --headless --path <project> --script test.gd  # instantiate scene, assert frames
+& "<godot.exe>" --headless --path <project> --script scripts/tools/verify_char_dir.gd -- res://resources/<char>8
 ```
-In a `SceneTree`-extending test script, `_ready` is **deferred** until the loop
-runs — `add_child(e)` then `await process_frame` (twice) before inspecting
-`sprite.sprite_frames`, or you'll read the embedded frames and think the build
-failed. Assert `has_animation("walk_up_right")` (8-way flag), `has_animation("die_left")`,
-and `get_animation_loop("die_down") == false`.
+Godot here = `C:\Godot_v4.6.3-stable_win64.exe` (not on PATH).
+
+**Reusable verifier: `scripts/tools/verify_char_dir.gd`** — takes the folder as a
+user arg (`-- res://resources/<char>8`) and asserts all 32 strips import as valid
+square-framed PNGs and build the 8-way `idle/walk/shoot/die` set (die one-shot).
+It prints `VERIFY_RESULT: PASS|FAIL`.
+
+**Why it does NOT instantiate the scene:** `Soldier.gd` references the `GameManager`
+autoload, and autoloads are **not registered** under `--headless --script` (custom
+`SceneTree`), so instantiating `soldier_N.tscn` fails to compile the script → the
+node keeps its embedded 14-anim fallback frames and you'd get false "MISSING"
+errors. Instead the verifier **replicates `_build_frames_from_dir`'s asset-side
+logic** (which has no autoload deps) on the strip folder — that's the new/risky
+part anyway; the loader code itself is unchanged and proven in-game. (If you DO want
+to instantiate a scene that uses autoloads, run the real game, not `--script`.)
 
 ---
 

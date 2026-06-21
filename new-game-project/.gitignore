@@ -4,3 +4,6 @@
 
 # MCP config (contains API keys)
 .mcp.json
+
+# Preview/scratch images for manual review (PixelLab character previews etc.)
+/temp/
