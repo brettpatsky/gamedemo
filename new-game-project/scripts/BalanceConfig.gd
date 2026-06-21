@@ -198,6 +198,52 @@ const ENEMY_STUCK_THRESHOLD:      float = 6.0
 const ENEMY_STUCK_HARD_STRIKES:   int   = 6
 
 # -----------------------------------------------------------------------------
+# MINOTAUR  (elite melee bruiser)
+# -----------------------------------------------------------------------------
+# A large, slow, relentless brute with a massive HP pool. It has NO ranged
+# attack — it permanently hunts whichever squad GROUP the player is currently
+# controlling (the soldiers flagged is_active), closing to melee range to throw
+# a heavy fist/slam for big damage. The design intent is PRESSURE: it forces the
+# commanded group to keep relocating, dragging them across the map and into the
+# other enemies they'd rather avoid. HP/damage are run through COMBAT_NUMBER_SCALE
+# like every other combatant (so the per-row numbers below stay readable).
+const MINOTAUR_MOVE_SPEED:   float = 68.0    # px/s — deliberately slower than the squad (215) so they CAN kite it
+const MINOTAUR_MAX_HEALTH:   int   = 50      # ×COMBAT_NUMBER_SCALE = a massive pool; soak many magazines
+const MINOTAUR_SCORE_VALUE:  int   = 250     # elite kill payout
+
+# Melee swing. ATTACK_RANGE is how close it must be to COMMIT to a swing; the
+# strike then damages every engageable soldier inside MELEE_RADIUS at the moment
+# the fist lands (an arc/AOE so a clustered group all gets clobbered — spread out!).
+const MINOTAUR_ATTACK_RANGE:  float = 115.0  # big body + long reach; commit to a swing within this
+const MINOTAUR_MELEE_RADIUS:  float = 135.0  # AOE of the landed swing
+const MINOTAUR_ATTACK_DAMAGE: int   = 4      # ×COMBAT_NUMBER_SCALE — large; can drop a squishy kid in one hit
+
+# Swing cadence: a telegraphed WINDUP (the squad's window to scatter) → the strike
+# lands → a RECOVERY where the minotaur is committed/vulnerable → COOLDOWN before
+# it can swing again. Longer windup/recovery = more dodgeable, more readable.
+const MINOTAUR_ATTACK_WINDUP:   float = 0.55
+const MINOTAUR_ATTACK_RECOVERY: float = 0.45
+const MINOTAUR_ATTACK_COOLDOWN: float = 1.1
+
+# How often it re-picks its target (the closest soldier in the active group).
+const MINOTAUR_TARGET_SCAN_PERIOD: float = 0.35
+const MINOTAUR_WATER_SPEED_MULT:   float = 0.5
+
+# Rendered height in px of the figure's opaque bounds. Kids target ~77; 1.5× of
+# that ≈ 115 so the minotaur towers over the squad (the brief's "1.5× larger").
+const MINOTAUR_SPRITE_HEIGHT: float = 115.0
+
+# How many minotaurs the procedural combat map (Level 2) spawns alongside the
+# regular mob. One relentless bruiser is plenty of pressure.
+const MINOTAUR_COUNT: int = 1
+
+# Stuck detection — same shape as the enemy, the big slow body wedges more easily
+# so it gets a lower movement threshold before the path-teleport kicks in.
+const MINOTAUR_STUCK_CHECK_INTERVAL: float = 0.5
+const MINOTAUR_STUCK_THRESHOLD:      float = 5.0
+const MINOTAUR_STUCK_HARD_STRIKES:   int   = 6
+
+# -----------------------------------------------------------------------------
 # ESCORT NPC
 # -----------------------------------------------------------------------------
 # Same stuck-detection shape as soldiers so the VIP doesn't snag on a tree.

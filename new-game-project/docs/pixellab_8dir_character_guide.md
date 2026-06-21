@@ -20,6 +20,13 @@ Reference implementations:
 - Cameron (ice battle mage) = `scenes/soldier_2.tscn` + `resources/cameron8/`
   (full 8-way die)
 - Corrupted Mushroom enemy = `scenes/enemy.tscn` + `resources/mushroom8/` (8-way die)
+- Minotaur Brute (melee elite) = `scenes/minotaur.tscn` + `resources/minotaur8/`
+  (built by `scripts/Minotaur.gd`; uses an **`attack`** strip set instead of
+  `shoot`, full 8-way die, scaled to ~115 px so it towers over the kids).
+  Lesson learned: it was first made gripping a battle axe, but v3 rendered the
+  axe inconsistently across frames — **recreated empty-handed (a punching brute)
+  and every animation came out clean**. Prefer a weaponless body for an enemy
+  whose melee can be a punch/lunge rather than fighting prop flicker.
 
 ---
 

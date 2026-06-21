@@ -253,8 +253,13 @@ func _spawn_enemies() -> void:
 		return
 
 	var count: int = 50  # Fixed 50 enemies
-	GameManager.enemies_alive = count
-	GameManager.enemies_changed.emit(count)
+	# Elite melee bruisers that hunt the controlled group (see Minotaur.gd). They
+	# count toward enemies_alive so the mission-complete gate waits on them too.
+	var minotaur_scene: PackedScene = load("res://scenes/minotaur.tscn")
+	var minotaur_count: int = Balance.MINOTAUR_COUNT if minotaur_scene != null else 0
+
+	GameManager.enemies_alive = count + minotaur_count
+	GameManager.enemies_changed.emit(GameManager.enemies_alive)
 
 	for i in count:
 		if i >= spawn_zone.size():
@@ -262,6 +267,16 @@ func _spawn_enemies() -> void:
 		var enemy: Node2D = enemy_scene.instantiate()
 		enemy.position = _tile_to_world(spawn_zone[i])
 		add_child(enemy)
+
+	# Drop the minotaur(s) onto spawn cells past the regular mob so they start
+	# clear of the squad and have room to begin their slow advance.
+	for j in minotaur_count:
+		var idx: int = count + j
+		if idx >= spawn_zone.size():
+			break
+		var mino: Node2D = minotaur_scene.instantiate()
+		mino.position = _tile_to_world(spawn_zone[idx])
+		add_child(mino)
 
 # ---------------------------------------------------------------------------
 # Drops the current mission's parent cage and themed memory fragment into the
