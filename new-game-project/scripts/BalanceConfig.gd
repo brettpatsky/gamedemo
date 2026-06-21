@@ -229,19 +229,35 @@ const MINOTAUR_ATTACK_COOLDOWN: float = 1.1
 const MINOTAUR_TARGET_SCAN_PERIOD: float = 0.35
 const MINOTAUR_WATER_SPEED_MULT:   float = 0.5
 
-# Rendered height in px of the figure's opaque bounds. Kids target ~77; 1.5× of
-# that ≈ 115 so the minotaur towers over the squad (the brief's "1.5× larger").
-const MINOTAUR_SPRITE_HEIGHT: float = 115.0
+# Rendered height in px of the figure's opaque bounds. Kids target ~77; this
+# towers well over the squad (the brief's "1.5× larger", nudged up on request).
+const MINOTAUR_SPRITE_HEIGHT: float = 132.0
 
 # How many minotaurs the procedural combat map (Level 2) spawns alongside the
 # regular mob. One relentless bruiser is plenty of pressure.
 const MINOTAUR_COUNT: int = 1
 
-# Stuck detection — same shape as the enemy, the big slow body wedges more easily
-# so it gets a lower movement threshold before the path-teleport kicks in.
-const MINOTAUR_STUCK_CHECK_INTERVAL: float = 0.5
+# Avoidance radius for the nav agent. The dense forest navmesh is NOT carved
+# around trees (they're NavigationObstacle2D handled by RVO), so this must be
+# big enough that the avoidance steers the large physical body (collision radius
+# ~50) clear of tree colliders — otherwise RVO thinks a gap is passable while the
+# body physically wedges. Kept a touch under the body radius so it can still
+# thread genuine gaps; the teleport-escape below covers anything it can't.
+const MINOTAUR_NAV_RADIUS:          float = 40.0
+const MINOTAUR_NAV_NEIGHBOR_DIST:   float = 200.0   # see trees early, in a busy forest
+const MINOTAUR_NAV_MAX_NEIGHBORS:   int   = 12      # account for many nearby trunks
+
+# Stuck detection — the big slow body wedges between trees more easily than a kid,
+# so escape escalates in two tiers:
+#   HARD_STRIKES   → nudge along the planned path (move_and_collide, slides corners)
+#   TELEPORT_STRIKES → still wedged: blink a short hop toward the target onto a
+#                      navmesh point (guaranteed escape from any pinch).
+const MINOTAUR_STUCK_CHECK_INTERVAL: float = 0.4
 const MINOTAUR_STUCK_THRESHOLD:      float = 5.0
-const MINOTAUR_STUCK_HARD_STRIKES:   int   = 6
+const MINOTAUR_STUCK_HARD_STRIKES:   int   = 4
+const MINOTAUR_STUCK_TELEPORT_STRIKES: int = 9     # consecutive strikes → blink-escape
+const MINOTAUR_STUCK_TELEPORT_DIST:    float = 110.0  # how far the blink hops toward the target
+const MINOTAUR_TELEPORT_FADE_TIME:     float = 0.12   # quick fade-out/in so the hop reads as intentional
 
 # -----------------------------------------------------------------------------
 # ESCORT NPC

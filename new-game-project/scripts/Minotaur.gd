@@ -104,14 +104,15 @@ func _ready() -> void:
 		weakness   = pool[0]
 		resistance = pool[1]
 
-	# Nav setup mirrors the enemy's: RVO avoidance so the big body routes around
-	# props instead of grinding through them. Radius bumped for the larger frame.
-	nav_agent.path_desired_distance  = 6.0
+	# Nav setup mirrors the enemy's RVO avoidance, but with a much larger radius and
+	# neighbour window so the big body is steered WIDE around tree colliders (the
+	# forest navmesh isn't carved around trees — see MINOTAUR_NAV_* in BalanceConfig).
+	nav_agent.path_desired_distance  = 8.0
 	nav_agent.target_desired_distance = attack_range * 0.6
-	nav_agent.radius             = 28.0
+	nav_agent.radius             = Balance.MINOTAUR_NAV_RADIUS
 	nav_agent.avoidance_enabled  = true
-	nav_agent.neighbor_distance  = 80.0
-	nav_agent.max_neighbors      = 5
+	nav_agent.neighbor_distance  = Balance.MINOTAUR_NAV_NEIGHBOR_DIST
+	nav_agent.max_neighbors      = Balance.MINOTAUR_NAV_MAX_NEIGHBORS
 	nav_agent.max_speed          = move_speed
 	if not nav_agent.velocity_computed.is_connected(_on_safe_velocity):
 		nav_agent.velocity_computed.connect(_on_safe_velocity)
@@ -136,8 +137,6 @@ func _physics_process(delta: float) -> void:
 		_scan_timer = Balance.MINOTAUR_TARGET_SCAN_PERIOD
 		_acquire_target()
 
-	_tick_stuck_check(delta)
-
 	match _state:
 		State.CHASE:  _tick_chase(delta)
 		State.ATTACK: _tick_attack(delta)
@@ -147,19 +146,30 @@ func _physics_process(delta: float) -> void:
 # STATE TICKS
 # =============================================================================
 
-func _tick_chase(_delta: float) -> void:
+func _tick_chase(delta: float) -> void:
 	if not _is_target_engageable():
 		velocity = Vector2.ZERO
 		move_and_slide()
 		_play_idle()
+		_reset_stuck()
 		return
 	var dist: float = global_position.distance_to(_target.global_position)
 	# Close enough and the axe is ready → commit to a swing.
 	if dist <= attack_range and _attack_cooldown <= 0.0:
 		_begin_attack()
 		return
+	# Within striking range but waiting out the cooldown — it's positioning, not
+	# stuck, so don't let the escape logic count these frames.
+	if dist <= attack_range:
+		_reset_stuck()
+		velocity = Vector2.ZERO
+		move_and_slide()
+		_play_idle()
+		return
 	nav_agent.target_position = _target.global_position
 	_move_toward_nav_target()
+	# Only watch for wedging while genuinely closing distance on a far target.
+	_tick_stuck_check(delta)
 
 func _begin_attack() -> void:
 	_state = State.ATTACK
@@ -477,10 +487,13 @@ func _die() -> void:
 # STUCK RECOVERY  (mirror Enemy.gd, MINOTAUR_STUCK_*)
 # =============================================================================
 
+func _reset_stuck() -> void:
+	_stuck_strikes = 0
+	_stuck_check_pos = global_position
+
 func _tick_stuck_check(delta: float) -> void:
-	if _state == State.ATTACK or nav_agent.is_navigation_finished():
-		_stuck_strikes = 0
-		_stuck_check_pos = global_position
+	if nav_agent.is_navigation_finished():
+		_reset_stuck()
 		return
 	_stuck_timer -= delta
 	if _stuck_timer > 0.0:
@@ -491,11 +504,18 @@ func _tick_stuck_check(delta: float) -> void:
 	if moved:
 		_stuck_strikes = 0
 		return
+	# Two-tier escape: nudge along the path first; if it's still wedged several
+	# checks later (a real pinch between trees the big body can't thread), blink a
+	# short hop onto a navmesh point toward the target — a guaranteed way out.
 	_stuck_strikes += 1
-	if _stuck_strikes >= Balance.MINOTAUR_STUCK_HARD_STRIKES:
+	if _stuck_strikes >= Balance.MINOTAUR_STUCK_TELEPORT_STRIKES:
+		_blink_unstick()
+		_reset_stuck()
+	elif _stuck_strikes >= Balance.MINOTAUR_STUCK_HARD_STRIKES:
 		_hard_unstick()
-		_stuck_strikes = 0
 
+# Tier 1: slide toward the next path waypoint with move_and_collide so it rounds
+# prop corners but can't punch through a wall / cliff face.
 func _hard_unstick() -> void:
 	if nav_agent.is_navigation_finished():
 		return
@@ -504,3 +524,32 @@ func _hard_unstick() -> void:
 	if diff.length() < 1.0:
 		return
 	move_and_collide(diff.normalized() * minf(diff.length(), 64.0))
+
+# Tier 2: short teleport toward the target, landing on the nearest navmesh point,
+# with a quick fade-in so the hop reads as intentional rather than a glitch. This
+# is the escape from any pinch the big body physically can't squeeze through.
+func _blink_unstick() -> void:
+	var dir: Vector2 = _blink_dir()
+	if dir == Vector2.ZERO:
+		return
+	var dest: Vector2 = global_position + dir * Balance.MINOTAUR_STUCK_TELEPORT_DIST
+	dest = NavigationServer2D.map_get_closest_point(get_world_2d().navigation_map, dest)
+	global_position = dest
+	velocity = Vector2.ZERO
+	modulate.a = 0.25
+	var tw := create_tween()
+	tw.tween_property(self, "modulate:a", 1.0, Balance.MINOTAUR_TELEPORT_FADE_TIME)
+
+# Blink direction: toward the next path waypoint if there is one (follows the
+# route out of the pinch), else straight at the target.
+func _blink_dir() -> Vector2:
+	if not nav_agent.is_navigation_finished():
+		var nxt: Vector2 = nav_agent.get_next_path_position()
+		var d: Vector2 = nxt - global_position
+		if d.length() > 4.0:
+			return d.normalized()
+	if _target != null and is_instance_valid(_target):
+		var dt: Vector2 = _target.global_position - global_position
+		if dt.length() > 1.0:
+			return dt.normalized()
+	return Vector2.ZERO

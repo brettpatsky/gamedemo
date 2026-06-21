@@ -139,8 +139,8 @@ animations = [{
 }]
 
 [sub_resource type="CapsuleShape2D" id="Capsule_mino"]
-radius = 44.0
-height = 92.0
+radius = 46.0
+height = 98.0
 
 [node name="Minotaur" type="CharacterBody2D"]
 script = ExtResource("1_mino")
@@ -149,7 +149,7 @@ frames_dir = "res://resources/minotaur8/"
 [node name="NavigationAgent2D" type="NavigationAgent2D" parent="."]
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
-scale = Vector2(0.75, 0.75)
+scale = Vector2(0.85, 0.85)
 sprite_frames = SubResource("SpriteFrames_mino")
 animation = &"idle"
 
