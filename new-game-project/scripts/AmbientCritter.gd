@@ -53,6 +53,10 @@ func _ready() -> void:
 
 	_anim = AnimatedSprite2D.new()
 	_anim.scale = Vector2(0.75, 0.75)
+	# Detailed 48px critter art downscales hard at full zoom-out. Without mipmaps
+	# (the engine default) that aliases into a blurry blob; linear + mipmaps (built
+	# per-frame below) keeps it crisp at every zoom, same as the kid sprites.
+	_anim.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	add_child(_anim)
 	_build_sprite_frames()
 	if _has_tex:
@@ -72,16 +76,28 @@ func _build_sprite_frames() -> void:
 	sf.set_animation_speed("idle", 6.0)
 	sf.set_animation_loop("idle", true)
 	for i in _FRAME_COUNT:
-		sf.add_frame("idle", load(dir + "idle_%d.png" % i))
+		sf.add_frame("idle", _mipmapped_texture(dir + "idle_%d.png" % i))
 
 	sf.add_animation("hop")
 	sf.set_animation_speed("hop", 12.0)
 	sf.set_animation_loop("hop", true)
 	for i in _FRAME_COUNT:
-		sf.add_frame("hop", load(dir + "hop_%d.png" % i))
+		sf.add_frame("hop", _mipmapped_texture(dir + "hop_%d.png" % i))
 
 	_anim.sprite_frames = sf
 	_has_tex = true
+
+# Rebuilds a frame texture with mipmaps so it stays crisp when the camera zooms
+# all the way out (a plain load() has no mipmaps → aliased/blurry on downscale).
+func _mipmapped_texture(path: String) -> Texture2D:
+	var tex: Texture2D = load(path)
+	if tex == null:
+		return null
+	var img: Image = tex.get_image()
+	if img == null:
+		return tex
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
 
 # ---------------------------------------------------------------------------
 func _process(delta: float) -> void:

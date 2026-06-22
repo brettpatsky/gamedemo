@@ -292,8 +292,14 @@ func _spawn_squad(count: int) -> void:
 	# otherwise); we honour it by truncating the living-slot list.
 	var living: Array[int] = RunState.living_slots()
 	if living.is_empty():
-		push_warning("[Main] No living kids in RunState — squad will be empty")
-		return
+		# Safety net: a totally-wiped roster reached spawn (restart() should have
+		# already refreshed it). Never leave the level with zero soldiers — that's
+		# the invisible, can't-move/fire state — so begin a fresh run and respawn.
+		push_warning("[Main] No living kids in RunState — starting a fresh run so the squad isn't empty")
+		RunState.start_new_run()
+		living = RunState.living_slots()
+		if living.is_empty():
+			return
 	var slots_to_spawn: Array[int] = living.slice(0, count)
 	# Maze missions (level 3 = Maze 1, level 6 = Maze 2) only spawn one kid,
 	# and each maze frees a specific kid's parent. Prefer that kid so the cage
@@ -576,6 +582,14 @@ func advance_level() -> void:
 	get_tree().reload_current_scene()
 
 func restart() -> void:
+	# A total squad wipe marks every kid dead in RunState (permadeath), so simply
+	# reloading the level would spawn ZERO soldiers — an invisible, uncontrollable
+	# squad with no move/fire. A wipe ends the run, so start a fresh roster here so
+	# the retry button actually hands the player a squad again. The guard means
+	# normal cases (partial losses, a pause-menu restart with living kids) keep
+	# their surviving roster untouched — permadeath within a live run still holds.
+	if RunState.living_slots().is_empty():
+		RunState.start_new_run()
 	_show_loading_screen()
 	await get_tree().process_frame
 	get_tree().reload_current_scene()
