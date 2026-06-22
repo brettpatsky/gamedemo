@@ -60,14 +60,14 @@ const SOLDIER_GRENADE_COOLDOWN: float = 0.5     # quick lobs so the player can r
 # Soldier.gd reads from these in _ready() whenever slot_index >= 0, which is
 # every normal mission spawn. The .tscn files no longer carry stat overrides;
 # tweak per-kid balance HERE. Each kid's "feel" is the sum of these rows.
-const SOLDIER_MAX_HEALTH_PER_SLOT:      Array[int]   = [8,     6,     2,     5,     2,     3]
+const SOLDIER_MAX_HEALTH_PER_SLOT:      Array[int]   = [4,     6,     2,     5,     2,     3]
 const SOLDIER_MOVE_SPEED_PER_SLOT:      Array[float] = [215.0, 215.0, 215.0, 215.0, 215.0, 215.0]
 const SOLDIER_PISTOL_DAMAGE_PER_SLOT:   Array[int]   = [4,     1,     2,     2,     1,     1]
 const SOLDIER_PISTOL_SPEED_PER_SLOT:    Array[float] = [900.0, 650.0, 800.0, 650.0, 900.0, 700.0]
-const SOLDIER_PISTOL_DISTANCE_PER_SLOT: Array[float] = [1800.0, 700.0, 1400.0, 800.0, 800.0, 1000.0]
-const SOLDIER_RIFLE_DAMAGE_PER_SLOT:    Array[int]   = [5,     1,     2,     2,     1,     3]
+const SOLDIER_PISTOL_DISTANCE_PER_SLOT: Array[float] = [1000.0, 700.0, 1400.0, 800.0, 800.0, 1000.0]
+const SOLDIER_RIFLE_DAMAGE_PER_SLOT:    Array[int]   = [3,     1,     2,     2,     1,     3]
 const SOLDIER_RIFLE_SPEED_PER_SLOT:     Array[float] = [1100.0, 850.0, 950.0, 850.0, 1000.0, 1100.0]
-const SOLDIER_RIFLE_DISTANCE_PER_SLOT:  Array[float] = [2500.0, 900.0, 1600.0, 1000.0, 1000.0, 2000.0]
+const SOLDIER_RIFLE_DISTANCE_PER_SLOT:  Array[float] = [2000.0, 900.0, 1600.0, 1000.0, 1000.0, 2000.0]
 # Shown on the kid's bio-card name (title screen) and on the autodefend
 # tracer. Player-directed fire colours its bullet by ELEMENT instead — see
 # Elements.color_of() — so this is mostly cosmetic identity.
