@@ -170,14 +170,14 @@ const SOLDIER_SHOOT_FLASH_DURATION: float = 0.18
 # ENEMY
 # -----------------------------------------------------------------------------
 const ENEMY_MOVE_SPEED:         float = 105.0
-const ENEMY_MAX_HEALTH:         int   = 2
+const ENEMY_MAX_HEALTH:         int   = 6
 const ENEMY_SIGHT_RANGE:        float = 480.0   # detect squad past this → ALERT
 const ENEMY_ATTACK_RANGE:       float = 280.0   # close to within this → ATTACK
 const ENEMY_SCORE_VALUE:        int   = 10
 const ENEMY_AIM_JITTER:         float = 0.22    # radians; higher = worse shots
 const ENEMY_BULLET_SPEED:       float = 500.0
 const ENEMY_BULLET_DISTANCE:    float = 300.0
-const ENEMY_BULLET_DAMAGE:      int   = 1
+const ENEMY_BULLET_DAMAGE:      int   = 2
 const ENEMY_PATROL_INTERVAL:    float = 3.0     # seconds between patrol waypoints
 const ENEMY_SHOOT_COOLDOWN:     float = 0.45
 const ENEMY_TARGET_SCAN_PERIOD: float = 0.4     # how often ATTACK re-picks target
@@ -207,8 +207,8 @@ const ENEMY_STUCK_HARD_STRIKES:   int   = 6
 # commanded group to keep relocating, dragging them across the map and into the
 # other enemies they'd rather avoid. HP/damage are run through COMBAT_NUMBER_SCALE
 # like every other combatant (so the per-row numbers below stay readable).
-const MINOTAUR_MOVE_SPEED:   float = 68.0    # px/s — deliberately slower than the squad (215) so they CAN kite it
-const MINOTAUR_MAX_HEALTH:   int   = 50      # ×COMBAT_NUMBER_SCALE = a massive pool; soak many magazines
+const MINOTAUR_MOVE_SPEED:   float = 100.0    # px/s — deliberately slower than the squad (215) so they CAN kite it
+const MINOTAUR_MAX_HEALTH:   int   = 300     # ×COMBAT_NUMBER_SCALE = a massive pool; soak many magazines
 const MINOTAUR_SCORE_VALUE:  int   = 250     # elite kill payout
 
 # Melee swing. ATTACK_RANGE is how close it must be to COMMIT to a swing; the
@@ -216,7 +216,7 @@ const MINOTAUR_SCORE_VALUE:  int   = 250     # elite kill payout
 # the fist lands (an arc/AOE so a clustered group all gets clobbered — spread out!).
 const MINOTAUR_ATTACK_RANGE:  float = 115.0  # big body + long reach; commit to a swing within this
 const MINOTAUR_MELEE_RADIUS:  float = 135.0  # AOE of the landed swing
-const MINOTAUR_ATTACK_DAMAGE: int   = 4      # ×COMBAT_NUMBER_SCALE — large; can drop a squishy kid in one hit
+const MINOTAUR_ATTACK_DAMAGE: int   = 6      # ×COMBAT_NUMBER_SCALE — large; can drop a squishy kid in one hit
 
 # Swing cadence: a telegraphed WINDUP (the squad's window to scatter) → the strike
 # lands → a RECOVERY where the minotaur is committed/vulnerable → COOLDOWN before

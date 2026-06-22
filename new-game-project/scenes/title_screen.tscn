@@ -81,19 +81,19 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/margin_left = 40
-theme_override_constants/margin_top = 30
-theme_override_constants/margin_right = 40
-theme_override_constants/margin_bottom = 30
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 8
 
 [node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=489734268]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 8
 
 [node name="Title" type="Label" parent="MarginContainer/VBoxContainer" unique_id=166253993]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.116, 0.571, 0.855, 1)
-theme_override_font_sizes/font_size = 48
+theme_override_font_sizes/font_size = 34
 text = "Little Lua & The Lost Six"
 horizontal_alignment = 1
 
@@ -110,14 +110,14 @@ size_flags_stretch_ratio = 2.0
 
 [node name="BiosMargin" type="MarginContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel" unique_id=848478736]
 layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 16
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 16
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 8
 
 [node name="BiosVBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin" unique_id=825391979]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 6
 
 [node name="BiosTitle" type="Label" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox" unique_id=1318127478]
 layout_mode = 2
@@ -129,24 +129,24 @@ text = "Squad"
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/h_separation = 12
-theme_override_constants/v_separation = 12
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 6
 columns = 3
 
 [node name="BioCard1" type="PanelContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid" unique_id=209223588]
-custom_minimum_size = Vector2(220, 170)
+custom_minimum_size = Vector2(220, 150)
 layout_mode = 2
 
 [node name="Margin" type="MarginContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard1" unique_id=1321643344]
 layout_mode = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 4
 
 [node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard1/Margin" unique_id=158011552]
 layout_mode = 2
-theme_override_constants/separation = 5
+theme_override_constants/separation = 3
 
 [node name="Header" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard1/Margin/VBox" unique_id=990195080]
 layout_mode = 2
@@ -234,19 +234,19 @@ value = 550.0
 show_percentage = false
 
 [node name="BioCard2" type="PanelContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid" unique_id=2122098858]
-custom_minimum_size = Vector2(220, 170)
+custom_minimum_size = Vector2(220, 150)
 layout_mode = 2
 
 [node name="Margin" type="MarginContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard2" unique_id=584205377]
 layout_mode = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 4
 
 [node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard2/Margin" unique_id=941525964]
 layout_mode = 2
-theme_override_constants/separation = 5
+theme_override_constants/separation = 3
 
 [node name="Header" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard2/Margin/VBox" unique_id=1271549224]
 layout_mode = 2
@@ -334,19 +334,19 @@ value = 400.0
 show_percentage = false
 
 [node name="BioCard3" type="PanelContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid" unique_id=2003642815]
-custom_minimum_size = Vector2(220, 170)
+custom_minimum_size = Vector2(220, 150)
 layout_mode = 2
 
 [node name="Margin" type="MarginContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard3" unique_id=507963608]
 layout_mode = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 4
 
 [node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard3/Margin" unique_id=934355004]
 layout_mode = 2
-theme_override_constants/separation = 5
+theme_override_constants/separation = 3
 
 [node name="Header" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard3/Margin/VBox" unique_id=2114742608]
 layout_mode = 2
@@ -434,19 +434,19 @@ value = 750.0
 show_percentage = false
 
 [node name="BioCard4" type="PanelContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid" unique_id=1772165263]
-custom_minimum_size = Vector2(220, 170)
+custom_minimum_size = Vector2(220, 150)
 layout_mode = 2
 
 [node name="Margin" type="MarginContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard4" unique_id=935400773]
 layout_mode = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 4
 
 [node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard4/Margin" unique_id=755765696]
 layout_mode = 2
-theme_override_constants/separation = 5
+theme_override_constants/separation = 3
 
 [node name="Header" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard4/Margin/VBox" unique_id=1636209620]
 layout_mode = 2
@@ -534,19 +534,19 @@ value = 450.0
 show_percentage = false
 
 [node name="BioCard5" type="PanelContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid" unique_id=847071721]
-custom_minimum_size = Vector2(220, 170)
+custom_minimum_size = Vector2(220, 150)
 layout_mode = 2
 
 [node name="Margin" type="MarginContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard5" unique_id=18265658]
 layout_mode = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 4
 
 [node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard5/Margin" unique_id=1514318039]
 layout_mode = 2
-theme_override_constants/separation = 5
+theme_override_constants/separation = 3
 
 [node name="Header" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard5/Margin/VBox" unique_id=1475014155]
 layout_mode = 2
@@ -634,19 +634,19 @@ value = 450.0
 show_percentage = false
 
 [node name="BioCard6" type="PanelContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid" unique_id=997401540]
-custom_minimum_size = Vector2(220, 170)
+custom_minimum_size = Vector2(220, 150)
 layout_mode = 2
 
 [node name="Margin" type="MarginContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard6" unique_id=1277600157]
 layout_mode = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 4
 
 [node name="VBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard6/Margin" unique_id=1871029261]
 layout_mode = 2
-theme_override_constants/separation = 5
+theme_override_constants/separation = 3
 
 [node name="Header" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/BiosPanel/BiosMargin/BiosVBox/BiosGrid/BioCard6/Margin/VBox" unique_id=748078617]
 layout_mode = 2
@@ -740,13 +740,13 @@ size_flags_horizontal = 3
 [node name="MissionsMargin" type="MarginContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel" unique_id=1073968991]
 layout_mode = 2
 theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 16
+theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 16
+theme_override_constants/margin_bottom = 8
 
 [node name="MissionsVBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin" unique_id=55613397]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 10
 
 [node name="MissionsTitle" type="Label" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=727646735]
 layout_mode = 2

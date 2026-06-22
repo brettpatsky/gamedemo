@@ -278,10 +278,25 @@ var _aim_hold: float  = 0.0
 var _aim_face: String = ""
 
 func _ready() -> void:
+	# Player-authored squad loadout (title-screen editor) wins when the player
+	# has engaged it. Move speed and bullet colour aren't editable, so they keep
+	# their per-slot BalanceConfig values. SquadConfig guarantees every value is
+	# > 0, so this path can't produce a zeroed stat.
+	if SquadConfig.overrides_active and slot_index >= 0 and slot_index < SquadConfig.SQUAD_SIZE:
+		var cfg_dmg: int = SquadConfig.dmg_value(slot_index) * Balance.COMBAT_NUMBER_SCALE
+		move_speed      = Balance.SOLDIER_MOVE_SPEED_PER_SLOT[slot_index]
+		max_health      = SquadConfig.hp_value(slot_index)  * Balance.COMBAT_NUMBER_SCALE
+		pistol_damage   = cfg_dmg
+		rifle_damage    = cfg_dmg
+		pistol_speed    = SquadConfig.spd_value(slot_index)
+		rifle_speed     = SquadConfig.spd_value(slot_index)
+		pistol_distance = SquadConfig.rng_value(slot_index)
+		rifle_distance  = SquadConfig.rng_value(slot_index)
+		bullet_color    = Balance.SOLDIER_BULLET_COLOR_PER_SLOT[slot_index]
 	# Per-slot stats win when Main has assigned slot_index (every normal
 	# mission spawn). Standalone test scenes that drop a soldier without a
 	# slot fall back to the squad-wide BalanceConfig defaults.
-	if slot_index >= 0 and slot_index < Balance.SOLDIER_MAX_HEALTH_PER_SLOT.size():
+	elif slot_index >= 0 and slot_index < Balance.SOLDIER_MAX_HEALTH_PER_SLOT.size():
 		move_speed      = Balance.SOLDIER_MOVE_SPEED_PER_SLOT[slot_index]
 		max_health      = Balance.SOLDIER_MAX_HEALTH_PER_SLOT[slot_index]      * Balance.COMBAT_NUMBER_SCALE
 		pistol_damage   = Balance.SOLDIER_PISTOL_DAMAGE_PER_SLOT[slot_index]   * Balance.COMBAT_NUMBER_SCALE
