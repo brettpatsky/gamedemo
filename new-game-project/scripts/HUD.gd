@@ -127,11 +127,9 @@ var _escort_joined: bool = false
 # Level-4 arrow target — points at the maze exit zone.
 var _maze_exit: Node2D = null
 
-# Level-5 boss reference. Drives the boss-health bar, phase banner, and the
-# Void Embrace channel bar at the top of the screen.
+# Boss reference. Drives the Void Embrace channel warning at the top of the
+# screen; the boss's health bar lives above the boss itself, not on the HUD.
 var _boss: Node2D = null
-var _boss_health_bar: ProgressBar = null
-var _boss_phase_label: Label = null
 var _void_embrace_bar: ProgressBar = null
 var _void_embrace_label: Label = null
 
@@ -399,45 +397,17 @@ func set_maze_exit(exit_zone: Node2D) -> void:
 # Created in code (rather than in the scene) so HUD.tscn stays untouched.
 func set_boss(boss: Node2D) -> void:
 	_boss = boss
-	if _boss_health_bar == null:
+	if _void_embrace_bar == null:
 		_build_boss_overlay()
-	if boss and boss.has_signal("phase_changed"):
-		boss.phase_changed.connect(_on_boss_phase_changed)
 	if boss and boss.has_signal("void_embrace_started"):
 		boss.void_embrace_started.connect(_on_void_embrace_started)
 	if boss and boss.has_signal("void_embrace_cleared"):
 		boss.void_embrace_cleared.connect(_on_void_embrace_cleared)
 
 func _build_boss_overlay() -> void:
-	# Boss-health bar — centred near the top of the screen, beneath the phase label.
-	_boss_health_bar = ProgressBar.new()
-	_boss_health_bar.anchor_left   = 0.5
-	_boss_health_bar.anchor_right  = 0.5
-	_boss_health_bar.anchor_top    = 0.0
-	_boss_health_bar.anchor_bottom = 0.0
-	_boss_health_bar.offset_left   = -260.0
-	_boss_health_bar.offset_right  =  260.0
-	_boss_health_bar.offset_top    =  68.0
-	_boss_health_bar.offset_bottom =  86.0
-	_boss_health_bar.max_value     = 360.0
-	_boss_health_bar.value         = 360.0
-	_boss_health_bar.show_percentage = false
-	add_child(_boss_health_bar)
-
-	_boss_phase_label = Label.new()
-	_boss_phase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_boss_phase_label.anchor_left   = 0.5
-	_boss_phase_label.anchor_right  = 0.5
-	_boss_phase_label.anchor_top    = 0.0
-	_boss_phase_label.anchor_bottom = 0.0
-	_boss_phase_label.offset_left   = -260.0
-	_boss_phase_label.offset_right  =  260.0
-	_boss_phase_label.offset_top    =  44.0
-	_boss_phase_label.offset_bottom =  68.0
-	_boss_phase_label.add_theme_font_size_override("font_size", 18)
-	_boss_phase_label.add_theme_color_override("font_color", Color(1.0, 0.85, 1.0))
-	_boss_phase_label.text = "THE WEEPING HEART  —  PHASE 1"
-	add_child(_boss_phase_label)
+	# No on-screen boss-health bar or phase banner — the boss carries its own
+	# health bar above its head (shown only once the fight starts). Only the Void
+	# Embrace channel warning lives on the HUD.
 
 	# Void Embrace channel bar — hidden until the boss starts channelling. Big,
 	# threatening, and centred high on the screen so the player can't miss it.
@@ -472,16 +442,6 @@ func _build_boss_overlay() -> void:
 	_void_embrace_label.text = "VOID EMBRACE — SACRIFICE OR DIE!"
 	_void_embrace_label.hide()
 	add_child(_void_embrace_label)
-
-func _on_boss_phase_changed(phase: int) -> void:
-	if _boss_phase_label == null:
-		return
-	var phase_names := {
-		1: "PHASE 1 — LEYLINE GRID",
-		2: "PHASE 2 — THE MIRAGE  (BREAK THE TOTEMS)",
-		3: "PHASE 3 — MELTDOWN",
-	}
-	_boss_phase_label.text = "THE WEEPING HEART  —  %s" % phase_names.get(phase, "")
 
 func _on_void_embrace_started() -> void:
 	if _void_embrace_bar:
@@ -739,8 +699,6 @@ func _poll_rifle_ammo() -> void:
 func _refresh_boss_overlay() -> void:
 	if _boss == null or not is_instance_valid(_boss):
 		return
-	if _boss_health_bar and _boss.has_method("get_health"):
-		_boss_health_bar.value = _boss.get_health()
 	if _void_embrace_bar and _void_embrace_bar.visible and _boss.has_method("get_void_progress"):
 		_void_embrace_bar.value = _boss.get_void_progress()
 

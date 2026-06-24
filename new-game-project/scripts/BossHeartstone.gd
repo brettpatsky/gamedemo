@@ -118,9 +118,23 @@ func _ready() -> void:
 	_health = Balance.BOSS_MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE
 	health_bar.max_value = _health
 	health_bar.value     = _health
+	_style_health_bar()
+	health_bar.hide()   # only shown once the squad enters the room (activate())
 	# Dormant until the squad crosses into the boss room — BossArenaLevel's
 	# trigger zone calls activate() at that point.
 	_build_boss_visual()
+
+# Recolours the boss's health bar a hot crimson (distinct from the squad's green
+# bars) so it clearly reads as the boss's, floating above its head.
+func _style_health_bar() -> void:
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.08, 0.03, 0.05, 0.85)
+	bg.set_corner_radius_all(3)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(0.95, 0.15, 0.30)   # crimson heart-blood
+	fill.set_corner_radius_all(3)
+	health_bar.add_theme_stylebox_override("background", bg)
+	health_bar.add_theme_stylebox_override("fill", fill)
 
 # Builds the animated tree-boss (AnimatedSprite2D, one looped animation per phase)
 # from per-phase frame folders, or falls back to the original static heartstone.
@@ -192,6 +206,7 @@ func activate() -> void:
 	if _activated or _destroyed:
 		return
 	_activated = true
+	health_bar.show()   # boss HP bar appears only now that the fight has begun
 	_enter_phase_1()
 
 # =============================================================================

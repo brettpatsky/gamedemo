@@ -12,10 +12,10 @@ script = ExtResource("1_boss01")
 shape = SubResource("CircleShape2D_boss01")
 
 [node name="HealthBar" type="ProgressBar" parent="."]
-offset_left = -90.0
-offset_top = -120.0
-offset_right = 90.0
-offset_bottom = -104.0
+offset_left = -110.0
+offset_top = -196.0
+offset_right = 110.0
+offset_bottom = -178.0
 max_value = 360.0
 value = 360.0
 show_percentage = false

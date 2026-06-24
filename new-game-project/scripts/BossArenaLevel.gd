@@ -153,6 +153,14 @@ func _paint_boss_room_floor() -> void:
 			var ny := float(row) / mry
 			if nx * nx + ny * ny <= 1.0:
 				autumn[Vector2i(col, row)] = true
+	# Deliberate leaf drifts banked against the LEFT and RIGHT sides of the room so
+	# both flanks read as autumn, not just the centre mound.
+	var side_y := int((MOUND_FRONT + ROOM_HEIGHT) * 0.5 / TILE_PX)
+	for side in [Vector2i(int(cols * 0.16), side_y), Vector2i(int(cols * 0.84), side_y)]:
+		for dx in range(-6, 7):
+			for dy in range(-4, 5):
+				if Vector2(float(dx) / 6.0, float(dy) / 4.0).length() <= 1.0:
+					autumn[Vector2i(side.x + dx, side.y + dy)] = true
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 0x5EA1
 	for i in 9:
