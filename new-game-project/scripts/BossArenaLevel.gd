@@ -45,7 +45,8 @@ const ROOM_HEIGHT:    float = 700.0   # boss room / approach boundary
 # same polyline so they always agree (WYSIWYG).
 const PATH_HW:        float = 120.0    # half-width of the walkable path (~240 px)
 const PATH_AMP_FRAC:  float = 0.09     # sine amplitude as a fraction of map width
-const PATH_WAVES:     float = 2.2      # phase span (× PI) → ~1.1 gentle winds bottom→top
+const PATH_WIND_WAVELENGTH: float = 345.0  # px per half-wind; keeps the wind frequency
+										   # constant however long the approach gets
 const PATH_STEM:      float = 150.0    # straight vertical run at the spawn (bottom)
 # Haunted-woods + corrupted-chamber tilesets (PixelLab-generated, 32 px native).
 # Each is a corner-match terrain set: terrain 0 = base ground, terrain 1 = path/dais.
@@ -348,15 +349,18 @@ func _build_path() -> void:
 	var stem_to := _map_h_px - PATH_STEM      # straight run from the bottom up to here
 	var top_y := ROOM_HEIGHT - 48.0           # reach a little into the room to connect
 	var span := stem_to - top_y
+	# Scale the number of winds with the length so the trail weaves at a constant
+	# frequency no matter how long the approach is.
+	var waves: float = maxf(2.0, span / PATH_WIND_WAVELENGTH)
 	var y := _map_h_px
 	while y > stem_to:
 		_path_pts.append(Vector2(cx, y))
 		y -= 20.0
 	while y > top_y:
 		var t := (stem_to - y) / span
-		_path_pts.append(Vector2(cx + amp * sin(t * PI * PATH_WAVES), y))
+		_path_pts.append(Vector2(cx + amp * sin(t * PI * waves), y))
 		y -= 20.0
-	_path_pts.append(Vector2(cx + amp * sin(PI * PATH_WAVES), top_y))
+	_path_pts.append(Vector2(cx + amp * sin(PI * waves), top_y))
 
 # Rasterises the path polyline to grid cells (used by collision, navmesh and the
 # cobblestone painting so they always agree), and records the entrance opening
@@ -620,10 +624,14 @@ func _scatter_props() -> void:
 	rng.seed = 0xB055
 	const MARGIN  := 40.0    # how far a prop centre must clear the walkable path
 	const MIN_DIST := 58.0   # min spacing between prop centres (dense overlap canopy)
-	const TRIES   := 4000
-	const MAX_PROPS := 200
+	const BONSAI_MIN_DIST := 460.0   # keep the glowing lantern bonsai well spread out
+	# Density scales with the approach length so a longer walk stays a dense forest.
+	var approach: float = _map_h_px - ROOM_HEIGHT
+	var max_props: int = int(200.0 * approach / 860.0)
+	var tries: int = max_props * 20
 	var placed: Array[Vector2] = []
-	for i in TRIES:
+	var bonsai_spots: Array[Vector2] = []
+	for i in tries:
 		var p := Vector2(
 			rng.randf_range(40.0, _map_w_px - 40.0),
 			rng.randf_range(ROOM_HEIGHT + 24.0, _map_h_px - 24.0))
@@ -638,14 +646,22 @@ func _scatter_props() -> void:
 		if too_close:
 			continue
 		placed.append(p)
+		var tex: Texture2D = tree_pool[rng.randi() % tree_pool.size()]
+		# A bonsai (light source) only stands if it's far from every other lantern;
+		# otherwise it demotes to a plain dead tree so the glows never clump.
+		if tex == bonsai_tex:
+			for b in bonsai_spots:
+				if p.distance_to(b) < BONSAI_MIN_DIST:
+					tex = dead_tex
+					break
 		var spr := Sprite2D.new()
 		spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		spr.position = p
-		var tex: Texture2D = tree_pool[rng.randi() % tree_pool.size()]
 		spr.texture = tex
 		if tex == bonsai_tex:
 			# Tidy landmark — upright, consistent size, and it casts warm lantern light.
 			spr.scale = Vector2.ONE * rng.randf_range(0.85, 1.05)
+			bonsai_spots.append(p)
 			_add_lantern_light(p)
 		else:
 			spr.scale = Vector2.ONE * rng.randf_range(0.8, 1.5)
@@ -653,7 +669,7 @@ func _scatter_props() -> void:
 		# y-sort-ish: props lower on screen draw in front of higher ones.
 		spr.z_index = int(p.y / 10.0)
 		add_child(spr)
-		if placed.size() >= MAX_PROPS:
+		if placed.size() >= max_props:
 			break
 
 # Flat ground-detail decals (bones/leaf litter, roots/moss) scattered across the
@@ -668,11 +684,13 @@ func _scatter_ground_detail() -> void:
 		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 0x6D0D
-	const TRIES := 3000
-	const MAX_DECALS := 110
 	const MIN_DIST := 64.0
+	# Scale decal count with the approach length to keep an even ground litter.
+	var approach: float = _map_h_px - ROOM_HEIGHT
+	var max_decals: int = int(110.0 * approach / 860.0)
+	var tries: int = max_decals * 27
 	var placed: Array[Vector2] = []
-	for i in TRIES:
+	for i in tries:
 		var p := Vector2(
 			rng.randf_range(30.0, _map_w_px - 30.0),
 			rng.randf_range(ROOM_HEIGHT + 16.0, _map_h_px - 16.0))
@@ -695,7 +713,7 @@ func _scatter_ground_detail() -> void:
 		spr.modulate = Color(1, 1, 1, rng.randf_range(0.55, 0.9))
 		spr.z_index = 0   # above the floor layers, below the trees (z ≈ p.y/10)
 		add_child(spr)
-		if placed.size() >= MAX_DECALS:
+		if placed.size() >= max_decals:
 			break
 
 # Lighting: darken the whole arena to a haunted dusk (CanvasModulate) so the

@@ -8,7 +8,7 @@ script = ExtResource("1_arena01")
 
 [node name="Background" type="ColorRect" parent="."]
 offset_right = 1600.0
-offset_bottom = 1560.0
+offset_bottom = 2420.0
 color = Color(0.13, 0.09, 0.18, 1)
 mouse_filter = 2
 
