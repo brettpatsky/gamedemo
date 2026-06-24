@@ -13,6 +13,8 @@ const Balance = preload("res://scripts/BalanceConfig.gd")
 var _accumulator: float = 0.0
 var _anim_phase:  float = 0.0
 var _damage_timer: float = 0.0
+var _sprite:      Sprite2D = null
+var _base_scale:  Vector2  = Vector2.ONE
 
 # Wandering state — pool drifts toward _target_pos within an annulus around
 # _anchor_pos, then picks a new target. Anchor + wander radii are pushed in
@@ -62,11 +64,20 @@ func _ready() -> void:
 		var t := spr.texture
 		spr.scale = Vector2(size / t.get_width(), size / t.get_height())
 		add_child(spr)
+		_sprite = spr
+		_base_scale = spr.scale
 	queue_redraw()
 
 func _process(delta: float) -> void:
 	_anim_phase += delta
 	_drift(delta)
+	# Living ooze: the surface undulates (anisotropic scale wobble) and slowly
+	# churns so the pool never reads as a static decal.
+	if _sprite:
+		_sprite.scale = _base_scale * Vector2(
+			1.0 + 0.06 * sin(_anim_phase * 1.7),
+			1.0 + 0.06 * sin(_anim_phase * 1.7 + PI * 0.5))
+		_sprite.rotation = sin(_anim_phase * 0.4) * 0.20
 	queue_redraw()
 	var bodies: Array = get_overlapping_bodies()
 	# Walk the live, undowned soldiers once and apply both the ammo drain (in
@@ -125,10 +136,20 @@ func _pick_room_target() -> Vector2:
 	)
 
 func _draw() -> void:
-	# Three slowly drifting bubbles to sell the "alive" feel.
-	for i in 3:
-		var phase: float = _anim_phase * 0.8 + float(i) * (TAU / 3.0)
-		var r: float = Balance.SLUDGE_RADIUS * (0.35 + 0.10 * sin(phase * 1.7))
-		var pos := Vector2(cos(phase), sin(phase)) * (Balance.SLUDGE_RADIUS * 0.45)
-		draw_circle(pos, r * 0.20, Color(0.9, 0.6, 1.0, 0.55))
-	draw_arc(Vector2.ZERO, Balance.SLUDGE_RADIUS, 0.0, TAU, 48, Color(0.85, 0.50, 1.0, 0.75), 2.5)
+	var rad: float = Balance.SLUDGE_RADIUS
+	# Bubbles that swell, rise and pop on their own cycles for a boiling-ooze feel.
+	for i in 7:
+		var seed_off: float = float(i) * 1.371
+		var cycle: float = fmod(_anim_phase * (0.5 + 0.15 * float(i % 3)) + seed_off, 1.0)
+		var ang: float = seed_off * 2.4
+		var dist: float = rad * (0.15 + 0.55 * float((i * 37) % 100) / 100.0)
+		var pos := Vector2(cos(ang), sin(ang)) * dist
+		# Bubble grows over its cycle then pops (alpha fades to 0 at the end).
+		var grow: float = sin(cycle * PI)
+		var br: float = rad * (0.05 + 0.12 * grow)
+		var ba: float = 0.55 * grow
+		draw_circle(pos, br, Color(0.92, 0.62, 1.0, ba))
+		draw_circle(pos - Vector2(br * 0.3, br * 0.3), br * 0.4, Color(1.0, 0.9, 1.0, ba * 0.8))
+	# Rim highlight that ripples in radius.
+	var rim: float = rad * (1.0 + 0.03 * sin(_anim_phase * 2.3))
+	draw_arc(Vector2.ZERO, rim, 0.0, TAU, 48, Color(0.85, 0.50, 1.0, 0.75), 2.5)

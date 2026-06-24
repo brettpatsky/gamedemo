@@ -15,6 +15,8 @@ signal lit(element: int)
 
 @export var required_element: int   = 0     # Elements.E.NONE — set before adding
 @export var radius:           float = 28.0
+# Tutorial trial this brazier belongs to (shared with its PuzzleGate). -1 = not adopted.
+@export var trial_index:      int   = -1
 
 var _lit:   bool = false
 var _shape: CollisionShape2D = null

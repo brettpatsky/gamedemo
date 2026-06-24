@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bmifv260vrtl1"
-path="res://.godot/imported/brambles.png-3a0fd1ac1520508a95882cd493492c85.ctex"
+uid="uid://dxc4odetvvv01"
+path="res://.godot/imported/6.png-64ff97dae042d2286fe6109d137a3307.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/boss/brambles.png"
-dest_files=["res://.godot/imported/brambles.png-3a0fd1ac1520508a95882cd493492c85.ctex"]
+source_file="res://resources/boss/boss_p1/6.png"
+dest_files=["res://.godot/imported/6.png-64ff97dae042d2286fe6109d137a3307.ctex"]
 
 [params]
 

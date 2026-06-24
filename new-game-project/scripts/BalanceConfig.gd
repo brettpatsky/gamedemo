@@ -382,6 +382,13 @@ const MAP_HANDCRAFTED_WIDTH:     int = 110
 const MAP_HANDCRAFTED_HEIGHT:    int = 100
 const MAP_HANDCRAFTED_TILE_SIZE: int = 32
 
+# Hand-painted tutorial (Level 1) — deliberately WIDE (≈16:9) so it fills a
+# widescreen monitor with no side letterboxing (the camera fits the whole map).
+# 120×68 tiles × 32 px = 3840×2176 px (aspect 1.76 ≈ 16:9). Reuses the
+# handcrafted tile size so the Caraka 2× layer scale matches the other maps.
+const MAP_TUTORIAL_WIDTH:  int = 120
+const MAP_TUTORIAL_HEIGHT: int = 68
+
 # =============================================================================
 # TERRAIN — gameplay (range / slope) and visual hill-shade
 # =============================================================================

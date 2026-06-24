@@ -38,6 +38,21 @@ enum Season { SPRING, SUMMER, FALL, WINTER }
 # (the "Custom" / hand-edited workflow).
 var regenerate_at_runtime: bool = false
 
+# When true, water tiles are IMPASSABLE — added to the navmesh obstructions and
+# given collision, so the squad can't wade across (lakes act as walls). Default
+# false keeps the wade-through-with-slowdown behaviour the combat missions rely
+# on. TutorialMap sets this true. Populated by _scan_passable_from_tiles.
+var block_water: bool = false
+var _water_block_cells: Dictionary = {}
+
+# Optional blocking-decoration layer ("TileMapLayer_block"). Present only if the
+# scene includes it (never auto-created, so other maps are untouched). ANY tile
+# painted here is IMPASSABLE — nav obstruction + collision — independent of
+# block_water. Lets you paint waterfalls / deep water / solid decor that the
+# squad routes around, while unpainted gaps stay walkable (WYSIWYG).
+var _block_layer: TileMapLayer
+var _block_cells: Dictionary = {}
+
 const TERRAIN_TILESET := "res://resources/caraka_terrain_tileset.tres"
 
 # Decorative props (trees / rocks / bushes / flowers). Was toggled off while the
@@ -154,12 +169,23 @@ const STEP_BASE:  int = 2
 # camera.refresh_map_bounds() between scene instantiation and generate(); if
 # the dimensions weren't already set, the camera would clamp to the inherited
 # MapGenerator @export defaults and trap the viewport in the wrong corner.
+# Map dimensions as (width_tiles, height_tiles, tile_size). Overridable so
+# subclasses (e.g. TutorialMap) can size the map differently while reusing the
+# whole Caraka layer/nav/collision pipeline. Default = the shared handcrafted size.
+func _map_dims() -> Vector3i:
+	return Vector3i(Balance.MAP_HANDCRAFTED_WIDTH, Balance.MAP_HANDCRAFTED_HEIGHT,
+			Balance.MAP_HANDCRAFTED_TILE_SIZE)
+
+func _apply_map_dims() -> void:
+	var d := _map_dims()
+	map_width  = d.x
+	map_height = d.y
+	tile_size  = d.z
+
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
-	map_width  = Balance.MAP_HANDCRAFTED_WIDTH
-	map_height = Balance.MAP_HANDCRAFTED_HEIGHT
-	tile_size  = Balance.MAP_HANDCRAFTED_TILE_SIZE
+	_apply_map_dims()
 	super._ready()
 	_resolve_layers()
 	# Always run setup — it assigns the tileset (idempotent if already set) and
@@ -186,6 +212,9 @@ func _resolve_layers() -> void:
 		_plateau_layer = get_node_or_null("TileMapLayer_plateau") as TileMapLayer
 		if _plateau_layer == null:
 			_plateau_layer = _create_layer("TileMapLayer_plateau")
+	# Optional — adopted only if the scene authored it; never auto-created.
+	if _block_layer == null:
+		_block_layer = get_node_or_null("TileMapLayer_block") as TileMapLayer
 
 func _create_layer(layer_name: String) -> TileMapLayer:
 	var layer := TileMapLayer.new()
@@ -212,6 +241,11 @@ func _setup_tileset() -> void:
 	if _cliff_layer:
 		_cliff_layer.tile_set = ts
 		_cliff_layer.scale = Vector2(2.0, 2.0)
+	# Optional blocking-decor layer — assign tileset + scale, but DON'T force a
+	# z_index so the scene controls where waterfalls/decor draw (e.g. over a cliff).
+	if _block_layer:
+		_block_layer.tile_set = ts
+		_block_layer.scale = Vector2(2.0, 2.0)
 	# Terrain z-band. Ground/grass/water sit at the bottom; the plateau-top grass
 	# draws above them (covering the low grass on raised cells), then the cliff
 	# layer (faces over the low ground they hang over), all below props / enemies
@@ -341,6 +375,8 @@ func _adopt_scene_objectives() -> void:
 # Captures both auto-generated and hand-painted edits.
 func _scan_passable_from_tiles() -> void:
 	_passable_cells.clear()
+	_water_block_cells.clear()
+	_block_cells.clear()
 	for x in map_width:
 		for y in map_height:
 			var cell := Vector2i(x, y)
@@ -348,10 +384,19 @@ func _scan_passable_from_tiles() -> void:
 				continue  # cliff face/shadow = impassable (stairs are walkable, not cliffs)
 			if _prop_cells.has(cell):
 				continue  # tree/rock collision = not passable (no spawns/objectives here)
+			if _block_layer and _block_layer.get_cell_source_id(cell) != -1:
+				# Painted blocking-decor (waterfall/deep water/etc.) — impassable,
+				# regardless of whether the ground/water layers have a tile here.
+				_block_cells[cell] = true
+				continue
 			var ground_id := tile_map.get_cell_source_id(cell)
 			if ground_id == -1:
 				continue  # no ground tile = not passable
 			if _water_layer and _water_layer.get_cell_source_id(cell) != -1:
+				# Water is never a spawn/objective cell. When block_water is on it
+				# also becomes a hard obstacle (nav + collision) so lakes wall off.
+				if block_water:
+					_water_block_cells[cell] = true
 				continue  # water tile present = not passable
 			_passable_cells.append(cell)
 
@@ -985,19 +1030,36 @@ func _rect_outline_local(node: Node2D, world: Rect2) -> PackedVector2Array:
 # cliff faces AND collidable props (trees/rocks) carved out as obstructions, so
 # agents path around plateaus + forests (through the clearings/paths) and only
 # cross tiers through the stair gaps — instead of wedging on a trunk every step.
+# Hook: extra obstruction outlines (in nav_region-local space) injected by
+# subclasses — e.g. TutorialMap adds its CLOSED puzzle gates / intact special
+# walls so each trial area is sealed until solved, then re-bakes on open.
+# Default: none.
+func _extra_nav_obstruction_outlines() -> Array:
+	return []
+
 func _bake_navigation() -> void:
-	if (_cliff_cells.is_empty() and _prop_cells.is_empty() and _cave_nav_outlines.is_empty()) or nav_region == null:
-		super._bake_navigation()
+	if nav_region == null:
 		return
 	var obstacles: Dictionary = {}
 	for c in _cliff_cells:
 		obstacles[c] = true
 	for c in _prop_cells:
 		obstacles[c] = true
+	for c in _block_cells:
+		obstacles[c] = true
+	if block_water:
+		for c in _water_block_cells:
+			obstacles[c] = true
+	var extra: Array = _extra_nav_obstruction_outlines()
+	if obstacles.is_empty() and _cave_nav_outlines.is_empty() and extra.is_empty():
+		super._bake_navigation()
+		return
 	var src := NavigationMeshSourceGeometryData2D.new()
 	src.add_traversable_outline(_rect_outline_local(nav_region, get_map_rect()))
 	for r in _merge_cells_to_rects(obstacles):
 		src.add_obstruction_outline(_rect_outline_local(nav_region, _cell_rect_world(r)))
+	for outline in extra:
+		src.add_obstruction_outline(outline)
 	# Cave path corridor — a disjoint walkable island far off the playfield.
 	for outline in _cave_nav_outlines:
 		src.add_traversable_outline(outline)
@@ -1018,6 +1080,13 @@ func _build_cliff_collision() -> void:
 	add_child(body)
 	# Cliff faces.
 	for r in _merge_cells_to_rects(_cliff_cells):
+		_add_box_collider(body, _cell_rect_world(r))
+	# Impassable water (lakes) — only when block_water is on (e.g. the tutorial).
+	if block_water:
+		for r in _merge_cells_to_rects(_water_block_cells):
+			_add_box_collider(body, _cell_rect_world(r))
+	# Painted blocking-decor layer (waterfalls / solid decor) — always blocks.
+	for r in _merge_cells_to_rects(_block_cells):
 		_add_box_collider(body, _cell_rect_world(r))
 	# Map-boundary frame: walls inset one tile from each visible edge so units
 	# and their sprites are blocked before reaching the screen boundary.
@@ -1395,9 +1464,7 @@ func _spawn_prop(tex: Texture2D, region: Rect2, cell: Vector2i, prop_scale: Vect
 func _editor_setup_layers() -> void:
 	if not Engine.is_editor_hint():
 		return
-	map_width  = Balance.MAP_HANDCRAFTED_WIDTH
-	map_height = Balance.MAP_HANDCRAFTED_HEIGHT
-	tile_size  = Balance.MAP_HANDCRAFTED_TILE_SIZE
+	_apply_map_dims()
 	var scene_root: Node = owner if owner else self
 	# Ground layer: adopt an existing TileMapLayer_ground/TileMapLayer, or make one.
 	if tile_map == null:
@@ -1422,9 +1489,7 @@ func _editor_setup_layers() -> void:
 func _editor_generate_caraka() -> void:
 	if not Engine.is_editor_hint():
 		return
-	map_width  = Balance.MAP_HANDCRAFTED_WIDTH
-	map_height = Balance.MAP_HANDCRAFTED_HEIGHT
-	tile_size  = Balance.MAP_HANDCRAFTED_TILE_SIZE
+	_apply_map_dims()
 
 	if tile_map == null:
 		tile_map = get_node_or_null("TileMapLayer_ground") as TileMapLayer

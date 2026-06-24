@@ -10,6 +10,12 @@ extends StaticBody2D
 
 @export var width:  float = 64.0
 @export var height: float = 128.0
+# The trial this gate is the barrier for — TutorialMap opens it when every
+# sensor sharing this trial_index is satisfied. -1 = not adopted.
+@export var trial_index: int = -1
+# When true, opening this gate also unlocks Sacrifice + Revive for the squad
+# (the tutorial's Elements trial). Replaces the old hardcoded room number.
+@export var on_open_unlock_sacrifice_revive: bool = false
 
 var _opened: bool = false
 var _shape:  CollisionShape2D = null

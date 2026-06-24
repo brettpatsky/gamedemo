@@ -24,6 +24,8 @@ var _destroyed:        bool  = false
 var _pulse_phase:      float = 0.0
 var _contact_timer:    float = 0.0
 var _touching_soldiers: Array = []
+var _orb_sprite:       Sprite2D = null
+var _base_orb_scale:   Vector2  = Vector2.ONE
 
 @onready var health_bar: ProgressBar = $HealthBar
 
@@ -43,6 +45,8 @@ func _ready() -> void:
 		var t := spr.texture
 		spr.scale = Vector2(100.0 / t.get_width(), 100.0 / t.get_height())
 		add_child(spr)
+		_orb_sprite = spr
+		_base_orb_scale = spr.scale
 	var dmg_area := Area2D.new()
 	dmg_area.collision_layer = 0
 	dmg_area.collision_mask  = 2
@@ -75,6 +79,11 @@ func _process(delta: float) -> void:
 	if _health < max_hp:
 		_health = minf(_health + Balance.TOTEM_REGEN_RATE * Balance.COMBAT_NUMBER_SCALE * delta, max_hp)
 		health_bar.value = _health
+	# Living orb: breathe (scale pulse) and bob gently.
+	if _orb_sprite:
+		var breath: float = 1.0 + 0.07 * sin(_pulse_phase * 3.0)
+		_orb_sprite.scale = _base_orb_scale * breath
+		_orb_sprite.position.y = sin(_pulse_phase * 2.0) * 4.0
 	queue_redraw()
 
 func take_damage(amount: int, _element: int = 0) -> void:
@@ -90,8 +99,22 @@ func take_damage(amount: int, _element: int = 0) -> void:
 
 func _draw() -> void:
 	var hp_ratio: float = clampf(_health / float(Balance.TOTEM_MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE), 0.0, 1.0)
-	# Pulsing shield ring — bright when at full health, dims as health drops.
 	var pulse: float = 0.5 + 0.5 * sin(_pulse_phase * 4.0)
 	var ring_alpha: float = 0.35 + 0.50 * hp_ratio * pulse
-	draw_arc(Vector2.ZERO, 54.0, 0.0, TAU, 40, Color(0.95, 0.5, 1.0, ring_alpha), 6.0)
-	draw_arc(Vector2.ZERO, 44.0, 0.0, TAU, 40, Color(0.7, 0.2, 1.0, ring_alpha * 0.6), 2.5)
+	# Rotating segmented shield — six arc plates orbiting the orb, brighter and
+	# faster at full health, faltering (more transparent) as the shield is worn down.
+	var seg := 6
+	var spin: float = _pulse_phase * (1.6 + 1.4 * hp_ratio)
+	var gap: float = 0.22
+	var span: float = TAU / float(seg) - gap
+	var shield_col := Color(0.95, 0.5, 1.0, ring_alpha)
+	for i in seg:
+		var a0: float = spin + (TAU / float(seg)) * float(i)
+		draw_arc(Vector2.ZERO, 54.0, a0, a0 + span, 8, shield_col, 6.0)
+	# Inner counter-rotating ring.
+	var inner_alpha: float = ring_alpha * 0.6
+	for i in seg:
+		var a0: float = -spin * 1.3 + (TAU / float(seg)) * float(i) + 0.4
+		draw_arc(Vector2.ZERO, 44.0, a0, a0 + span * 0.7, 6, Color(0.7, 0.2, 1.0, inner_alpha), 2.5)
+	# Faint energy halo that swells with the pulse.
+	draw_circle(Vector2.ZERO, 36.0 + 4.0 * pulse, Color(0.6, 0.2, 1.0, 0.10 + 0.12 * hp_ratio * pulse))

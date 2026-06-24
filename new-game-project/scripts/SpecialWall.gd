@@ -21,6 +21,11 @@ signal destroyed
 @export var max_health:             int    = 24
 @export var min_damage_to_register: int    = 5
 @export var hint_text:              String = ""
+# Tutorial trial this wall gates (shared with its PuzzleGate). -1 = not adopted.
+@export var trial_index:            int    = -1
+# Final-Trial rule: the gate only opens once the ward is destroyed AND a kid has
+# been revived this mission. When false, destroying the wall alone solves it.
+@export var also_requires_revive:   bool   = false
 
 var _health:    int
 var _destroyed: bool = false

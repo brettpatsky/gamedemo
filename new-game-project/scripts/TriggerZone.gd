@@ -18,6 +18,10 @@ signal state_changed(pressed: bool)
 @export var radius:        float = 36.0
 @export var style:         Style = Style.PLATE
 @export var required_slot: int   = -1   # -1 = any soldier; else only matching slot
+# Which tutorial trial this sensor belongs to. TutorialMap buckets every sensor
+# + gate sharing the same index and opens that gate when the trial is solved.
+# -1 = not part of an adopted trial (e.g. a standalone test zone).
+@export var trial_index:   int   = -1
 
 var _occupants: int = 0
 

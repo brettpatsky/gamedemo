@@ -91,6 +91,18 @@ var _void_channel_timer:  float = 0.0
 var _void_active:         bool  = false
 var _ambient_phase:       float = 0.0   # for visual pulsing
 
+# Animated tree-boss visual: per-phase looped animations built at runtime from
+# frame PNGs in resources/boss/boss_p{1,2,3}/ (PixelLab v3 output). Falls back to
+# the static boss_heartstone.png if the frames aren't present.
+var _anim_sprite: AnimatedSprite2D = null
+
+# Arena geometry — hazards are confined to the walkable play area the arena exposes
+# (so they never spawn on/behind the mound where the squad can't go).
+var _arena: Node = null
+var _orbit_centre: Vector2 = Vector2.ZERO
+var _orbit_radius: float = 0.0
+var _orbit_wobble: float = 0.0
+
 @onready var health_bar: ProgressBar = $HealthBar
 
 # =============================================================================
@@ -101,11 +113,48 @@ func _ready() -> void:
 	add_to_group("boss")
 	collision_layer = 1
 	collision_mask  = 0
+	_arena = get_parent()
+	z_index = 100   # draw the tree on top so it's never lost behind room elements
 	_health = Balance.BOSS_MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE
 	health_bar.max_value = _health
 	health_bar.value     = _health
 	# Dormant until the squad crosses into the boss room — BossArenaLevel's
 	# trigger zone calls activate() at that point.
+	_build_boss_visual()
+
+# Builds the animated tree-boss (AnimatedSprite2D, one looped animation per phase)
+# from per-phase frame folders, or falls back to the original static heartstone.
+func _build_boss_visual() -> void:
+	const DISPLAY_PX := 340.0   # imposing, as if looming on the hill
+	var frames := SpriteFrames.new()
+	if frames.has_animation(&"default"):
+		frames.remove_animation(&"default")
+	var have_anim := false
+	for ph in [1, 2, 3]:
+		var anim := "phase%d" % ph
+		frames.add_animation(anim)
+		frames.set_animation_loop(anim, true)
+		frames.set_animation_speed(anim, 10.0)
+		var dir := "res://resources/boss/boss_p%d" % ph
+		var idx := 0
+		while ResourceLoader.exists("%s/%d.png" % [dir, idx]):
+			frames.add_frame(anim, load("%s/%d.png" % [dir, idx]))
+			idx += 1
+		if frames.get_frame_count(anim) > 0:
+			have_anim = true
+	if have_anim:
+		var asp := AnimatedSprite2D.new()
+		asp.sprite_frames = frames
+		asp.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		var ref_tex: Texture2D = _first_frame(frames)
+		if ref_tex:
+			var s: float = DISPLAY_PX / float(ref_tex.get_height())
+			asp.scale = Vector2(s, s)
+		add_child(asp)
+		_anim_sprite = asp
+		_set_boss_anim(1)
+		return
+	# Fallback — original static heartstone sprite.
 	var tex_path := "res://resources/boss/boss_heartstone.png"
 	if ResourceLoader.exists(tex_path):
 		var spr := Sprite2D.new()
@@ -114,6 +163,29 @@ func _ready() -> void:
 		var t := spr.texture
 		spr.scale = Vector2(180.0 / t.get_width(), 180.0 / t.get_height())
 		add_child(spr)
+
+func _first_frame(frames: SpriteFrames) -> Texture2D:
+	for ph in [1, 2, 3]:
+		var anim := "phase%d" % ph
+		if frames.get_frame_count(anim) > 0:
+			return frames.get_frame_texture(anim, 0)
+	return null
+
+# Switches the boss to a phase's looped animation (no-op if that phase has no
+# frames, so a partial asset set still works).
+func _set_boss_anim(ph: int) -> void:
+	if _anim_sprite == null:
+		return
+	var anim := "phase%d" % ph
+	var sf := _anim_sprite.sprite_frames
+	if sf and sf.has_animation(anim) and sf.get_frame_count(anim) > 0:
+		_anim_sprite.play(anim)
+	# Subtle per-phase tint so the morph reads even on the same base sprite:
+	# phase 2 cools/shimmers, phase 3 runs hot.
+	match ph:
+		2: _anim_sprite.modulate = Color(0.86, 0.92, 1.05)
+		3: _anim_sprite.modulate = Color(1.1, 0.82, 0.82)
+		_: _anim_sprite.modulate = Color(1, 1, 1)
 
 # Called by the arena trigger zone when a soldier enters the boss room.
 func activate() -> void:
@@ -172,6 +244,7 @@ func _enter_phase_1() -> void:
 	_zone_pattern_idx = 0
 	_zone_cycle_timer = 0.0
 	_spawn_zone_pattern(_zone_pattern_idx)
+	_set_boss_anim(1)
 	phase_changed.emit(1)
 
 func _tick_phase_1(delta: float) -> void:
@@ -187,15 +260,44 @@ func _spawn_zone_pattern(idx: int) -> void:
 	# damage window, but if the boss skipped past a cycle (phase change), drop
 	# any leftover zones now.
 	_clear_zones()
-	var pattern: Array = PHASE1_PATTERNS[idx]
-	for offset: Vector2 in pattern:
+	# Zones land at spread-out points WITHIN the walkable floor (the boss sits at
+	# the top now, so boss-relative offsets would drop most zones on the unreachable
+	# mound). Count matches the old pattern size for the same threat density.
+	var count: int = PHASE1_PATTERNS[idx].size()
+	for pos in _random_play_points(count, Balance.ZONE_RADIUS * 1.7):
 		var zone := Area2D.new()
 		zone.set_script(_ZONE_SCRIPT)
 		get_parent().add_child(zone)
-		zone.global_position = global_position + offset
+		zone.global_position = pos
 		if zone.has_method("configure"):
 			zone.configure(Balance.BOSS_PHASE1_WARN, Balance.BOSS_PHASE1_DAMAGE)
 		_zones.append(zone)
+
+# n spread-out points inside the arena's walkable play area (falls back to a patch
+# in front of the boss if the arena doesn't expose the query).
+func _random_play_points(n: int, min_sep: float) -> Array[Vector2]:
+	var res: Array[Vector2] = []
+	if _arena == null or not _arena.has_method("get_play_rect"):
+		for i in n:
+			res.append(global_position + Vector2(randf_range(-320, 320), randf_range(160, 340)))
+		return res
+	var rect: Rect2 = _arena.get_play_rect()
+	var tries := 0
+	while res.size() < n and tries < 300:
+		tries += 1
+		var p := Vector2(randf_range(rect.position.x, rect.end.x), randf_range(rect.position.y, rect.end.y))
+		if _arena.has_method("is_in_play_area") and not _arena.is_in_play_area(p):
+			continue
+		var ok := true
+		for q in res:
+			if p.distance_to(q) < min_sep:
+				ok = false
+				break
+		if ok:
+			res.append(p)
+	while res.size() < n:
+		res.append(Vector2(randf_range(rect.position.x, rect.end.x), randf_range(rect.position.y, rect.end.y)))
+	return res
 
 func _clear_zones() -> void:
 	for z in _zones:
@@ -211,9 +313,24 @@ func _enter_phase_2() -> void:
 	_invulnerable = true
 	_totem_reroll_timer = 0.0
 	_clear_zones()
+	_compute_orbit()
 	_spawn_totems()
 	_spawn_sludge_pools()
+	_set_boss_anim(2)
 	phase_changed.emit(2)
+
+# Totems orbit the centre of the walkable floor (not the boss, which is up on the
+# mound) with a radius that fits inside it, so they're always reachable.
+func _compute_orbit() -> void:
+	if _arena and _arena.has_method("get_play_rect"):
+		var rect: Rect2 = _arena.get_play_rect()
+		_orbit_centre = rect.position + rect.size * 0.5
+		_orbit_radius = minf(Balance.BOSS_TOTEM_RADIUS, minf(rect.size.x, rect.size.y) * 0.42)
+		_orbit_wobble = minf(Balance.BOSS_TOTEM_RADIUS_WOBBLE, _orbit_radius * 0.25)
+	else:
+		_orbit_centre = global_position
+		_orbit_radius = Balance.BOSS_TOTEM_RADIUS
+		_orbit_wobble = Balance.BOSS_TOTEM_RADIUS_WOBBLE
 
 func _tick_phase_2(delta: float) -> void:
 	# Per-totem chaos: each totem advances on its own angular velocity, with
@@ -231,11 +348,12 @@ func _tick_phase_2(delta: float) -> void:
 		any_alive = true
 		_totem_angles[i] += _totem_speeds[i] * delta
 		_totem_wobble_phases[i] += Balance.BOSS_TOTEM_WOBBLE_SPEED * delta
-		var r: float = Balance.BOSS_TOTEM_RADIUS \
-				+ sin(_totem_wobble_phases[i]) * Balance.BOSS_TOTEM_RADIUS_WOBBLE
+		var r: float = _orbit_radius + sin(_totem_wobble_phases[i]) * _orbit_wobble
 		var angle: float = _totem_angles[i]
-		(t as Node2D).global_position = global_position \
-				+ Vector2(cos(angle), sin(angle)) * r
+		var pos: Vector2 = _orbit_centre + Vector2(cos(angle), sin(angle)) * r
+		if _arena and _arena.has_method("clamp_to_play"):
+			pos = _arena.clamp_to_play(pos)
+		(t as Node2D).global_position = pos
 	if not any_alive:
 		_phase = 3   # claim the phase early so this tick doesn't re-fire
 		call_deferred("_enter_phase_3")
@@ -259,7 +377,7 @@ func _spawn_totems() -> void:
 	_totem_wobble_phases.clear()
 	for i in Balance.BOSS_TOTEM_COUNT:
 		var base_angle: float = (TAU / float(Balance.BOSS_TOTEM_COUNT)) * float(i) - PI * 0.5
-		var pos := global_position + Vector2(cos(base_angle), sin(base_angle)) * Balance.BOSS_TOTEM_RADIUS
+		var pos := _orbit_centre + Vector2(cos(base_angle), sin(base_angle)) * _orbit_radius
 		var totem: Node = _TOTEM_SCENE.instantiate()
 		get_parent().add_child(totem)
 		(totem as Node2D).global_position = pos
@@ -280,29 +398,25 @@ func _on_totem_destroyed() -> void:
 
 func _spawn_sludge_pools() -> void:
 	_sludge_pools.clear()
-	# Compute the boss room rect so each pool free-roams the entire floor.
-	var arena: Node = get_parent()
-	var room_w: float = 1600.0
-	var room_h: float = 700.0
-	if arena and "_map_w_px" in arena:
-		room_w = arena._map_w_px
-	if arena and "ROOM_HEIGHT" in arena:
-		room_h = arena.ROOM_HEIGHT
-	# Room origin in global space (arena is usually at (0,0) but use to_global to be safe).
-	var origin: Vector2 = (arena as Node2D).to_global(Vector2.ZERO) if arena is Node2D else Vector2.ZERO
-	var room_rect := Rect2(origin, Vector2(room_w, room_h))
-	# Spread spawn positions so pools start separated.
+	# Pools free-roam the walkable play area only (the band in front of the mound),
+	# so they always threaten the squad instead of drifting onto unreachable ground.
+	var room_rect: Rect2
+	if _arena and _arena.has_method("get_play_rect"):
+		room_rect = _arena.get_play_rect()
+	else:
+		var origin: Vector2 = (_arena as Node2D).to_global(Vector2.ZERO) if _arena is Node2D else Vector2.ZERO
+		room_rect = Rect2(origin, Vector2(1600.0, 700.0))
+	# Spread spawn positions across the band so pools start separated.
 	var spawn_offsets: Array[Vector2] = [
-		Vector2(room_w * 0.25, room_h * 0.25),
-		Vector2(room_w * 0.75, room_h * 0.25),
-		Vector2(room_w * 0.25, room_h * 0.75),
-		Vector2(room_w * 0.75, room_h * 0.75),
+		Vector2(0.20, 0.30), Vector2(0.80, 0.30),
+		Vector2(0.40, 0.75), Vector2(0.65, 0.55),
 	]
 	for i in Balance.BOSS_SLUDGE_COUNT:
 		var pool := Area2D.new()
 		pool.set_script(_SLUDGE_SCRIPT)
 		get_parent().add_child(pool)
-		pool.global_position = origin + spawn_offsets[i]
+		var off: Vector2 = spawn_offsets[i % spawn_offsets.size()]
+		pool.global_position = room_rect.position + Vector2(off.x * room_rect.size.x, off.y * room_rect.size.y)
 		if pool.has_method("configure_room"):
 			pool.configure_room(room_rect)
 		_sludge_pools.append(pool)
@@ -332,6 +446,7 @@ func _enter_phase_3() -> void:
 	if _health > Balance.BOSS_PHASE_3_THRESHOLD:
 		_health = Balance.BOSS_PHASE_3_THRESHOLD
 		health_bar.value = _health
+	_set_boss_anim(3)
 	phase_changed.emit(3)
 
 func _tick_phase_3(delta: float) -> void:
@@ -424,30 +539,13 @@ func _die() -> void:
 # DRAW — corrupted monolith
 # =============================================================================
 func _draw() -> void:
-	var pulse: float = 0.5 + 0.5 * sin(_ambient_phase * 2.0)
-	# Outer aura — wider during the void embrace channel.
-	var aura_radius: float = 110.0 + (12.0 if _void_active else 0.0) + 6.0 * pulse
-	var aura_color := Color(0.45, 0.05, 0.7, 0.25 + 0.25 * pulse)
-	if _phase == 2:
-		aura_color = Color(0.30, 0.05, 0.50, 0.30)   # deeper, "shielded" tone
-	if _void_active:
-		aura_color = Color(0.85, 0.15, 1.00, 0.45 + 0.20 * pulse)
-	draw_circle(Vector2.ZERO, aura_radius, aura_color)
-	# Inner cracks — colour intensifies as health drops.
-	var hp_ratio: float = clampf(float(_health) / float(Balance.BOSS_MAX_HEALTH * Balance.COMBAT_NUMBER_SCALE), 0.0, 1.0)
-	var crack_color := Color(1.0, 0.4 * (1.0 - hp_ratio), 1.0 * (1.0 - hp_ratio * 0.5), 0.8)
-	for i in 6:
-		var a: float = (TAU / 6.0) * float(i) - PI * 0.5
-		var inner := Vector2(cos(a), sin(a)) * 30.0
-		var outer := Vector2(cos(a), sin(a)) * 70.0
-		draw_line(inner, outer, crack_color, 2.5)
-	# Pulsing eye / weeping heart in the centre.
-	var core_alpha: float = 0.65 + 0.35 * pulse
-	draw_circle(Vector2.ZERO, 22.0, Color(0.0, 0.0, 0.0, 1.0))
-	draw_circle(Vector2.ZERO, 16.0, Color(1.0, 0.25, 0.85, core_alpha))
-	draw_circle(Vector2.ZERO, 8.0,  Color(1.0, 0.95, 1.0, core_alpha))
-	# Outer ring.
-	draw_arc(Vector2.ZERO, 82.0, 0.0, TAU, 48, Color(0.7, 0.3, 1.0, 0.55), 3.0)
+	# The animated tree-boss sprite carries the face/heart. No ambient ring around it
+	# (it read as an out-of-place purple circle); only the Void Embrace channel shows
+	# a flare so its big wipe attack is clearly telegraphed.
+	if not _void_active:
+		return
+	var pulse: float = 0.5 + 0.5 * sin(_ambient_phase * 6.0)
+	draw_circle(Vector2.ZERO, 150.0 + 14.0 * pulse, Color(0.85, 0.15, 1.0, 0.30 + 0.20 * pulse))
 
 # =============================================================================
 # PUBLIC accessors so HUD can read state for the Void Embrace bar.

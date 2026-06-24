@@ -123,11 +123,9 @@ func _ready() -> void:
 		old.queue_free()
 		var camera: Node = get_tree().get_first_node_in_group("main_camera")
 		if camera and camera.has_method("refresh_map_bounds"):
+			# The tutorial is now a wide ≈16:9 Caraka map — let the camera fit the
+			# whole map (no free-zoom override) so it fills the screen with no bars.
 			camera.refresh_map_bounds()
-		# Tutorial is a tall narrow map — override the width-driven min-zoom
-		# so the player can scroll out to see multiple rooms at once.
-		if camera and camera.has_method("allow_free_zoom"):
-			camera.allow_free_zoom()
 	elif GameManager.current_level == 3:
 		var old: Node = map_gen
 		map_gen = _spawn_alt_level(MAZE_SCENE_PATH)

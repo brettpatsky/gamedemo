@@ -42,6 +42,10 @@ var bullet_damage:   int
 # -----------------------------------------------------------------------------
 @export var dummy_mode: bool         = false
 @export var override_max_health: int = 0
+# Tutorial combat trial this enemy belongs to. TutorialMap counts living enemies
+# per index and opens the matching gate when the group is wiped. -1 = not adopted
+# (every normal mission spawn leaves this at -1).
+@export var trial_index: int         = -1
 
 # Brief invulnerability after spawn — guards reinforcements spawned by a
 # structure destruction against grenades still in flight from the same

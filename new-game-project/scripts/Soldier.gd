@@ -177,6 +177,17 @@ var cooldown_mult:    float = 1.0    # multiplied into fire cooldowns (< 1 = fas
 var damage_reduction: int   = 0      # subtracted from incoming damage
 var water_immune:     bool  = false  # ignores water speed slowdown
 
+# Transient external slow (e.g. boss thorny vines). Refreshed each frame while the
+# soldier stands in the hazard; decays back to 1.0 shortly after leaving.
+var _slow_mult:  float = 1.0
+var _slow_timer: float = 0.0
+
+# Apply (or refresh) a movement slow. mult < 1.0 slows; the strongest active slow
+# wins for the duration. Called every frame by area hazards the soldier overlaps.
+func slow_down(mult: float, duration: float) -> void:
+	_slow_mult = minf(_slow_mult, mult)
+	_slow_timer = maxf(_slow_timer, duration)
+
 func add_damage_bonus(delta: int) -> void:
 	damage_bonus += delta * Balance.COMBAT_NUMBER_SCALE
 
@@ -375,6 +386,10 @@ func _physics_process(delta: float) -> void:
 	_shoot_cooldown    = max(_shoot_cooldown    - delta, 0.0)
 	_shoot_flash_timer = max(_shoot_flash_timer - delta, 0.0)
 	_aim_hold          = max(_aim_hold          - delta, 0.0)
+	if _slow_timer > 0.0:
+		_slow_timer -= delta
+		if _slow_timer <= 0.0:
+			_slow_mult = 1.0
 
 	# Frozen mid rescue-teleport: the fade tween owns position; hold still.
 	if _teleporting:
@@ -660,7 +675,7 @@ func _do_move(delta: float) -> void:
 
 	var speed_mult := _catchup_speed_mult(direction)
 	var slope_mult := _slope_speed_mult(direction)
-	velocity = direction * move_speed * _water_speed_mult() * slope_mult * speed_mult
+	velocity = direction * move_speed * _water_speed_mult() * slope_mult * speed_mult * _slow_mult
 	move_and_slide()
 
 	if _shoot_flash_timer <= 0.0:
@@ -713,7 +728,7 @@ func _do_formation_move(delta: float) -> void:
 		else:
 			dir = (nav_agent.get_next_path_position() - global_position).normalized()
 
-	var step := move_speed * _water_speed_mult() * _slope_speed_mult(dir) * speed_mult
+	var step := move_speed * _water_speed_mult() * _slope_speed_mult(dir) * speed_mult * _slow_mult
 	# Arrive: never overshoot the slot in a single physics step.
 	velocity = dir * minf(step, dist / delta)
 	move_and_slide()
