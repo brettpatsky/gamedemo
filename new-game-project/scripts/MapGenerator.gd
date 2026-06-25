@@ -205,6 +205,15 @@ func _tile_to_world(cell: Vector2i) -> Vector2:
 # Shared spawn helpers — used by HandcraftedMap (procedural levels 2/4/5).
 # Maze / tutorial / boss scripts override these locally.
 # ---------------------------------------------------------------------------
+# Navigation map the minotaur should path on. The base map is a single open
+# rectangle with no obstructions, so the standard navmesh already suits the big
+# body — return it as-is. HandcraftedMap overrides this to hand back a separately
+# baked, heavily-eroded mesh so the brute routes around tree clusters.
+func get_large_agent_nav_map() -> RID:
+	if nav_region:
+		return nav_region.get_navigation_map()
+	return RID()
+
 func _bake_navigation() -> void:
 	# Single bounding rectangle as the walkable region. Per-tile outlines
 	# fail Godot's convex partition because adjacent tile squares share edges,

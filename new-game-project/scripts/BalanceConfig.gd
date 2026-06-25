@@ -247,15 +247,24 @@ const MINOTAUR_NAV_RADIUS:          float = 40.0
 const MINOTAUR_NAV_NEIGHBOR_DIST:   float = 200.0   # see trees early, in a busy forest
 const MINOTAUR_NAV_MAX_NEIGHBORS:   int   = 12      # account for many nearby trunks
 
+# Erosion radius for the minotaur's DEDICATED wide-body navmesh (HandcraftedMap
+# bakes a second nav map at this radius and the minotaur paths on it). The kids'
+# navmesh is eroded only 10 px, so its routes thread gaps the 46-px-radius brute
+# physically can't fit — it followed them straight into a trunk and wedged. Baking
+# a parallel mesh eroded ~the body radius makes A* route the minotaur AROUND tree
+# clusters through the clearings/paths instead. Kept a touch under the body radius
+# so the open network stays connected (a few px of brush is slid off by physics).
+const MINOTAUR_NAV_AGENT_RADIUS:    float = 38.0
+
 # Stuck detection — the big slow body wedges between trees more easily than a kid,
 # so escape escalates in two tiers:
 #   HARD_STRIKES   → nudge along the planned path (move_and_collide, slides corners)
 #   TELEPORT_STRIKES → still wedged: blink a short hop toward the target onto a
 #                      navmesh point (guaranteed escape from any pinch).
-const MINOTAUR_STUCK_CHECK_INTERVAL: float = 0.4
+const MINOTAUR_STUCK_CHECK_INTERVAL: float = 0.35
 const MINOTAUR_STUCK_THRESHOLD:      float = 5.0
-const MINOTAUR_STUCK_HARD_STRIKES:   int   = 4
-const MINOTAUR_STUCK_TELEPORT_STRIKES: int = 9     # consecutive strikes → blink-escape
+const MINOTAUR_STUCK_HARD_STRIKES:   int   = 3     # with the wide navmesh, wedging is rarer — recover faster when it does
+const MINOTAUR_STUCK_TELEPORT_STRIKES: int = 6     # consecutive strikes → blink-escape
 const MINOTAUR_STUCK_TELEPORT_DIST:    float = 110.0  # how far the blink hops toward the target
 const MINOTAUR_TELEPORT_FADE_TIME:     float = 0.12   # quick fade-out/in so the hop reads as intentional
 

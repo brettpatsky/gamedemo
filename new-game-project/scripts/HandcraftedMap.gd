@@ -130,6 +130,14 @@ var _cave_system: Node2D
 # second nav map didn't drive the agents reliably).
 var _cave_nav_outlines: Array[PackedVector2Array] = []
 
+# Dedicated wide-body navmesh for the minotaur. Lives on its OWN NavigationServer
+# map (a separate region on the default map would just union back the narrow gaps)
+# and is eroded by ~the brute's body radius so its routes only run through openings
+# it can actually fit. Built lazily on the first obstacle-bearing bake; the
+# minotaur picks the map up via get_large_agent_nav_map().
+var _large_nav_region: NavigationRegion2D = null
+var _large_nav_map:    RID
+
 # --- Discrete elevation tiers (Zelda-style cliffs) -------------------------
 # _tier_grid: per-cell integer height tier (0 = low ground).
 # _cliff_cells: cells occupied by a cliff face/shadow — non-walkable.
@@ -1068,6 +1076,43 @@ func _bake_navigation() -> void:
 	np.cell_size = 4.0
 	NavigationServer2D.bake_from_source_geometry_data(np, src)
 	nav_region.navigation_polygon = np
+
+	# Same source geometry, re-baked far more aggressively eroded for the minotaur.
+	_bake_large_agent_navmesh(src)
+
+# Bakes the wide-body navmesh from the SAME obstruction geometry as the kids'
+# mesh, but eroded by MINOTAUR_NAV_AGENT_RADIUS so A* only routes the brute
+# through gaps it physically fits. Kept on its own NavigationServer map; the
+# region is created once and re-baked in place on every nav rebake (cave fold,
+# tutorial gate opens, …). Cell size matches the kids' mesh.
+func _bake_large_agent_navmesh(src: NavigationMeshSourceGeometryData2D) -> void:
+	if _large_nav_region == null:
+		_large_nav_region = NavigationRegion2D.new()
+		_large_nav_region.name = "MinotaurNavRegion"
+		add_child(_large_nav_region)
+		_large_nav_region.global_transform = nav_region.global_transform
+		_large_nav_map = NavigationServer2D.map_create()
+		NavigationServer2D.map_set_cell_size(_large_nav_map, 4.0)
+		NavigationServer2D.map_set_active(_large_nav_map, true)
+		_large_nav_region.set_navigation_map(_large_nav_map)
+	var np := NavigationPolygon.new()
+	np.agent_radius = Balance.MINOTAUR_NAV_AGENT_RADIUS
+	np.cell_size = 4.0
+	NavigationServer2D.bake_from_source_geometry_data(np, src)
+	_large_nav_region.navigation_polygon = np
+
+func get_large_agent_nav_map() -> RID:
+	if _large_nav_map.is_valid():
+		return _large_nav_map
+	return super.get_large_agent_nav_map()
+
+# The minotaur nav map is a NavigationServer resource, not a node, so it isn't
+# reclaimed when this map node frees on scene reload — release it explicitly or
+# every mission load leaks one.
+func _exit_tree() -> void:
+	if _large_nav_map.is_valid():
+		NavigationServer2D.free_rid(_large_nav_map)
+		_large_nav_map = RID()
 
 # One static body whose rectangle shapes cover the cliff cells, so units (and
 # bullets) physically cannot cross a cliff face even past nav avoidance.

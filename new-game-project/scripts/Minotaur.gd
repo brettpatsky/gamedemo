@@ -127,6 +127,16 @@ func _ready() -> void:
 
 	await get_tree().physics_frame
 
+	# Path on the map's dedicated wide-body navmesh (eroded ~the body radius) so the
+	# brute routes around tree clusters through the clearings instead of following a
+	# kid-sized path straight into a trunk. Maps without one hand back their default
+	# nav map, so this is a safe no-op on the open / maze / boss levels.
+	var map_gen: Node = get_tree().get_first_node_in_group("map_generator")
+	if map_gen and map_gen.has_method("get_large_agent_nav_map"):
+		var nav_map: RID = map_gen.get_large_agent_nav_map()
+		if nav_map.is_valid():
+			nav_agent.set_navigation_map(nav_map)
+
 func _physics_process(delta: float) -> void:
 	_scan_timer       = max(_scan_timer - delta, 0.0)
 	_attack_cooldown  = max(_attack_cooldown - delta, 0.0)
@@ -550,7 +560,9 @@ func _blink_unstick() -> void:
 	if dir == Vector2.ZERO:
 		return
 	var dest: Vector2 = global_position + dir * Balance.MINOTAUR_STUCK_TELEPORT_DIST
-	dest = NavigationServer2D.map_get_closest_point(get_world_2d().navigation_map, dest)
+	# Snap onto the minotaur's OWN (wide-body) nav map so the hop lands somewhere the
+	# big frame actually fits, not hard against a trunk on the kid-sized mesh.
+	dest = NavigationServer2D.map_get_closest_point(nav_agent.get_navigation_map(), dest)
 	global_position = dest
 	velocity = Vector2.ZERO
 	modulate.a = 0.25
