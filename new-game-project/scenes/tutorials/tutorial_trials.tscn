@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://ctuttrials01"]
+
+[ext_resource type="Script" path="res://scripts/TutorialLevel1.gd" id="1_trials"]
+
+[node name="TutorialTrials" type="Node2D" groups=["map_generator"]]
+script = ExtResource("1_trials")
+
+[node name="Background" type="ColorRect" parent="."]
+offset_right = 1536.0
+offset_bottom = 6720.0
+
+[node name="NavigationRegion2D" type="NavigationRegion2D" parent="."]

@@ -33,8 +33,10 @@ const LightingUtil = preload("res://scripts/LightingUtil.gd")
 # bullet colour, etc. Falls back to wrapping if fewer scenes than squad_size.
 @export var soldier_scenes: Array[PackedScene]
 
-# Level 1 (OPTIONAL) — hand-authored tutorial corridor (six puzzles + parent room).
-const TUTORIAL_1_SCENE_PATH := "res://scenes/tutorials/tutorial_1.tscn"
+# Level 1 (OPTIONAL) — the Trials: a vertical corridor of the six puzzles + the
+# parent room, painted with the Caraka tileset (seasonal grass alternating up the
+# corridor, a tree line down the left, a stream + waterfalls down the right).
+const TUTORIAL_1_SCENE_PATH := "res://scenes/tutorials/tutorial_trials.tscn"
 # Level 4 — Catacombs: the larger 44×30 maze, used mid-run as a palette cleanser.
 const MAZE_2_SCENE_PATH := "res://scenes/mazes/maze_2.tscn"
 # Level 8 — The Weeping Heart boss arena.

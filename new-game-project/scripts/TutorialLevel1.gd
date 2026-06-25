@@ -40,6 +40,35 @@ const MAP_H_TILES := NUM_ROOMS * (ROOM_H_TILES + WALL_THICKNESS) + WALL_THICKNES
 const MAP_W       := MAP_W_TILES * TILE   # 1536
 const MAP_H       := MAP_H_TILES * TILE   # 6720
 
+# --- Caraka painted background --------------------------------------------
+# The trials are framed by a Caraka-tiled landscape: a tree line down the LEFT,
+# a flowing stream + waterfalls down the RIGHT, and the floor itself painted with
+# seasonal grass that ALTERNATES per room as the squad climbs. The playfield/walls
+# are untouched; these decorative strips live just outside the playfield and the
+# camera bounds are widened to frame them.
+const CARAKA_TILESET := "res://resources/caraka_terrain_tileset.tres"
+const CARAKA_SCALE   := 4.0   # tileset cells are 16px → 16×4 = 64 = one tutorial tile
+const LEFT_STRIP_TILES  := 5  # tree border width (tutorial tiles)
+const RIGHT_STRIP_TILES := 5  # stream border width
+# Season per room cycles SPRING→SUMMER→FALL→WINTER going up (room 0 is the bottom).
+enum Season { SPRING, SUMMER, FALL, WINTER }
+# Terrain-set indices in caraka_terrain_tileset.tres (mirrors HandcraftedMap).
+const SEASON_GRASS_SET := {Season.SPRING: 2, Season.SUMMER: 3, Season.FALL: 4, Season.WINTER: 5}
+const WATER_TERRAIN_SET := 6
+const SEASON_WATER := {Season.SPRING: 0, Season.SUMMER: 2, Season.FALL: 4, Season.WINTER: 2}
+const DIRT_TERRAIN_SET := 0
+# Tree.png (512×192) regions — one 32×48 tree per season (from HandcraftedMap).
+const TREE_TEX := "res://resources/caraka/Props/Tree.png"
+const SEASON_TREE_REGION := {
+	Season.SPRING: Rect2(0, 0, 32, 48),
+	Season.SUMMER: Rect2(32, 0, 32, 48),
+	Season.FALL:   Rect2(96, 0, 32, 48),
+	Season.WINTER: Rect2(192, 0, 32, 48),
+}
+# Waterfall animation lives in per-season folders (Winter falls back to Spring).
+const WATERFALL_DIR := "res://resources/caraka/Tileset/Water/Waterfall"
+const SEASON_FOLDER := {Season.SPRING: "Spring", Season.SUMMER: "Summer", Season.FALL: "Fall", Season.WINTER: "Spring"}
+
 @onready var background: ColorRect          = $Background
 @onready var nav_region: NavigationRegion2D = $NavigationRegion2D
 
@@ -91,6 +120,9 @@ func _ready() -> void:
 	# it, so the squad can't move or fire. IGNORE lets clicks pass through.
 	if background:
 		background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_build_caraka_background()   # seasonal grass floor under everything
+	_build_left_trees()          # tree line bordering the left
+	_build_right_stream()        # stream + waterfalls bordering the right
 	_build_walls()
 	_build_rooms()
 	_bake_nav()
@@ -98,11 +130,15 @@ func _ready() -> void:
 # ---------------------------------------------------------------------------
 # MapGenerator-compatible interface
 # ---------------------------------------------------------------------------
+# Camera bounds include the decorative side strips so the tree line + stream frame
+# the trials on screen.
 func get_map_centre() -> Vector2:
 	return to_global(Vector2(MAP_W * 0.5, MAP_H * 0.5))
 
 func get_map_rect() -> Rect2:
-	return Rect2(to_global(Vector2.ZERO), Vector2(MAP_W, MAP_H))
+	var left := float(LEFT_STRIP_TILES * TILE)
+	var right := float(RIGHT_STRIP_TILES * TILE)
+	return Rect2(to_global(Vector2(-left, 0)), Vector2(MAP_W + left + right, MAP_H))
 
 func is_water_at(_world_pos: Vector2) -> bool:
 	return false
@@ -144,10 +180,140 @@ func generate(_seed_value: int = 0) -> void:
 func _resize_background() -> void:
 	if background == null:
 		return
-	background.offset_left   = 0
+	# Dark base behind the Caraka tiles, spanning the widened bounds (side strips).
+	background.color = Color(0.08, 0.10, 0.09)
+	background.z_index = -20   # sit behind the Caraka ground layers (z -12..-10)
+	background.offset_left   = -float(LEFT_STRIP_TILES * TILE)
 	background.offset_top    = 0
-	background.offset_right  = MAP_W
+	background.offset_right  = MAP_W + float(RIGHT_STRIP_TILES * TILE)
 	background.offset_bottom = MAP_H
+
+# Season assigned to each room, cycling up from the bottom (room 0).
+func _room_season(room_index: int) -> int:
+	return room_index % 4
+
+# Maps a tutorial tile-row to the season of the room that contains it, so the
+# floor (and side strips) change season at each room boundary.
+func _season_for_row(tile_y: int) -> int:
+	for r in NUM_ROOMS:
+		var top: int = _room_top_y(r) - WALL_THICKNESS    # include the divider above
+		var bot: int = _room_top_y(r) + ROOM_H_TILES      # exclusive
+		if tile_y >= top and tile_y < bot:
+			return _room_season(r)
+	return _room_season(0)
+
+# Builds a Caraka TileMapLayer scaled so one cell == one tutorial tile (64px),
+# parked below the walls and actors.
+func _make_caraka_layer(ts: TileSet, z: int) -> TileMapLayer:
+	var layer := TileMapLayer.new()
+	layer.tile_set = ts
+	layer.scale = Vector2(CARAKA_SCALE, CARAKA_SCALE)
+	layer.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	layer.z_index = z
+	add_child(layer)
+	return layer
+
+# Paints the floor: a dirt base across the whole widened map, then seasonal grass
+# per room band (alternating up the corridor). Cells are in tutorial-tile coords
+# because the layer is scaled ×4 (16px tileset cell → 64px).
+func _build_caraka_background() -> void:
+	var ts: TileSet = load(CARAKA_TILESET) if ResourceLoader.exists(CARAKA_TILESET) else null
+	if ts == null:
+		return
+	var x0: int = -LEFT_STRIP_TILES
+	var x1: int = MAP_W_TILES + RIGHT_STRIP_TILES
+	var ground := _make_caraka_layer(ts, -12)
+	var grass  := _make_caraka_layer(ts, -11)
+
+	var dirt_cells: Array[Vector2i] = []
+	# Group grass cells by season so each band autotiles as one terrain pass.
+	var grass_by_season: Dictionary = {}
+	for cy in range(0, MAP_H_TILES):
+		var season: int = _season_for_row(cy)
+		if not grass_by_season.has(season):
+			grass_by_season[season] = [] as Array[Vector2i]
+		for cx in range(x0, x1):
+			var cell := Vector2i(cx, cy)
+			dirt_cells.append(cell)
+			grass_by_season[season].append(cell)
+
+	ground.set_cells_terrain_connect(dirt_cells, DIRT_TERRAIN_SET, 0, false)
+	for season in grass_by_season:
+		grass.set_cells_terrain_connect(grass_by_season[season], SEASON_GRASS_SET[season], 0, false)
+
+# Tree line down the LEFT strip — seasonal foliage that changes with each room band.
+func _build_left_trees() -> void:
+	var tex: Texture2D = load(TREE_TEX) if ResourceLoader.exists(TREE_TEX) else null
+	if tex == null:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1337
+	var strip_w: float = float(LEFT_STRIP_TILES) * TILE
+	const COLS := 2
+	for ty in range(2, MAP_H_TILES - 1, 2):
+		var region: Rect2 = SEASON_TREE_REGION[_season_for_row(ty)]
+		for k in COLS:
+			var at := AtlasTexture.new()
+			at.atlas = tex
+			at.region = region
+			var spr := Sprite2D.new()
+			spr.texture = at
+			spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			spr.scale = Vector2(4.0, 4.0)
+			spr.offset = Vector2(0, -region.size.y * 0.5)   # stand on the ground
+			var jx: float = rng.randf_range(0.15, 0.9)
+			spr.position = Vector2(
+				-strip_w + (float(k) + jx) / float(COLS) * strip_w,
+				float(ty) * TILE + rng.randf_range(-18.0, 18.0))
+			spr.z_index = 5
+			add_child(spr)
+
+# Stream down the RIGHT strip — seasonal water plus animated waterfalls cascading
+# beside each room band.
+func _build_right_stream() -> void:
+	var ts: TileSet = load(CARAKA_TILESET) if ResourceLoader.exists(CARAKA_TILESET) else null
+	if ts == null:
+		return
+	var water := _make_caraka_layer(ts, -10)   # above the grass floor
+	var water_by_season: Dictionary = {}
+	for cy in range(0, MAP_H_TILES):
+		var season: int = _season_for_row(cy)
+		if not water_by_season.has(season):
+			water_by_season[season] = [] as Array[Vector2i]
+		for cx in range(MAP_W_TILES, MAP_W_TILES + RIGHT_STRIP_TILES):
+			water_by_season[season].append(Vector2i(cx, cy))
+	for season in water_by_season:
+		water.set_cells_terrain_connect(water_by_season[season], WATER_TERRAIN_SET, SEASON_WATER[season], false)
+
+	# A waterfall cascading beside every room, themed to that room's season.
+	var fall_x: float = float(MAP_W) + float(RIGHT_STRIP_TILES) * TILE * 0.5
+	for r in NUM_ROOMS:
+		_make_waterfall(_room_season(r), Vector2(fall_x, _room_centre(r).y))
+
+# Builds one looping waterfall AnimatedSprite2D from the per-season frame folder.
+func _make_waterfall(season: int, pos: Vector2) -> void:
+	var folder: String = SEASON_FOLDER[season]
+	var frames := SpriteFrames.new()
+	frames.remove_animation(&"default")
+	frames.add_animation(&"flow")
+	frames.set_animation_loop(&"flow", true)
+	frames.set_animation_speed(&"flow", 8.0)
+	var added := 0
+	for i in range(1, 5):
+		var p := "%s/%s/waterfall%d.png" % [WATERFALL_DIR, folder, i]
+		if ResourceLoader.exists(p):
+			frames.add_frame(&"flow", load(p))
+			added += 1
+	if added == 0:
+		return
+	var spr := AnimatedSprite2D.new()
+	spr.sprite_frames = frames
+	spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	spr.scale = Vector2(3.0, 3.0)   # 48×64 frames → 144×192
+	spr.position = pos
+	spr.z_index = -9                # above the stream water, below walls/units
+	spr.play(&"flow")
+	add_child(spr)
 
 func _build_walls() -> void:
 	# Outer perimeter.
