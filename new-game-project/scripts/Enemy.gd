@@ -458,7 +458,12 @@ func _fire(direction: Vector2) -> void:
 func _play_anim(anim_name: String) -> void:
 	if sprite.sprite_frames == null or not sprite.sprite_frames.has_animation(anim_name):
 		return
-	if sprite.animation != anim_name:
+	# `or not is_playing()` matters on the very first idle: assigning sprite_frames
+	# at runtime leaves `animation` pointed at the new set's first anim (idle_down)
+	# but NOT playing, so a name-only guard would freeze the sprite on frame 0 until
+	# the squad moved and the anim name changed. Looping anims keep playing once
+	# started, so this never spuriously restarts them.
+	if sprite.animation != anim_name or not sprite.is_playing():
 		sprite.play(anim_name)
 
 # Idle in the last-faced direction (8-way set) or the plain "idle" (4-way).

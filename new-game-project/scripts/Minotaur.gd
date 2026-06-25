@@ -72,6 +72,14 @@ var _health: int
 var _target: Node2D = null
 var _scan_timer: float = 0.0
 
+# True only on frames where _tick_chase actually issued a nav-driven move this
+# step. The NavigationAgent2D keeps emitting velocity_computed every physics
+# frame using its LAST desired velocity, so without this gate the avoidance
+# callback would re-apply a stale chase velocity on standing-still frames —
+# which slid the minotaur off to a boundary after it wiped a squad that still
+# had a revive (target goes null, but the body kept coasting). Reset each frame.
+var _issued_nav_move: bool = false
+
 # Stuck tracking — escalates to a hard path-teleport, mirrors Enemy.gd.
 var _stuck_timer:     float   = 0.0
 var _stuck_check_pos: Vector2 = Vector2.ZERO
@@ -122,6 +130,7 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	_scan_timer       = max(_scan_timer - delta, 0.0)
 	_attack_cooldown  = max(_attack_cooldown - delta, 0.0)
+	_issued_nav_move  = false
 
 	if _state == State.DEAD:
 		return
@@ -265,12 +274,16 @@ func _move_toward_nav_target() -> void:
 	var dir:  Vector2 = (next - global_position).normalized()
 	var desired := dir * move_speed * _water_speed_mult() * _slope_speed_mult(dir)
 	nav_agent.max_speed = move_speed
+	_issued_nav_move = true
 	nav_agent.set_velocity(desired)
 	_play_walk_anim(dir)
 
 func _on_safe_velocity(safe_velocity: Vector2) -> void:
-	# Guard ATTACK/DEAD so a stale chase velocity can't drag the minotaur mid-swing.
-	if _state == State.ATTACK or _state == State.DEAD:
+	# Guard ATTACK/DEAD so a stale chase velocity can't drag the minotaur mid-swing,
+	# and only move on frames where _tick_chase actually requested a nav move — the
+	# agent re-emits this signal every frame with its last desired velocity, which
+	# otherwise coasted the minotaur off-map once its target was gone.
+	if _state == State.ATTACK or _state == State.DEAD or not _issued_nav_move:
 		return
 	velocity = safe_velocity
 	move_and_slide()
@@ -315,7 +328,11 @@ func _play_walk_anim(direction: Vector2) -> void:
 func _play_anim(anim_name: String) -> void:
 	if sprite.sprite_frames == null or not sprite.sprite_frames.has_animation(anim_name):
 		return
-	if sprite.animation != anim_name:
+	# `or not is_playing()` matters on the very first idle: assigning sprite_frames
+	# at runtime leaves `animation` on the new set's first anim (idle_down) but NOT
+	# playing, so a name-only guard would freeze the sprite on frame 0 until it
+	# first moved. Looping anims keep playing once started — no spurious restart.
+	if sprite.animation != anim_name or not sprite.is_playing():
 		sprite.play(anim_name)
 
 func _play_idle() -> void:
