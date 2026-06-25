@@ -198,6 +198,11 @@ func _ready() -> void:
 	hud.update_soldier_count(effective_squad_size)
 	hud.show_objective(GameManager.current_level)
 
+	# Level is fully built — start the music now (the scene no longer autoplays it)
+	# and lift the loading splash so both land together as the level appears.
+	if _music and not _music.playing:
+		_music.play()
+
 	var ls := get_node_or_null("/root/LoadingScreen")
 	if ls and ls.has_method("hide_loading"):
 		ls.hide_loading()
@@ -576,7 +581,9 @@ func _persist_run_state() -> void:
 func advance_level() -> void:
 	GameManager.advance_level()
 	_show_loading_screen()
-	await get_tree().process_frame
+	# frame_post_draw, not process_frame: the splash must be drawn before the
+	# blocking reload, or the UI just freezes with nothing painted. See TitleScreen.
+	await RenderingServer.frame_post_draw
 	get_tree().reload_current_scene()
 
 func restart() -> void:
@@ -589,7 +596,7 @@ func restart() -> void:
 	if RunState.living_slots().is_empty():
 		RunState.start_new_run()
 	_show_loading_screen()
-	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
 	get_tree().reload_current_scene()
 
 func _show_loading_screen() -> void:

@@ -208,6 +208,19 @@ func _start_mission(level: int) -> void:
 		_warn_unspent_points()
 		return
 	GameManager.current_level = level
+	# Cover the screen with the splash before the (blocking) main-scene load, the
+	# same way between-level reloads do (Main.advance_level). Main._ready hides it
+	# again once the level is built. The extra processed frame lets the loading
+	# screen actually paint before change_scene_to_file stalls on the load.
+	var ls := get_node_or_null("/root/LoadingScreen")
+	if ls and ls.has_method("show_loading"):
+		ls.show_loading()
+	# Wait for the splash to actually be DRAWN before kicking off the blocking
+	# scene load. A single process_frame await resumes within the same frame
+	# (before any draw), so change_scene would freeze the UI on the menu with the
+	# splash never painted. frame_post_draw fires after the GPU draw, guaranteeing
+	# the loading screen is the last thing on-screen during the load stall.
+	await RenderingServer.frame_post_draw
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 # Surfaces the "spend everything first" rule on the points readout. Cleared on
