@@ -64,6 +64,31 @@ const FRAGMENT_METADATA := {
 		"name":        "Brother's Cap",
 		"description": "+25% wand and staff range",
 	},
+	# --- Second batch: six more so the pool covers 3 finds × 6 missions ------
+	"story_book": {
+		"name":        "Storybook",
+		"description": "All kids gain +2 max HP",
+	},
+	"magic_compass": {
+		"name":        "Enchanted Compass",
+		"description": "+30 staff ammo and +6 throwables each mission",
+	},
+	"night_lantern": {
+		"name":        "Night Lantern",
+		"description": "+20% wand and staff range and +1 shot damage",
+	},
+	"toy_shield": {
+		"name":        "Wooden Shield",
+		"description": "Each kid blocks the first 2 hits every mission",
+	},
+	"healing_charm": {
+		"name":        "Healing Charm",
+		"description": "Hitting an enemy heals that kid 1 HP",
+	},
+	"river_stone": {
+		"name":        "River Stone",
+		"description": "Kids regenerate 1 HP every 3 seconds",
+	},
 }
 
 # Mission-N → in-mission fragment mapping. The artifact placed in each
@@ -175,6 +200,37 @@ static func _apply_one(id: String) -> bool:
 			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
 				if s.has_method("add_range_mult"):
 					s.add_range_mult(0.25)
+			return true
+		"story_book":
+			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
+				if s.has_method("add_max_health"):
+					s.add_max_health(2)
+			return true
+		"magic_compass":
+			GameManager.rifle_ammo_pool += 30
+			GameManager.grenade_ammo_pool += 6
+			return true
+		"night_lantern":
+			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
+				if s.has_method("add_range_mult"):
+					s.add_range_mult(0.20)
+				if s.has_method("add_damage_bonus"):
+					s.add_damage_bonus(1)
+			return true
+		"toy_shield":
+			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
+				if s.has_method("add_hit_shield"):
+					s.add_hit_shield(2)
+			return true
+		"healing_charm":
+			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
+				if s.has_method("add_lifesteal"):
+					s.add_lifesteal(1)
+			return true
+		"river_stone":
+			for s in Engine.get_main_loop().get_nodes_in_group("soldiers"):
+				if s.has_method("add_regen"):
+					s.add_regen(1, 3.0)
 			return true
 		_:
 			push_warning("[FragmentEffects] Unknown fragment id: %s" % id)

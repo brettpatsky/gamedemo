@@ -176,6 +176,11 @@ var range_mult:       float = 1.0    # multiplied into bullet max_distance
 var cooldown_mult:    float = 1.0    # multiplied into fire cooldowns (< 1 = faster)
 var damage_reduction: int   = 0      # subtracted from incoming damage
 var water_immune:     bool  = false  # ignores water speed slowdown
+var hit_shield:       int   = 0      # Wooden Shield: hits fully blocked before HP loss
+var lifesteal:        int   = 0      # Healing Charm: HP regained per bullet hit on an enemy
+var regen_amount:     int   = 0      # River Stone: HP healed every regen_interval seconds
+var regen_interval:   float = 0.0    # 0 disables the regen tick
+var _regen_timer:     float = 0.0
 
 # Transient external slow (e.g. boss thorny vines). Refreshed each frame while the
 # soldier stands in the hazard; decays back to 1.0 shortly after leaving.
@@ -203,10 +208,28 @@ func add_damage_reduction(delta: int) -> void:
 func enable_water_immunity() -> void:
 	water_immune = true
 
+func add_hit_shield(charges: int) -> void:
+	hit_shield += charges
+
+func add_lifesteal(delta: int) -> void:
+	lifesteal += delta
+
+func add_regen(amount: int, interval: float) -> void:
+	regen_amount += amount
+	regen_interval = interval
+	_regen_timer = interval
+
 # Called by Bullet.gd when a bullet fired by this soldier successfully hits
 # a damageable target. Bumps the shared accuracy counter.
 func on_bullet_hit(_target: Node2D) -> void:
 	GameManager.record_hit(slot_index)
+	# Healing Charm (fragment) — siphon a little HP back on every connecting shot.
+	if lifesteal > 0 and _state != State.DEAD and _health < max_health:
+		var healed: int = mini(lifesteal, max_health - _health)
+		_health += healed
+		if health_bar:
+			health_bar.value = _health
+		_spawn_damage_number(healed, Color(0.4, 0.95, 0.5))
 
 # ---------------------------------------------------------------------------
 # State machine
@@ -391,6 +414,16 @@ func _physics_process(delta: float) -> void:
 		if _slow_timer <= 0.0:
 			_slow_mult = 1.0
 
+	# River Stone (fragment) — slow passive heal while alive and hurt.
+	if regen_amount > 0 and regen_interval > 0.0 and _state != State.DEAD:
+		_regen_timer -= delta
+		if _regen_timer <= 0.0:
+			_regen_timer = regen_interval
+			if _health < max_health:
+				_health = mini(_health + regen_amount, max_health)
+				if health_bar:
+					health_bar.value = _health
+
 	# Frozen mid rescue-teleport: the fade tween owns position; hold still.
 	if _teleporting:
 		velocity = Vector2.ZERO
@@ -573,6 +606,11 @@ func take_damage(amount: int, _element: int = 0) -> void:
 	var net: int = maxi(amount - damage_reduction, 0)
 	if net <= 0:
 		return
+	# Wooden Shield (fragment) eats whole hits before any HP is lost.
+	if hit_shield > 0:
+		hit_shield -= 1
+		_spawn_damage_number(0, Color(0.6, 0.85, 1.0), "BLOCK")
+		return
 	_health -= net
 	health_bar.value = _health
 	_spawn_damage_number(net, Color(1.0, 0.35, 0.35))
@@ -606,12 +644,12 @@ func _style_health_bar() -> void:
 	health_bar.add_theme_stylebox_override("background", bg)
 	health_bar.add_theme_stylebox_override("fill", fill)
 
-func _spawn_damage_number(amount: int, color: Color) -> void:
+func _spawn_damage_number(amount: int, color: Color, text_override: String = "") -> void:
 	var fx := Node2D.new()
 	fx.set_script(_FLOATING_NUMBER_SCRIPT)
 	get_viewport().add_child(fx)
 	fx.global_position = global_position + Vector2(0, -48)
-	fx.start(amount, color)
+	fx.start(amount, color, text_override)
 
 # =============================================================================
 # PRIVATE — STATE BEHAVIOURS

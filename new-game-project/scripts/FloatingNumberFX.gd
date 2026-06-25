@@ -18,9 +18,9 @@ var _label: Label = null
 # amount: the damage value to show.
 # color:  text colour (red for enemy hits on the squad, yellow for squad hits
 #         on enemies, green for heals, etc.).
-func start(amount: int, color: Color = Color(1, 0.3, 0.3)) -> void:
+func start(amount: int, color: Color = Color(1, 0.3, 0.3), text_override: String = "") -> void:
 	_label = Label.new()
-	_label.text = str(amount)
+	_label.text = text_override if text_override != "" else str(amount)
 	_label.add_theme_font_size_override("font_size", FONT_SIZE)
 	_label.add_theme_color_override("font_color", color)
 	_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
