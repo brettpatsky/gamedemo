@@ -347,31 +347,27 @@ func update_group_info(active: int, total: int, alive_groups: Array = []) -> voi
 func show_objective(level: int) -> void:
 	_ammo_max = [0, 0, 0, 0]  # let the next update_ammo call set the full-pool baseline
 	var texts := {
-		1: "OBJECTIVE: Solve the six trials and free Kid 1's parent",
+		1: "OBJECTIVE: (Optional) Solve the six trials",
 		2: "OBJECTIVE: Eliminate all enemies",
-		3: "OBJECTIVE: Escape the maze",
-		4: "OBJECTIVE: Destroy the fortified structure",
-		5: "OBJECTIVE: Escort the NPC to extraction",
-		6: "OBJECTIVE: Escape the ruined catacombs",
-		7: "OBJECTIVE: Shatter the Weeping Heart",
+		3: "OBJECTIVE: Hunt down the elite bruisers",
+		4: "OBJECTIVE: Escape the catacombs",
+		5: "OBJECTIVE: Destroy the fortified structures",
+		6: "OBJECTIVE: Escort the NPC to extraction",
+		7: "OBJECTIVE: Find the hidden portal in the blighted marsh",
+		8: "OBJECTIVE: Shatter the Weeping Heart",
 	}
 	var text: String = texts.get(level, "")
-	# Tutorial soft-lock guard: if Kid 1 has somehow already died this run
-	# (e.g. retrying after a wipe in a later mission), the parent can never be
-	# freed and the run is stuck. Surface that explicitly so the player resets.
-	if level == 1 and not RunState.kids_alive[0]:
-		text = "OBJECTIVE: Kid 1 lost — RESET RUN (F12) to retry the tutorial"
 	_objective_label.text = text
-	# Escort label only on the Escort mission (now level 5).
-	if level == 5:
+	# Escort label only on the Escort mission (now level 6).
+	if level == 6:
 		_escort_label.show()
 	else:
 		_escort_label.hide()
-	# Tutorial (3 dummies), mazes (no enemies), and the boss (own health bar)
-	# all hide the generic ENEMIES counter — only the procedural missions
-	# (Eliminate / Structures / Escort = 2 / 4 / 5) show it.
+	# Tutorial, the maze, the marsh (terrain-focused), and the boss (own health
+	# bar) hide the generic ENEMIES counter — only the combat-objective missions
+	# (Eliminate / Elite Hunt / Structures / Escort = 2 / 3 / 5 / 6) show it.
 	if _enemy_label:
-		_enemy_label.visible = level == 2 or level == 4 or level == 5
+		_enemy_label.visible = level == 2 or level == 3 or level == 5 or level == 6
 
 func update_escort_health(current: int, max_hp: int) -> void:
 	_escort_label.text = "ESCORT HEALTH: %d / %d" % [current, max_hp]
@@ -725,17 +721,17 @@ func _draw_enemy_arrow() -> void:
 	var origin: Vector2 = squad_ctrl.get_centroid()
 
 	var target: Node2D = null
-	if GameManager.current_level == 5:
+	if GameManager.current_level == 6:
 		# Escort mission — point at the trapped/unfreed NPC, then at the
 		# extraction zone once they've linked up with the squad.
 		if _escort_joined:
 			target = _extraction_zone if is_instance_valid(_extraction_zone) else null
 		else:
 			target = _escort_npc if is_instance_valid(_escort_npc) else null
-	elif GameManager.current_level == 3 or GameManager.current_level == 6:
-		# Maze escape (Maze 1 = level 3, Maze 2 = level 6) — always point to the exit.
+	elif GameManager.current_level == 4:
+		# Catacombs maze — always point to the exit.
 		target = _maze_exit if is_instance_valid(_maze_exit) else null
-	elif GameManager.current_level == 7:
+	elif GameManager.current_level == 8:
 		# Boss fight — entire arena fits on-screen, so no enemy arrow is needed.
 		return
 	else:

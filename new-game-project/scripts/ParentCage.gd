@@ -13,6 +13,10 @@ signal parent_freed(slot: int)
 signal wrong_kid_entered(slot: int)
 
 @export var child_slot: int = 0
+# When false the cage still opens + emits parent_freed (so a level can win on it),
+# but does NOT flip the RunState parent bit. The optional tutorial uses this so it
+# teaches without consuming Kid 1's rescue — the 6 main levels free all 6 parents.
+@export var frees_parent: bool = true
 
 const TEX_GARDEN   := "res://resources/environment/fairy_garden/garden_bg.png"
 const TEX_CAGE_ON  := "res://resources/environment/fairy_garden/cage_closed.png"
@@ -81,7 +85,8 @@ func _on_body_entered(body: Node2D) -> void:
 
 func _open(slot: int) -> void:
 	_opened = true
-	RunState.free_parent(slot)
+	if frees_parent:
+		RunState.free_parent(slot)
 	emit_signal("parent_freed", slot)
 	_refresh_cage()
 

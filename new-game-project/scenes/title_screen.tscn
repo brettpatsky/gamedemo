@@ -759,44 +759,51 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Mission 1 - The Trials"
+text = "Tutorial - The Trials (Optional)"
 
 [node name="Button" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=983084128]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Mission 2 - Eliminate Enemies"
+text = "Mission 1 - Eliminate Enemies"
 
 [node name="Button2" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=34088522]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Mission 3 - Escape"
+text = "Mission 2 - Elite Hunt"
 
 [node name="Button3" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=882175669]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Mission 4 - Destroy Structures"
+text = "Mission 3 - The Ruined Catacombs"
 
 [node name="Button4" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=1287536005]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Mission 5 - Escort VIP"
+text = "Mission 4 - Destroy Structures"
 
 [node name="Button5" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=1287536006]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
 theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
-text = "Mission 6 - The Ruined Catacombs"
+text = "Mission 5 - Escort VIP"
 
 [node name="Button6" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=1287536007]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
+theme_override_styles/hover = SubResource("StyleBoxFlat_sa3yf")
+text = "Mission 6 - Blighted Marsh"
+
+[node name="Button7" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox" unique_id=1287536008]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxFlat_fgkus")
@@ -913,6 +920,7 @@ text = "  Close  "
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button4" to="." method="_on_mission_5_pressed"]
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button5" to="." method="_on_mission_6_pressed"]
 [connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button6" to="." method="_on_mission_7_pressed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/HBoxContainer/MissionsPanel/MissionsMargin/MissionsVBox/Button7" to="." method="_on_mission_8_pressed"]
 [connection signal="pressed" from="HelpButton" to="." method="_on_help_pressed"]
 [connection signal="pressed" from="ExitButton" to="." method="_on_exit_pressed"]
 [connection signal="pressed" from="HelpPopup/CenterContainer/Card/Margin/VBox/CloseButton" to="." method="_on_help_close_pressed"]

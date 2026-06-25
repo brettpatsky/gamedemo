@@ -314,13 +314,15 @@ func generate(seed_value: int = 0) -> void:
 	# Spawn the parent-rescue cave FIRST so _spawn_escort_mission can read
 	# _cave_foot_cell and keep the VIP's prison well clear of the cave mouth.
 	var lv: int = GameManager.current_level
-	if lv == 2 or lv == 4 or lv == 5:
+	# Parent + fragments for the proc-style parent levels (Eliminate 2, Elite Hunt 3,
+	# Structures 5, Escort 6). Catacombs (4) and Blighted Marsh (7) place their own.
+	if lv == 2 or lv == 3 or lv == 5 or lv == 6:
 		_spawn_mission_parent_and_fragment()
 	match lv:
-		4:
+		5:
 			if not _objective_nodes.has("fortified_structure"):
 				_spawn_fortified_structure()
-		5:
+		6:
 			if not _objective_nodes.has("escort_npc"):
 				_spawn_escort_mission()
 	_spawn_enemies()
@@ -1176,7 +1178,7 @@ func _spawn_mission_parent_and_fragment() -> void:
 	var cave := Node2D.new()
 	cave.set_script(CAVE_SYSTEM_SCRIPT)
 	add_child(cave)
-	cave.setup(_tile_to_world(foot), level - 1, get_map_rect())
+	cave.setup(_tile_to_world(foot), level - 2, get_map_rect())  # level 2 → Kid 1 (slot 0) … level 7 → Kid 6 (slot 5)
 	_cave_system = cave
 	if cave.parent_cage:
 		_objective_nodes["parent_cage"] = cave.parent_cage

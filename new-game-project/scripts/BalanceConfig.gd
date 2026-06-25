@@ -269,6 +269,38 @@ const MINOTAUR_STUCK_TELEPORT_DIST:    float = 110.0  # how far the blink hops t
 const MINOTAUR_TELEPORT_FADE_TIME:     float = 0.12   # quick fade-out/in so the hop reads as intentional
 
 # -----------------------------------------------------------------------------
+# ELITE HUNT (level 3)
+# -----------------------------------------------------------------------------
+# A pack of elite bruisers replaces the swarm. They hunt the controlled group
+# (Minotaur AI); clearing all of them wins. A light trash scatter adds texture
+# but does NOT gate the win.
+const ELITE_HUNT_PACK_SIZE: int = 4     # tough minotaur-class elites to clear
+const ELITE_HUNT_TRASH:     int = 10    # corrupted mushrooms for flavour; optional kills
+# Per-elite flavour tiers cycle across the pack so each reads as an individual;
+# the final entry is the tougher "alpha". hp/speed are multipliers on the base
+# Minotaur stats. tint is a sprite modulate.
+const ELITE_TIERS: Array = [
+	{"tint": Color(1.00, 0.78, 0.78), "hp": 0.80, "speed": 1.15},
+	{"tint": Color(0.78, 0.88, 1.00), "hp": 0.90, "speed": 1.05},
+	{"tint": Color(0.80, 1.00, 0.82), "hp": 1.00, "speed": 1.00},
+	{"tint": Color(1.00, 0.50, 0.40), "hp": 1.60, "speed": 0.90},  # alpha
+]
+
+# -----------------------------------------------------------------------------
+# BLIGHTED MARSH (level 7)
+# -----------------------------------------------------------------------------
+# Low ground is poisonous blight: standing in it slows the squad and chips HP on
+# a tick. Safe lanes wind between the pools. The Swimming Goggles fragment wades
+# through unharmed (see Soldier.water_immune). Blight damage runs through the
+# normal take_damage path (so Snack Bar softens it — intended synergy); kept
+# small + unscaled so a brief crossing is survivable but lingering is deadly.
+const MARSH_BLIGHT_DAMAGE:    int   = 2      # HP per tick (NOT ×COMBAT_NUMBER_SCALE)
+const MARSH_BLIGHT_TICK:      float = 0.7    # seconds between damage ticks while standing in blight
+const MARSH_BLIGHT_SLOW_MULT: float = 0.5    # movement multiplier while in blight
+const MARSH_BLIGHT_THRESHOLD: float = 0.20   # blight-noise cutoff (higher = sparser pools)
+const MARSH_GUARD_COUNT:      int   = 12     # light enemy presence; the terrain is the threat
+
+# -----------------------------------------------------------------------------
 # ESCORT NPC
 # -----------------------------------------------------------------------------
 # Same stuck-detection shape as soldiers so the VIP doesn't snag on a tree.

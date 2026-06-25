@@ -137,7 +137,7 @@ func record_hit(slot: int) -> void:
 		soldier_hits[slot] += 1
 
 func advance_level() -> void:
-	current_level = min(current_level + 1, 7)
+	current_level = min(current_level + 1, 8)
 
 # ---------------------------------------------------------------------------
 # Called once at startup
@@ -198,5 +198,11 @@ func use_revive() -> bool:
 func on_enemy_died() -> void:
 	enemies_alive -= 1
 	emit_signal("enemies_changed", enemies_alive) #broardcast remaining enemies to HUD
+	# Level 2 (Eliminate) — every enemy must fall.
 	if enemies_alive <= 0 and current_level == 2:
+		emit_signal("mission_complete")
+	# Level 3 (Elite Hunt) — only the elite PACK gates the win; leftover trash is
+	# ignored. Minotaur._die drops out of the "elites" group before calling this,
+	# so an empty group here means the last elite just died.
+	if current_level == 3 and Engine.get_main_loop().get_nodes_in_group("elites").is_empty():
 		emit_signal("mission_complete")

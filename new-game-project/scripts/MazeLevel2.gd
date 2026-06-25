@@ -153,7 +153,7 @@ func _spawn_mission_parent_and_fragment() -> void:
 		var cage: Node2D = _PARENT_CAGE_SCENE.instantiate()
 		cage.position = _cell_centre(cage_cell)
 		if "child_slot" in cage:
-			cage.set("child_slot", level - 1)
+			cage.set("child_slot", level - 2)   # Catacombs is level 4 → Kid 3 (slot 2)
 		add_child(cage)
 		_parent_cage = cage
 

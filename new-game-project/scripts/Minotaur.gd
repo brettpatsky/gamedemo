@@ -38,6 +38,14 @@ var score_value:   int
 @export var weakness:   int = 0   # Elements.E.NONE
 @export var resistance: int = 0   # Elements.E.NONE
 
+# Elite-pack flavour (Elite Hunt, level 3). Set BEFORE add_child. When is_elite,
+# the minotaur joins the "elites" group (the level's win gate watches it) and
+# scales HP/speed + tints its sprite per its assigned tier.
+@export var is_elite:         bool  = false
+@export var elite_tint:       Color = Color.WHITE
+@export var elite_hp_mult:    float = 1.0
+@export var elite_speed_mult: float = 1.0
+
 @onready var nav_agent:  NavigationAgent2D   = $NavigationAgent2D
 @onready var sprite:     AnimatedSprite2D    = $AnimatedSprite2D
 @onready var health_bar: ProgressBar         = $HealthBar
@@ -93,6 +101,13 @@ func _ready() -> void:
 	melee_radius  = Balance.MINOTAUR_MELEE_RADIUS
 	attack_damage = Balance.MINOTAUR_ATTACK_DAMAGE * Balance.COMBAT_NUMBER_SCALE
 	score_value   = Balance.MINOTAUR_SCORE_VALUE
+	# Elite-pack scaling (Elite Hunt). Applied before _health/nav so the bigger
+	# pool + speed take effect this mission. The win gate watches the group.
+	if is_elite:
+		add_to_group("elites")
+		max_health  = int(round(max_health * elite_hp_mult))
+		move_speed *= elite_speed_mult
+		score_value = int(round(score_value * 1.5))
 	_health              = max_health
 	health_bar.max_value = max_health
 	health_bar.value     = _health
@@ -102,6 +117,8 @@ func _ready() -> void:
 		_build_frames_from_dir(frames_dir)
 	_use_8way = sprite.sprite_frames != null \
 			and sprite.sprite_frames.has_animation(&"walk_up_right")
+	if is_elite:
+		sprite.modulate = elite_tint
 	_hit_audio = _build_hit_audio("res://resources/audio/sfx/enemy_hit.ogg")
 
 	# Randomise weakness + resistance like the regular enemies so the elemental
@@ -497,6 +514,10 @@ func _die() -> void:
 	else:
 		_play_anim("die")
 	remove_from_group("enemies")
+	# Drop out of the elite gate BEFORE notifying GameManager so the Elite Hunt
+	# win check (which counts the "elites" group) sees this one as already gone.
+	if is_in_group("elites"):
+		remove_from_group("elites")
 
 	$CollisionShape2D.set_deferred("disabled", true)
 

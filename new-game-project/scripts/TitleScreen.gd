@@ -231,13 +231,14 @@ func _warn_unspent_points() -> void:
 				% SquadConfig.points_remaining()
 		_points_label.add_theme_color_override("font_color", Color(1.0, 0.45, 0.4))
 
-func _on_mission_1_pressed() -> void: _start_mission(1)   # Tutorial — The Trials
+func _on_mission_1_pressed() -> void: _start_mission(1)   # Tutorial — The Trials (optional)
 func _on_mission_2_pressed() -> void: _start_mission(2)   # Eliminate Enemies
-func _on_mission_3_pressed() -> void: _start_mission(3)   # Escape (Maze 1)
-func _on_mission_4_pressed() -> void: _start_mission(4)   # Destroy Structures
-func _on_mission_5_pressed() -> void: _start_mission(5)   # Escort VIP
-func _on_mission_6_pressed() -> void: _start_mission(6)   # The Ruined Catacombs (Maze 2)
-func _on_mission_7_pressed() -> void: _start_mission(7)   # The Weeping Heart (boss)
+func _on_mission_3_pressed() -> void: _start_mission(3)   # Elite Hunt
+func _on_mission_4_pressed() -> void: _start_mission(4)   # The Ruined Catacombs (maze, mid-run cleanser)
+func _on_mission_5_pressed() -> void: _start_mission(5)   # Destroy Structures
+func _on_mission_6_pressed() -> void: _start_mission(6)   # Escort VIP
+func _on_mission_7_pressed() -> void: _start_mission(7)   # Blighted Marsh
+func _on_mission_8_pressed() -> void: _start_mission(8)   # The Weeping Heart (boss)
 
 func _on_help_pressed() -> void:
 	_help_popup.visible = true

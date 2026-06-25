@@ -181,6 +181,7 @@ var lifesteal:        int   = 0      # Healing Charm: HP regained per bullet hit
 var regen_amount:     int   = 0      # River Stone: HP healed every regen_interval seconds
 var regen_interval:   float = 0.0    # 0 disables the regen tick
 var _regen_timer:     float = 0.0
+var _blight_timer:    float = 0.0    # Blighted Marsh: countdown between poison damage ticks
 
 # Transient external slow (e.g. boss thorny vines). Refreshed each frame while the
 # soldier stands in the hazard; decays back to 1.0 shortly after leaving.
@@ -423,6 +424,20 @@ func _physics_process(delta: float) -> void:
 				_health = mini(_health + regen_amount, max_health)
 				if health_bar:
 					health_bar.value = _health
+
+	# Blighted Marsh — poison ground slows the squad and chips HP on a tick. The
+	# Swimming Goggles fragment (water_immune) wades through unharmed. Mirrors the
+	# is_water_at query so it stays a cheap per-frame dictionary lookup.
+	if not water_immune and _state != State.DEAD:
+		var mg: Node = _map_gen()
+		if mg and mg.has_method("is_blight_at") and mg.is_blight_at(global_position):
+			slow_down(Balance.MARSH_BLIGHT_SLOW_MULT, 0.2)
+			_blight_timer -= delta
+			if _blight_timer <= 0.0:
+				_blight_timer = Balance.MARSH_BLIGHT_TICK
+				take_damage(Balance.MARSH_BLIGHT_DAMAGE)
+		else:
+			_blight_timer = 0.0
 
 	# Frozen mid rescue-teleport: the fade tween owns position; hold still.
 	if _teleporting:

@@ -261,11 +261,14 @@ func _spawn_enemies() -> void:
 		push_warning("[MapGenerator] Enemy.tscn not found — skipping enemy spawn.")
 		return
 
-	var count: int = 50  # Fixed 50 enemies
-	# Elite melee bruisers that hunt the controlled group (see Minotaur.gd). They
-	# count toward enemies_alive so the mission-complete gate waits on them too.
+	# Elite Hunt (level 3) swaps the 50-mob swarm for a small elite PACK + a light
+	# trash scatter. Every other level keeps the swarm + the lone bruiser.
 	var minotaur_scene: PackedScene = load("res://scenes/minotaur.tscn")
-	var minotaur_count: int = Balance.MINOTAUR_COUNT if minotaur_scene != null else 0
+	var elite_hunt: bool = GameManager.current_level == 3
+	var count: int = Balance.ELITE_HUNT_TRASH if elite_hunt else 50
+	var minotaur_count: int = 0
+	if minotaur_scene != null:
+		minotaur_count = Balance.ELITE_HUNT_PACK_SIZE if elite_hunt else Balance.MINOTAUR_COUNT
 
 	GameManager.enemies_alive = count + minotaur_count
 	GameManager.enemies_changed.emit(GameManager.enemies_alive)
@@ -278,13 +281,20 @@ func _spawn_enemies() -> void:
 		add_child(enemy)
 
 	# Drop the minotaur(s) onto spawn cells past the regular mob so they start
-	# clear of the squad and have room to begin their slow advance.
+	# clear of the squad and have room to begin their slow advance. On Elite Hunt
+	# each one is configured as a distinct elite (tint + HP/speed tier).
 	for j in minotaur_count:
 		var idx: int = count + j
 		if idx >= spawn_zone.size():
 			break
 		var mino: Node2D = minotaur_scene.instantiate()
 		mino.position = _tile_to_world(spawn_zone[idx])
+		if elite_hunt:
+			var tier: Dictionary = Balance.ELITE_TIERS[j % Balance.ELITE_TIERS.size()]
+			mino.set("is_elite", true)
+			mino.set("elite_tint", tier["tint"])
+			mino.set("elite_hp_mult", tier["hp"])
+			mino.set("elite_speed_mult", tier["speed"])
 		add_child(mino)
 
 # ---------------------------------------------------------------------------
@@ -296,7 +306,9 @@ func _spawn_enemies() -> void:
 # ---------------------------------------------------------------------------
 func _spawn_mission_parent_and_fragment() -> void:
 	var level: int = GameManager.current_level
-	var child_slot: int = level - 1
+	# The 6 main levels (2-7) free the 6 kids' parents in order: level 2 → Kid 1
+	# (slot 0) … level 7 → Kid 6 (slot 5). The optional tutorial frees none.
+	var child_slot: int = level - 2
 
 	var cage_scene: PackedScene = load("res://scenes/parent_cage.tscn")
 	var frag_scene: PackedScene = load("res://scenes/memory_fragment.tscn")

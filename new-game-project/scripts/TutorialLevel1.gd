@@ -446,6 +446,10 @@ func _build_room_final() -> void:
 	var cage: Node2D = _PARENT_CAGE_SCENE.instantiate()
 	if "child_slot" in cage:
 		cage.set("child_slot", 0)
+	# Tutorial is an optional teaching sandbox — completing it ends the lesson but
+	# does NOT consume a parent rescue (the 6 main levels free all 6 parents).
+	if "frees_parent" in cage:
+		cage.set("frees_parent", false)
 	cage.position = _room_position(7, ROOM_HALF_W_TILES - 2, ROOM_HALF_H_TILES)
 	add_child(cage)
 	_parent_cage = cage

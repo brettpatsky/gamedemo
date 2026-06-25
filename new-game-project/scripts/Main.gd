@@ -25,6 +25,7 @@ const Balance      = preload("res://scripts/BalanceConfig.gd")
 # point at the same script), so the warning is silenced explicitly.
 @warning_ignore("shadowed_global_identifier")
 const AmbientLayer = preload("res://scripts/AmbientLayer.gd")
+const LightingUtil = preload("res://scripts/LightingUtil.gd")
 
 @export var squad_size:    int  = 6
 @export var map_seed:      int  = 0
@@ -32,13 +33,11 @@ const AmbientLayer = preload("res://scripts/AmbientLayer.gd")
 # bullet colour, etc. Falls back to wrapping if fewer scenes than squad_size.
 @export var soldier_scenes: Array[PackedScene]
 
-# Level 1 — hand-authored tutorial corridor (six puzzles + parent room).
+# Level 1 (OPTIONAL) — hand-authored tutorial corridor (six puzzles + parent room).
 const TUTORIAL_1_SCENE_PATH := "res://scenes/tutorials/tutorial_1.tscn"
-# Level 3 — first hand-authored maze (the original 22×15).
-const MAZE_SCENE_PATH := "res://scenes/mazes/maze_1.tscn"
-# Level 6 — larger 44×30 maze with multiple paths to the exit.
+# Level 4 — Catacombs: the larger 44×30 maze, used mid-run as a palette cleanser.
 const MAZE_2_SCENE_PATH := "res://scenes/mazes/maze_2.tscn"
-# Level 7 — The Weeping Heart boss arena.
+# Level 8 — The Weeping Heart boss arena.
 const BOSS_ARENA_SCENE_PATH := "res://scenes/bosses/boss_arena.tscn"
 # Hand-crafted alternatives to the default per-level scenes. Used when the
 # player flips the "Map: Custom" toggle on the title screen. Each scene uses
@@ -46,14 +45,18 @@ const BOSS_ARENA_SCENE_PATH := "res://scenes/bosses/boss_arena.tscn"
 # REPLACE the level's default behaviour entirely — handcrafted versions of the
 # tutorial / mazes / boss won't have their scripted puzzles / exits / boss
 # fight; they're blank canvases for the level designer to populate themselves.
+# Maps level number → its HandcraftedMap scene. The proc-style levels (2, 3, 5,
+# 6, 7) always load these; the tutorial (1) uses its entry only under the "Map:
+# Custom" toggle. Catacombs (4) and Boss (8) have dedicated scenes and aren't here.
+# Note the file names keep their original numbers; only the level KEYS were
+# remapped when the order changed (Structures→5, Escort→6, Marsh→7).
 const HANDCRAFTED_MAP_PATHS := {
 	1: "res://scenes/handcrafted/mission_1_tutorial.tscn",
 	2: "res://scenes/handcrafted/mission_2_eliminate.tscn",
-	3: "res://scenes/handcrafted/mission_3_maze1.tscn",
-	4: "res://scenes/handcrafted/mission_4_structures.tscn",
-	5: "res://scenes/handcrafted/mission_5_escort.tscn",
-	6: "res://scenes/handcrafted/mission_6_maze2.tscn",
-	7: "res://scenes/handcrafted/mission_7_boss.tscn",
+	3: "res://scenes/handcrafted/mission_3_elite_hunt.tscn",
+	5: "res://scenes/handcrafted/mission_4_structures.tscn",
+	6: "res://scenes/handcrafted/mission_5_escort.tscn",
+	7: "res://scenes/handcrafted/mission_7_marsh.tscn",
 }
 
 @onready var map_gen:    Node        = $GameViewport/SubViewport/MapGenerator
@@ -89,7 +92,10 @@ func _ready() -> void:
 	# handcrafted scene when Custom is on.
 	var effective_squad_size: int = squad_size
 	var lvl: int = GameManager.current_level
-	var is_proc_level: bool = (lvl == 2 or lvl == 4 or lvl == 5)
+	# Levels whose maps are HandcraftedMap-based and ALWAYS load their own scene
+	# (Eliminate 2, Elite Hunt 3, Structures 5, Escort 6, Blighted Marsh 7).
+	# Catacombs (4) / Boss (8) use their dedicated scenes; Tutorial (1) is below.
+	var is_proc_level: bool = (lvl == 2 or lvl == 3 or lvl == 5 or lvl == 6 or lvl == 7)
 	var should_use_handcrafted: bool = is_proc_level \
 		or (GameManager.use_handcrafted_maps and HANDCRAFTED_MAP_PATHS.has(lvl))
 	if should_use_handcrafted and HANDCRAFTED_MAP_PATHS.has(lvl):
@@ -108,14 +114,9 @@ func _ready() -> void:
 		var camera: Node = get_tree().get_first_node_in_group("main_camera")
 		if camera and camera.has_method("refresh_map_bounds"):
 			camera.refresh_map_bounds()
-		# Mazes ship with a single-soldier rule baked into their gameplay —
-		# preserve that for handcrafted versions of mazes so squad size matches
-		# the rest of the maze pipeline (formation snap skipped, etc.).
-		# Tutorial handcrafted uses the same tall-narrow layout — allow free zoom.
+		# Tutorial handcrafted uses a tall-narrow layout — allow free zoom.
 		if lvl == 1 and camera and camera.has_method("allow_free_zoom"):
 			camera.allow_free_zoom()
-		if lvl == 3 or lvl == 6:
-			effective_squad_size = 1
 	elif GameManager.current_level == 1:
 		var old: Node = map_gen
 		map_gen = _spawn_alt_level(TUTORIAL_1_SCENE_PATH)
@@ -126,18 +127,8 @@ func _ready() -> void:
 			# The tutorial is now a wide ≈16:9 Caraka map — let the camera fit the
 			# whole map (no free-zoom override) so it fills the screen with no bars.
 			camera.refresh_map_bounds()
-	elif GameManager.current_level == 3:
-		var old: Node = map_gen
-		map_gen = _spawn_alt_level(MAZE_SCENE_PATH)
-		old.remove_from_group("map_generator")
-		old.queue_free()
-		effective_squad_size = 1
-		# Camera snapshotted the old map's bounds in its own _ready (which ran
-		# before Main._ready) — re-read from the maze now.
-		var camera: Node = get_tree().get_first_node_in_group("main_camera")
-		if camera and camera.has_method("refresh_map_bounds"):
-			camera.refresh_map_bounds()
-	elif GameManager.current_level == 6:
+	elif GameManager.current_level == 4:
+		# Catacombs — the mid-run maze breather (single soldier).
 		var old: Node = map_gen
 		map_gen = _spawn_alt_level(MAZE_2_SCENE_PATH)
 		old.remove_from_group("map_generator")
@@ -146,7 +137,7 @@ func _ready() -> void:
 		var camera: Node = get_tree().get_first_node_in_group("main_camera")
 		if camera and camera.has_method("refresh_map_bounds"):
 			camera.refresh_map_bounds()
-	elif GameManager.current_level == 7:
+	elif GameManager.current_level == 8:
 		var old: Node = map_gen
 		map_gen = _spawn_alt_level(BOSS_ARENA_SCENE_PATH)
 		old.remove_from_group("map_generator")
@@ -175,6 +166,9 @@ func _ready() -> void:
 	_mission_ended = false
 
 	_spawn_squad(effective_squad_size)
+	# On dark levels (Blighted Marsh) give every kid a small personal light so they
+	# can see their immediate surroundings — the rest of the map stays in shadow.
+	_attach_night_lights()
 	# Apply persistent fragment effects on top of the freshly-reset per-mission
 	# baselines. Done after spawn so per-soldier bonuses (future fragments)
 	# can mutate live soldier instances.
@@ -182,12 +176,12 @@ func _ready() -> void:
 	if not applied_fragments.is_empty():
 		hud.show_toast("MEMORIES ACTIVE — %s" % ", ".join(applied_fragments),
 				Color(0.75, 0.95, 1.0), 3.5)
-	# Maze levels (3 + 6) start with a single soldier at the entrance — no formation snap.
-	if GameManager.current_level != 3 and GameManager.current_level != 6:
+	# Catacombs (level 4) starts with a single soldier at the entrance — no formation snap.
+	if GameManager.current_level != 4:
 		squad_ctrl.snap_to_formation()
 	# Boss mission gets a heavier loadout: extra rifle ammo for sustained Phase 1
 	# fire and more grenades to crack the orbiting Memory Totems in Phase 2.
-	if GameManager.current_level == 7:
+	if GameManager.current_level == 8:
 		_apply_boss_loadout()
 
 	GameManager.soldier_died.connect(_on_soldier_died)
@@ -208,11 +202,11 @@ func _ready() -> void:
 		ls.hide_loading()
 
 # ---------------------------------------------------------------------------
-# Maze click handler (levels 3 and 6): SubViewportContainer._gui_input consumes
+# Maze click handler (Catacombs, level 4): SubViewportContainer._gui_input consumes
 # mouse events before _unhandled_input fires, so we intercept in _input (which
 # runs first). Action-based so the gamepad "A" button also triggers a move order.
 func _input(event: InputEvent) -> void:
-	if GameManager.current_level != 3 and GameManager.current_level != 6:
+	if GameManager.current_level != 4:
 		return
 	if not event.is_action_pressed("squad_move"):
 		return
@@ -304,13 +298,12 @@ func _spawn_squad(count: int) -> void:
 		if living.is_empty():
 			return
 	var slots_to_spawn: Array[int] = living.slice(0, count)
-	# Maze missions (level 3 = Maze 1, level 6 = Maze 2) only spawn one kid,
-	# and each maze frees a specific kid's parent. Prefer that kid so the cage
-	# opens; fall back to the first living kid if they've died earlier in
-	# the run (cage stays shut, mission still winnable via the maze exit).
-	# Slot = level - 1: Maze 1 → Kid 3 (slot 2), Maze 2 → Kid 6 (slot 5).
-	if count == 1 and (GameManager.current_level == 3 or GameManager.current_level == 6):
-		var preferred_slot: int = GameManager.current_level - 1
+	# Catacombs (level 4) only spawns one kid, and frees a specific kid's parent.
+	# Prefer that kid so the cage opens; fall back to the first living kid if they
+	# died earlier in the run (cage stays shut, mission still winnable via the
+	# maze exit). Slot = level - 2: Catacombs → Kid 3 (slot 2).
+	if count == 1 and GameManager.current_level == 4:
+		var preferred_slot: int = GameManager.current_level - 2
 		if preferred_slot >= 0 and preferred_slot < RunState.SQUAD_SIZE \
 				and RunState.kids_alive[preferred_slot]:
 			slots_to_spawn = [preferred_slot]
@@ -323,7 +316,7 @@ func _spawn_squad(count: int) -> void:
 		var carry_hp: int = RunState.get_carry_hp(slot)
 		if carry_hp > 0 and soldier.has_method("set_carried_hp"):
 			soldier.set_carried_hp(carry_hp)
-		if GameManager.current_level == 3 or GameManager.current_level == 6:
+		if GameManager.current_level == 4:
 			soldier.maze_mode = true
 		soldier.add_to_group("soldiers")
 		_subviewport.add_child(soldier)
@@ -331,14 +324,37 @@ func _spawn_squad(count: int) -> void:
 				else Vector2(200 + i * 40, 400)
 		squad_ctrl.add_soldier(soldier)
 
+# Gives each squad member a small personal PointLight2D on night levels (the map
+# exposes is_night_level()). Other levels keep their CanvasModulate at default
+# white, so no lights are added and nothing changes.
+func _attach_night_lights() -> void:
+	if map_gen == null or not map_gen.has_method("is_night_level") or not map_gen.is_night_level():
+		return
+	# Soldiers: a soft, LOW-energy warm light — high energy blew the sprites out to
+	# a washed-white blob, so keep it gentle (ambient + this should sit under 1.0).
+	for s in get_tree().get_nodes_in_group("soldiers"):
+		if s is Node2D and not (s as Node2D).has_node("NightLight"):
+			var l := LightingUtil.make_light(Color(0.95, 0.9, 0.78), 0.55, 1.1)
+			l.name = "NightLight"
+			(s as Node2D).add_child(l)
+	# Enemies: a dim red glow so lurking mushrooms are visible as threats in the dark.
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e is Node2D and not (e as Node2D).has_node("NightLight"):
+			var l := LightingUtil.make_light(Color(1.0, 0.4, 0.35), 0.7, 0.7)
+			l.name = "NightLight"
+			(e as Node2D).add_child(l)
+
 # ---------------------------------------------------------------------------
 func _setup_objective() -> void:
-	# Every non-boss mission can have a parent cage + memory fragment placed
-	# by its level script. Wire them here uniformly; the tutorial wins the
-	# mission on parent rescue, every other mission treats the cage as a
-	# side objective that flips a RunState bit and shows a toast.
-	if GameManager.current_level != 7:
-		_wire_parent_cage(GameManager.current_level == 1)
+	# Boss is level 8; every other level can carry a parent cage + fragments placed
+	# by its level script. Only the tutorial (1) WINS on the cage (and its cage
+	# frees no parent — see ParentCage.frees_parent). The Blighted Marsh (7) wins
+	# on its hidden portal instead, so it's winnable regardless of which kids are
+	# alive — its parent cave is an optional side objective. All other levels treat
+	# the cage as a side objective that flips a RunState bit and shows a toast.
+	if GameManager.current_level != 8:
+		var cage_wins: bool = GameManager.current_level == 1
+		_wire_parent_cage(cage_wins)
 		_wire_memory_fragment()
 
 	match GameManager.current_level:
@@ -353,16 +369,18 @@ func _setup_objective() -> void:
 			# enemies_alive counter reaches zero (see GameManager.on_enemy_died,
 			# which is hard-coded to check level == 2).
 			GameManager.mission_complete.connect(_on_mission_win)
-		3, 6:
-			# Maze escape (Maze 1 = level 3, Maze 2 = level 6) — reaching the
-			# exit Area2D wins the mission. Same wiring works for both maze
-			# layouts since they share the API.
+		3:
+			# Elite Hunt — GameManager.mission_complete fires when the last elite
+			# in the "elites" group dies (see GameManager.on_enemy_died).
+			GameManager.mission_complete.connect(_on_mission_win)
+		4:
+			# Catacombs maze — reaching the exit Area2D wins the mission.
 			if map_gen and map_gen.has_signal("escaped"):
 				map_gen.escaped.connect(_on_mission_win)
 			var exit_zone: Node = map_gen.get_objective_node("maze_exit")
 			if exit_zone and hud.has_method("set_maze_exit"):
 				hud.set_maze_exit(exit_zone)
-		4:
+		5:
 			# Destroy Structures — mission ends when every fortified building
 			# has been levelled. Each destruction spawns a reinforcement wave.
 			var structures = map_gen.get_objective_node("fortified_structure")
@@ -381,7 +399,7 @@ func _setup_objective() -> void:
 						if remaining[0] <= 0:
 							_on_mission_win()
 					)
-		5:
+		6:
 			# Escort VIP — walk the NPC from their shelter to the extraction zone.
 			var zone: Node = map_gen.get_objective_node("extraction_zone")
 			var npc:  Node = map_gen.get_objective_node("escort_npc")
@@ -408,6 +426,12 @@ func _setup_objective() -> void:
 								other.queue_free()
 					)
 		7:
+			# Blighted Marsh — find the hidden portal in the dark to escape. Winning
+			# on the portal (not the optional parent cave) keeps the level beatable
+			# no matter which kids survive.
+			if map_gen and map_gen.has_signal("portal_reached"):
+				map_gen.portal_reached.connect(_on_mission_win)
+		8:
 			# Boss arena — defeating the Heart wins the mission.
 			if map_gen and map_gen.has_signal("boss_defeated"):
 				map_gen.boss_defeated.connect(_on_mission_win)
@@ -457,7 +481,7 @@ func _on_mission_win() -> void:
 	_mission_ended = true
 	_persist_run_state()
 	_freeze_and_fade_world()
-	if GameManager.current_level >= 7:
+	if GameManager.current_level >= 8:
 		hud.show_mission_result("YOU WIN! ALL LEVELS COMPLETE!", Color.YELLOW, false)
 	else:
 		_enter_fairy_garden()
@@ -521,9 +545,13 @@ func _wire_parent_cage(end_mission_on_freed: bool) -> void:
 	if cage == null:
 		return
 	if cage.has_signal("parent_freed"):
+		var frees: bool = cage.frees_parent if "frees_parent" in cage else true
 		cage.parent_freed.connect(func(slot: int) -> void:
-			hud.show_toast("KID %d'S PARENT FREED" % (slot + 1),
-					Color(1.0, 0.85, 0.35), 3.0)
+			if frees:
+				hud.show_toast("KID %d'S PARENT FREED" % (slot + 1),
+						Color(1.0, 0.85, 0.35), 3.0)
+			else:
+				hud.show_toast("TRIAL COMPLETE", Color(0.7, 0.95, 1.0), 3.0)
 			if end_mission_on_freed:
 				_on_mission_win()
 		)
