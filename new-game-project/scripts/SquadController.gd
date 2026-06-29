@@ -153,7 +153,22 @@ func _event_cursor_pos(event: InputEvent) -> Vector2:
 # Process — drives continuous AUTO fire while right mouse is held
 # ---------------------------------------------------------------------------
 func _process(delta: float) -> void:
-	if not _right_held or soldiers.is_empty():
+	if soldiers.is_empty():
+		return
+	# Touch fire button (auto-aim): fire at the nearest enemy while held. Takes
+	# priority over the mouse path so a tablet player never depends on a cursor.
+	if _touch_firing:
+		var target: Vector2 = _auto_aim_target()
+		if target == Vector2.INF:
+			return                       # nothing in range — hold fire
+		if not _is_continuous_weapon():
+			return                       # single-shot weapons already fired on press
+		_auto_timer -= delta
+		if _auto_timer <= 0.0:
+			_auto_timer = _current_auto_interval()
+			_issue_fire_order(target)
+		return
+	if not _right_held:
 		return
 	if not _is_continuous_weapon():
 		return
@@ -161,6 +176,36 @@ func _process(delta: float) -> void:
 	if _auto_timer <= 0.0:
 		_auto_timer = _current_auto_interval()
 		_issue_fire_order(_screen_to_world(get_viewport().get_mouse_position()))
+
+# ---------------------------------------------------------------------------
+# Touch fire control (tablet/phone). The HUD's on-screen FIRE button calls this
+# on press/release; the controlled group then auto-fires at the NEAREST enemy
+# (no cursor to aim with on touch). Reuses the same fire path as held right-click.
+# ---------------------------------------------------------------------------
+var _touch_firing: bool = false
+
+func set_touch_firing(on: bool) -> void:
+	_touch_firing = on
+	if not on or soldiers.is_empty():
+		return
+	var target: Vector2 = _auto_aim_target()
+	if target != Vector2.INF:
+		_issue_fire_order(target)        # immediate shot (covers single-shot weapons too)
+	_auto_timer = _current_auto_interval()
+
+# World position of the closest living enemy to the squad, or Vector2.INF if none.
+func _auto_aim_target() -> Vector2:
+	var origin: Vector2 = get_centroid()
+	var best: Vector2 = Vector2.INF
+	var best_d: float = INF
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not (e is Node2D):
+			continue
+		var d: float = origin.distance_to((e as Node2D).global_position)
+		if d < best_d:
+			best_d = d
+			best = (e as Node2D).global_position
+	return best
 
 # Resend cadence depends on which weapon the active group is holding.
 func _current_auto_interval() -> float:

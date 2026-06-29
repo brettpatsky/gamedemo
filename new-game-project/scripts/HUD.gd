@@ -30,20 +30,20 @@ extends CanvasLayer
 # ---------------------------------------------------------------------------
 const WEAPON_NAMES := ["Pistol", "Auto", "Grenade", "Sacrifice"]
 const WEAPON_ICONS := [
-	"res://resources/ui/icons/wand_fire.png",
-	"res://resources/ui/icons/wand_rapid.png",
-	"res://resources/ui/icons/bomb_magic.png",
-	"res://resources/ui/icons/gem_sacrifice.png",
+	"res://resources/UI/icons/wand_fire.png",
+	"res://resources/UI/icons/wand_rapid.png",
+	"res://resources/UI/icons/bomb_magic.png",
+	"res://resources/UI/icons/gem_sacrifice.png",
 ]
 
 const FORMATION_NAMES := ["2×3", "3×2", "1×6", "6×1", "★"]
 
 const FORMATION_ICONS := [
-	"res://resources/ui/icons/formation_2x3.png",
-	"res://resources/ui/icons/formation_3x2.png",
-	"res://resources/ui/icons/formation_1x6.png",
-	"res://resources/ui/icons/formation_6x1.png",
-	"res://resources/ui/icons/formation_star.png",
+	"res://resources/UI/icons/formation_2x3.png",
+	"res://resources/UI/icons/formation_3x2.png",
+	"res://resources/UI/icons/formation_1x6.png",
+	"res://resources/UI/icons/formation_6x1.png",
+	"res://resources/UI/icons/formation_star.png",
 ]
 
 # Colors shared by group buttons and the per-soldier group-number labels so the
@@ -201,6 +201,150 @@ func _ready() -> void:
 	_refresh_weapon_highlight()
 	_refresh_formation_highlight()
 	_style_hud()
+	_build_touch_controls()
+
+# =============================================================================
+# TOUCH CONTROLS (tablet / phone)
+# Move = tap the field (Godot emulates a left-click from touch). Every command is
+# already an on-screen button. The one missing input is firing (a held right-click
+# aiming at the cursor), so we add a big thumb FIRE button that auto-aims the
+# nearest enemy. Only shown when a touchscreen is present, so desktop is untouched.
+# =============================================================================
+var _touch_ui: bool = false
+var _touch_fire_button: Button = null
+
+# Safe-area (notch / rounded corners). Black bars live on their own high layer;
+# base offsets of the edge controls are captured once so re-applying on rotate
+# never stacks.
+var _safe_bars: CanvasLayer = null
+var _safe_base_offsets: Dictionary = {}   # Control -> Vector4(l, t, r, b)
+
+func _build_touch_controls() -> void:
+	if not DisplayServer.is_touchscreen_available():
+		return
+	_touch_ui = true
+	_finger_size_hud()
+	var btn := Button.new()
+	btn.name = "TouchFireButton"
+	btn.text = "FIRE"
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.add_theme_font_size_override("font_size", 30)
+	btn.modulate = Color(1, 1, 1, 0.85)
+	# Big round-ish red button, bottom-right, sitting above the bottom HUD panel.
+	const SZ := 156.0
+	btn.anchor_left = 1.0; btn.anchor_top = 1.0; btn.anchor_right = 1.0; btn.anchor_bottom = 1.0
+	btn.offset_right  = -32.0
+	btn.offset_bottom = -118.0
+	btn.offset_left   = -32.0 - SZ
+	btn.offset_top    = -118.0 - SZ
+	for style_name in ["normal", "hover", "pressed", "focus"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.85, 0.18, 0.18) if style_name != "pressed" else Color(1.0, 0.4, 0.3)
+		sb.set_corner_radius_all(int(SZ * 0.5))
+		sb.border_color = Color(1, 1, 1, 0.6)
+		sb.set_border_width_all(3)
+		btn.add_theme_stylebox_override(style_name, sb)
+	btn.add_theme_color_override("font_color", Color.WHITE)
+	btn.button_down.connect(func() -> void: _set_squad_touch_firing(true))
+	btn.button_up.connect(func() -> void: _set_squad_touch_firing(false))
+	add_child(btn)
+	_touch_fire_button = btn
+
+	# Notch / rounded-corner handling. Recompute now and on every resize/rotation.
+	# Deferred once so Android reports a valid safe area (it can return the full
+	# window on the very first frame).
+	get_viewport().size_changed.connect(_apply_safe_area)
+	_apply_safe_area.call_deferred()
+
+func _set_squad_touch_firing(on: bool) -> void:
+	var sc: Node = get_tree().get_first_node_in_group("squad_controller")
+	if sc and sc.has_method("set_touch_firing"):
+		sc.set_touch_firing(on)
+
+# Computes the display safe area (camera hole-punch + rounded corners), masks the
+# unsafe margins with opaque black bars, and pulls the edge-anchored HUD controls
+# inward so the cog, FIRE button, labels, and command bar stay fully on-screen.
+func _apply_safe_area() -> void:
+	if not _touch_ui:
+		return
+	var win: Vector2 = Vector2(DisplayServer.window_get_size())
+	if win.x <= 0.0 or win.y <= 0.0:
+		return
+	var safe: Rect2i = DisplayServer.get_display_safe_area()
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var sx: float = vp.x / win.x
+	var sy: float = vp.y / win.y
+	var left:   float = maxf(float(safe.position.x) * sx, 0.0)
+	var top:    float = maxf(float(safe.position.y) * sy, 0.0)
+	var right:  float = maxf((win.x - float(safe.position.x + safe.size.x)) * sx, 0.0)
+	var bottom: float = maxf((win.y - float(safe.position.y + safe.size.y)) * sy, 0.0)
+
+	_rebuild_safe_bars(vp, left, top, right, bottom)
+
+	# Bottom-right corner controls: pull left by `right`, up by `bottom`.
+	_inset_control(_options_button, -right, -bottom, -right, -bottom)
+	_inset_control(_options_popup,  -right, -bottom, -right, -bottom)
+	_inset_control(_touch_fire_button, -right, -bottom, -right, -bottom)
+	# Top-left labels: push right by `left`, down by `top`.
+	_inset_control(_objective_label, left, top, left, top)
+	_inset_control(_enemy_label,     left, top, left, top)
+	_inset_control(_escort_label,    left, top, left, top)
+	# Keep the command bar's contents clear of the side bars.
+	var bar_margin := get_node_or_null("BottomPanel/MarginContainer") as MarginContainer
+	if bar_margin:
+		bar_margin.add_theme_constant_override("margin_left",  int(maxf(left, 8.0)))
+		bar_margin.add_theme_constant_override("margin_right", int(maxf(right, 8.0)))
+
+func _inset_control(c: Control, dl: float, dt: float, dr: float, db: float) -> void:
+	if c == null:
+		return
+	if not _safe_base_offsets.has(c):
+		_safe_base_offsets[c] = Vector4(c.offset_left, c.offset_top, c.offset_right, c.offset_bottom)
+	var b: Vector4 = _safe_base_offsets[c]
+	c.offset_left   = b.x + dl
+	c.offset_top    = b.y + dt
+	c.offset_right  = b.z + dr
+	c.offset_bottom = b.w + db
+
+func _rebuild_safe_bars(vp: Vector2, left: float, top: float, right: float, bottom: float) -> void:
+	if _safe_bars == null:
+		_safe_bars = CanvasLayer.new()
+		_safe_bars.layer = 80   # above the HUD (layer 1) so it frames everything
+		add_child(_safe_bars)
+	for child in _safe_bars.get_children():
+		child.queue_free()
+	if left <= 0.0 and top <= 0.0 and right <= 0.0 and bottom <= 0.0:
+		return
+	var rects := [
+		Rect2(0, 0, left, vp.y),                       # left
+		Rect2(vp.x - right, 0, right, vp.y),           # right
+		Rect2(0, 0, vp.x, top),                        # top
+		Rect2(0, vp.y - bottom, vp.x, bottom),         # bottom
+	]
+	for r: Rect2 in rects:
+		if r.size.x <= 0.0 or r.size.y <= 0.0:
+			continue
+		var bar := ColorRect.new()
+		bar.color = Color.BLACK
+		bar.position = r.position
+		bar.size = r.size
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_safe_bars.add_child(bar)
+
+# Enlarges the bottom command panel + its buttons to finger-friendly sizes on
+# touch devices (the defaults are mouse-sized). Desktop keeps the compact layout.
+func _finger_size_hud() -> void:
+	var panel := get_node_or_null("BottomPanel") as Control
+	if panel:
+		panel.offset_top = -88.0   # taller strip so 64px buttons fit
+	for grid in [_weapon_grid, _formation_grid]:
+		if grid == null:
+			continue
+		for c in grid.get_children():
+			if c is Button:
+				(c as Button).custom_minimum_size = Vector2(60, 64)
+	if _group_cycle_button:
+		_group_cycle_button.custom_minimum_size = Vector2(80, 64)
 
 # =============================================================================
 # WIRING — connect each grid button to its handler
@@ -273,8 +417,8 @@ func _wire_formation_buttons() -> void:
 		_revive_button.toggle_mode = false
 		_revive_button.text = ""
 		_revive_button.tooltip_text = "Revive last fallen soldier"
-		if ResourceLoader.exists("res://resources/ui/icons/revive_heart.png"):
-			_revive_button.icon = load("res://resources/ui/icons/revive_heart.png")
+		if ResourceLoader.exists("res://resources/UI/icons/revive_heart.png"):
+			_revive_button.icon = load("res://resources/UI/icons/revive_heart.png")
 			_revive_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			_revive_button.expand_icon = true
 		# Add a small counter label inside the button (same pattern as ammo).
@@ -629,7 +773,7 @@ func _rebuild_group_buttons(num_groups: int, active: int, alive_groups: Array = 
 		btn.icon = _make_group_icon(i)
 		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		btn.expand_icon    = true
-		btn.custom_minimum_size = Vector2(30, 30)
+		btn.custom_minimum_size = Vector2(60, 60) if _touch_ui else Vector2(30, 30)
 		btn.toggle_mode    = true
 		btn.button_pressed = (i == active)
 		var is_alive: bool = alive_groups.is_empty() or alive_groups.has(i)
@@ -1205,7 +1349,7 @@ func _style_hud() -> void:
 	# Bottom panel — fantasy stone texture with gold corner ornaments.
 	var bottom := get_node_or_null("BottomPanel") as PanelContainer
 	if bottom:
-		const PANEL_TEX := "res://resources/ui/hud_panel_bg.png"
+		const PANEL_TEX := "res://resources/UI/hud_panel_bg.png"
 		if ResourceLoader.exists(PANEL_TEX):
 			var style_tex := StyleBoxTexture.new()
 			style_tex.texture = load(PANEL_TEX)
