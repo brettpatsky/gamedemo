@@ -19,9 +19,11 @@
 # =============================================================================
 extends Node2D
 
-const _ROCK_SCENE:            PackedScene = preload("res://scenes/mazes/maze_rock.tscn")
-const _PARENT_CAGE_SCENE:     PackedScene = preload("res://scenes/parent_cage.tscn")
-const _MEMORY_FRAGMENT_SCENE: PackedScene = preload("res://scenes/memory_fragment.tscn")
+const _ROCK_SCENE:    PackedScene = preload("res://scenes/mazes/maze_rock.tscn")
+const _PORTAL_SCRIPT: GDScript    = preload("res://scripts/Portal.gd")
+
+# Reaching the portal in the final room ends the tutorial (Main wires this to win).
+signal portal_reached
 
 const TILE              := 64
 const ROOM_W_TILES      := 22
@@ -65,9 +67,6 @@ const SEASON_TREE_REGION := {
 	Season.FALL:   Rect2(96, 0, 32, 48),
 	Season.WINTER: Rect2(192, 0, 32, 48),
 }
-# Waterfall animation lives in per-season folders (Winter falls back to Spring).
-const WATERFALL_DIR := "res://resources/caraka/Tileset/Water/Waterfall"
-const SEASON_FOLDER := {Season.SPRING: "Spring", Season.SUMMER: "Summer", Season.FALL: "Fall", Season.WINTER: "Spring"}
 
 @onready var background: ColorRect          = $Background
 @onready var nav_region: NavigationRegion2D = $NavigationRegion2D
@@ -100,8 +99,7 @@ var _elements_gate:  PuzzleGate = null
 var _wall_tiles: Dictionary = {}
 
 # References Main.gd queries via get_objective_node.
-var _parent_cage:      Node = null
-var _memory_fragment:  Node = null
+var _portal:           Node = null
 
 # Active tutorial modal — only one open at a time.
 var _active_modal: CanvasLayer = null
@@ -164,10 +162,8 @@ func get_spawn_positions(count: int) -> Array[Vector2]:
 	return out
 
 func get_objective_node(key: String) -> Variant:
-	if key == "parent_cage":
-		return _parent_cage
-	if key == "memory_fragment":
-		return _memory_fragment
+	if key == "portal":
+		return _portal
 	return null
 
 func generate(_seed_value: int = 0) -> void:
@@ -188,9 +184,13 @@ func _resize_background() -> void:
 	background.offset_right  = MAP_W + float(RIGHT_STRIP_TILES * TILE)
 	background.offset_bottom = MAP_H
 
-# Season assigned to each room, cycling up from the bottom (room 0).
+# Season per room, in pairs going UP from the bottom (room 0): the first two rooms
+# are Summer, the next two Fall, then Winter, then Spring.
 func _room_season(room_index: int) -> int:
-	return room_index % 4
+	var pairs := [Season.SUMMER, Season.FALL, Season.WINTER, Season.SPRING]
+	@warning_ignore("integer_division")
+	var idx: int = room_index / 2
+	return pairs[idx] if idx < pairs.size() else pairs[pairs.size() - 1]
 
 # Maps a tutorial tile-row to the season of the room that contains it, so the
 # floor (and side strips) change season at each room boundary.
@@ -241,35 +241,41 @@ func _build_caraka_background() -> void:
 	for season in grass_by_season:
 		grass.set_cells_terrain_connect(grass_by_season[season], SEASON_GRASS_SET[season], 0, false)
 
-# Tree line down the LEFT strip — seasonal foliage that changes with each room band.
+# A DENSE forest forming the left border — overlapping seasonal trees from the
+# left strip right up to the playfield edge, depth-sorted so the canopy reads as
+# solid woodland. The invisible left edge wall is what actually blocks the squad.
 func _build_left_trees() -> void:
 	var tex: Texture2D = load(TREE_TEX) if ResourceLoader.exists(TREE_TEX) else null
 	if tex == null:
 		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1337
-	var strip_w: float = float(LEFT_STRIP_TILES) * TILE
-	const COLS := 2
-	for ty in range(2, MAP_H_TILES - 1, 2):
+	var x_min: float = -float(LEFT_STRIP_TILES) * TILE
+	var x_max: float = float(TILE)            # up to the interior boundary (col 1)
+	var span: float = x_max - x_min
+	const PER_ROW := 4                          # dense: ~4 overlapping trees every row
+	for ty in range(0, MAP_H_TILES):
 		var region: Rect2 = SEASON_TREE_REGION[_season_for_row(ty)]
-		for k in COLS:
+		for k in PER_ROW:
 			var at := AtlasTexture.new()
 			at.atlas = tex
 			at.region = region
 			var spr := Sprite2D.new()
 			spr.texture = at
 			spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			spr.scale = Vector2(4.0, 4.0)
+			var sc: float = rng.randf_range(3.2, 4.8)
+			spr.scale = Vector2(sc, sc)
+			spr.flip_h = rng.randf() < 0.5
 			spr.offset = Vector2(0, -region.size.y * 0.5)   # stand on the ground
-			var jx: float = rng.randf_range(0.15, 0.9)
-			spr.position = Vector2(
-				-strip_w + (float(k) + jx) / float(COLS) * strip_w,
-				float(ty) * TILE + rng.randf_range(-18.0, 18.0))
-			spr.z_index = 5
+			var fx: float = (float(k) + rng.randf_range(0.0, 1.0)) / float(PER_ROW)
+			var y: float = float(ty) * TILE + rng.randf_range(-26.0, 26.0)
+			spr.position = Vector2(x_min + fx * span, y)
+			spr.z_index = 1 + int(y / 16.0)   # nearer (lower) trees overlap further ones
 			add_child(spr)
 
-# Stream down the RIGHT strip — seasonal water plus animated waterfalls cascading
-# beside each room band.
+# The RIGHT border is a plain seasonal water stream (no waterfall — it reads wrong
+# on flat ground). Water is painted from the impassable edge column out through the
+# strip, themed per room band.
 func _build_right_stream() -> void:
 	var ts: TileSet = load(CARAKA_TILESET) if ResourceLoader.exists(CARAKA_TILESET) else null
 	if ts == null:
@@ -280,49 +286,20 @@ func _build_right_stream() -> void:
 		var season: int = _season_for_row(cy)
 		if not water_by_season.has(season):
 			water_by_season[season] = [] as Array[Vector2i]
-		for cx in range(MAP_W_TILES, MAP_W_TILES + RIGHT_STRIP_TILES):
+		# Include the edge column so the impassable boundary itself reads as water.
+		for cx in range(MAP_W_TILES - 1, MAP_W_TILES + RIGHT_STRIP_TILES):
 			water_by_season[season].append(Vector2i(cx, cy))
 	for season in water_by_season:
 		water.set_cells_terrain_connect(water_by_season[season], WATER_TERRAIN_SET, SEASON_WATER[season], false)
 
-	# A waterfall cascading beside every room, themed to that room's season.
-	var fall_x: float = float(MAP_W) + float(RIGHT_STRIP_TILES) * TILE * 0.5
-	for r in NUM_ROOMS:
-		_make_waterfall(_room_season(r), Vector2(fall_x, _room_centre(r).y))
-
-# Builds one looping waterfall AnimatedSprite2D from the per-season frame folder.
-func _make_waterfall(season: int, pos: Vector2) -> void:
-	var folder: String = SEASON_FOLDER[season]
-	var frames := SpriteFrames.new()
-	frames.remove_animation(&"default")
-	frames.add_animation(&"flow")
-	frames.set_animation_loop(&"flow", true)
-	frames.set_animation_speed(&"flow", 8.0)
-	var added := 0
-	for i in range(1, 5):
-		var p := "%s/%s/waterfall%d.png" % [WATERFALL_DIR, folder, i]
-		if ResourceLoader.exists(p):
-			frames.add_frame(&"flow", load(p))
-			added += 1
-	if added == 0:
-		return
-	var spr := AnimatedSprite2D.new()
-	spr.sprite_frames = frames
-	spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	spr.scale = Vector2(3.0, 3.0)   # 48×64 frames → 144×192
-	spr.position = pos
-	spr.z_index = -9                # above the stream water, below walls/units
-	spr.play(&"flow")
-	add_child(spr)
-
 func _build_walls() -> void:
-	# Outer perimeter.
-	for x in MAP_W_TILES:
+	# Top + bottom perimeter rocks (interior columns only — the LEFT edge is a dense
+	# forest and the RIGHT edge is a waterfall stream, both made impassable by the
+	# invisible edge walls below instead of a rock column).
+	for x in range(1, MAP_W_TILES - 1):
 		_place_wall(x, 0)
 		_place_wall(x, MAP_H_TILES - 1)
-	for y in MAP_H_TILES:
-		_place_wall(0, y)
-		_place_wall(MAP_W_TILES - 1, y)
+	_build_edge_collision()
 	# Inner horizontal dividers between each adjacent pair of rooms, with a
 	# centred doorway (DOORWAY_COL_LEFT..DOORWAY_COL_RIGHT, 4 tiles wide).
 	for r in NUM_ROOMS - 1:
@@ -332,6 +309,24 @@ func _build_walls() -> void:
 			if interior_x >= DOORWAY_COL_LEFT and interior_x <= DOORWAY_COL_RIGHT:
 				continue
 			_place_wall(x, divider_y)
+
+# Invisible full-height collision walls down the left + right edge columns. These
+# are the actual impassable boundary; the forest (left) and waterfall (right) are
+# drawn over them. _bake_nav cuts a hole per StaticBody2D, so these keep the nav
+# (and the squad) inside the interior just like the old rock columns did.
+func _build_edge_collision() -> void:
+	_add_collision_wall(Rect2(0, 0, TILE, MAP_H))               # left edge (col 0)
+	_add_collision_wall(Rect2(MAP_W - TILE, 0, TILE, MAP_H))    # right edge (last col)
+
+func _add_collision_wall(world_rect: Rect2) -> void:
+	var body := StaticBody2D.new()
+	body.position = world_rect.position + world_rect.size * 0.5
+	var cs := CollisionShape2D.new()
+	var shape := RectangleShape2D.new()
+	shape.size = world_rect.size
+	cs.shape = shape
+	body.add_child(cs)
+	add_child(body)
 
 func _place_wall(tile_x: int, tile_y: int) -> void:
 	# Dedup: perimeter and divider loops both want to occupy corners and the
@@ -605,29 +600,16 @@ func _try_solve_final_trial(gate: PuzzleGate) -> void:
 	_solved[6] = true
 	gate.open()
 
-# Room 7 — parent cage and the School Photo artifact.
+# Room 7 — the exit portal. Stepping into it ends the tutorial (no parent cage or
+# fragment here; the tutorial is a teaching sandbox that leads straight onward).
 func _build_room_final() -> void:
 	_add_sign(_room_position(7, 1, 0),
-			"Free your parent.\nCollect the photo to keep its memory.")
-	var cage: Node2D = _PARENT_CAGE_SCENE.instantiate()
-	if "child_slot" in cage:
-		cage.set("child_slot", 0)
-	# Tutorial is an optional teaching sandbox — completing it ends the lesson but
-	# does NOT consume a parent rescue (the 6 main levels free all 6 parents).
-	if "frees_parent" in cage:
-		cage.set("frees_parent", false)
-	cage.position = _room_position(7, ROOM_HALF_W_TILES - 2, ROOM_HALF_H_TILES)
-	add_child(cage)
-	_parent_cage = cage
-
-	var frag: Node2D = _MEMORY_FRAGMENT_SCENE.instantiate()
-	if "fragment_id" in frag:
-		frag.set("fragment_id", "school_photo")
-	if "display_name" in frag:
-		frag.set("display_name", "School Photo")
-	frag.position = _room_position(7, ROOM_HALF_W_TILES + 2, ROOM_HALF_H_TILES)
-	add_child(frag)
-	_memory_fragment = frag
+			"The way onward.\nStep into the portal to begin the journey.")
+	var portal: Area2D = _PORTAL_SCRIPT.new()
+	portal.position = _room_centre(7)
+	add_child(portal)
+	portal.entered.connect(func() -> void: portal_reached.emit())
+	_portal = portal
 
 # ---------------------------------------------------------------------------
 # Tutorial signpost — a clickable in-world prop.  Clicks are detected in

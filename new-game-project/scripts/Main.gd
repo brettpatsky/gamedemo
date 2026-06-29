@@ -352,20 +352,19 @@ func _setup_objective() -> void:
 	# by its level script. Only the tutorial (1) WINS on the cage (and its cage
 	# frees no parent — see ParentCage.frees_parent). The Blighted Marsh (7) wins
 	# on its hidden portal instead, so it's winnable regardless of which kids are
-	# alive — its parent cave is an optional side objective. All other levels treat
-	# the cage as a side objective that flips a RunState bit and shows a toast.
+	# alive — its parent cave is an optional side objective. The tutorial (1) and the
+	# Blighted Marsh (7) both end on a PORTAL (wired below), so no level wins on the
+	# cage anymore; where present it's a side objective (RunState bit + toast).
 	if GameManager.current_level != 8:
-		var cage_wins: bool = GameManager.current_level == 1
-		_wire_parent_cage(cage_wins)
+		_wire_parent_cage(false)
 		_wire_memory_fragment()
 
 	match GameManager.current_level:
 		1:
-			# Tutorial — _wire_parent_cage above already routes parent_freed
-			# to _on_mission_win, and DELIBERATELY mission_complete is not
-			# connected: clearing the three Puzzle 1 dummies would otherwise
-			# end the mission five rooms early.
-			pass
+			# Tutorial — stepping into the exit portal ends the lesson. (mission_complete
+			# is deliberately NOT used, or clearing the Puzzle 1 dummies would end it early.)
+			if map_gen and map_gen.has_signal("portal_reached"):
+				map_gen.portal_reached.connect(_on_mission_win)
 		2:
 			# Eliminate Enemies — GameManager.mission_complete fires when the
 			# enemies_alive counter reaches zero (see GameManager.on_enemy_died,
@@ -482,6 +481,11 @@ func _on_mission_win() -> void:
 		return
 	_mission_ended = true
 	_persist_run_state()
+	if GameManager.current_level == 1:
+		# Tutorial: no fairy-garden reward stop — show the loading screen and drop
+		# straight into the first mission (advance_level handles both).
+		advance_level()
+		return
 	_freeze_and_fade_world()
 	if GameManager.current_level >= 8:
 		hud.show_mission_result("YOU WIN! ALL LEVELS COMPLETE!", Color.YELLOW, false)
