@@ -155,18 +155,16 @@ func _event_cursor_pos(event: InputEvent) -> Vector2:
 func _process(delta: float) -> void:
 	if soldiers.is_empty():
 		return
-	# Touch fire button (auto-aim): fire at the nearest enemy while held. Takes
+	# Touch aim pad (directional): stream fire in the aimed direction while held.
+	# Single-shot weapons fire on release (see set_touch_aim), not here. Takes
 	# priority over the mouse path so a tablet player never depends on a cursor.
-	if _touch_firing:
-		var target: Vector2 = _auto_aim_target()
-		if target == Vector2.INF:
-			return                       # nothing in range — hold fire
+	if _touch_aim_active:
 		if not _is_continuous_weapon():
-			return                       # single-shot weapons already fired on press
+			return                       # grenade / sacrifice fire on release
 		_auto_timer -= delta
 		if _auto_timer <= 0.0:
 			_auto_timer = _current_auto_interval()
-			_issue_fire_order(target)
+			_issue_fire_order(_resolve_touch_target())
 		return
 	if not _right_held:
 		return
@@ -178,20 +176,63 @@ func _process(delta: float) -> void:
 		_issue_fire_order(_screen_to_world(get_viewport().get_mouse_position()))
 
 # ---------------------------------------------------------------------------
-# Touch fire control (tablet/phone). The HUD's on-screen FIRE button calls this
-# on press/release; the controlled group then auto-fires at the NEAREST enemy
-# (no cursor to aim with on touch). Reuses the same fire path as held right-click.
+# Touch aim control (tablet/phone). The HUD's on-screen AIM pad calls
+# set_touch_aim() on press / drag / release, passing a raw drag offset in pixels.
+# The squad fires in that DIRECTION (so doors and structures are valid targets,
+# not just enemies, and firing works with nothing on screen). A press with almost
+# no drag falls back to auto-aiming the nearest enemy. Continuous weapons stream
+# while held (see _process); single-shot weapons throw on release so the player
+# can aim first.
 # ---------------------------------------------------------------------------
-var _touch_firing: bool = false
+const TOUCH_AIM_DEADZONE := 18.0     # px; below this, fall back to auto-aim
+const TOUCH_FIRE_RANGE   := 2200.0   # how far down the aim ray bullets are aimed
+const TOUCH_AIM_MAX      := 78.0     # = TouchAimStick.RADIUS; full-drag magnitude
+const TOUCH_LOB_MIN      := 120.0    # shortest lobbed throw at the smallest drag
 
-func set_touch_firing(on: bool) -> void:
-	_touch_firing = on
-	if not on or soldiers.is_empty():
+var _touch_aim_active: bool    = false
+var _touch_aim_vec:    Vector2 = Vector2.ZERO    # raw drag offset from pad centre
+var _last_aim_dir:     Vector2 = Vector2(0, -1)  # remembered direction; default up
+
+func set_touch_aim(active: bool, vec: Vector2) -> void:
+	if soldiers.is_empty():
+		_touch_aim_active = false
 		return
-	var target: Vector2 = _auto_aim_target()
-	if target != Vector2.INF:
-		_issue_fire_order(target)        # immediate shot (covers single-shot weapons too)
-	_auto_timer = _current_auto_interval()
+	if active:
+		if not _touch_aim_active:
+			_auto_timer = 0.0            # fire ASAP once for continuous weapons
+		_touch_aim_active = true
+		_touch_aim_vec = vec
+	else:
+		# Release — single-shot weapons throw now, in the aimed direction.
+		if _touch_aim_active and not _is_continuous_weapon():
+			_issue_fire_order(_resolve_touch_target())
+		_touch_aim_active = false
+		_touch_aim_vec = Vector2.ZERO
+
+# Turns the current aim pad state into a world target point. A real drag aims in
+# that direction; an in-deadzone press auto-aims the nearest enemy; with neither,
+# it fires along the last-aimed direction so FIRE always does something.
+func _resolve_touch_target() -> Vector2:
+	var origin: Vector2 = get_centroid()
+	var mag: float = _touch_aim_vec.length()
+	if mag >= TOUCH_AIM_DEADZONE:
+		_last_aim_dir = _touch_aim_vec.normalized()
+		# Lobbed / single-shot weapons read drag LENGTH as throw distance so the
+		# player can place the landing point (e.g. on the heavy door). Bullets fly
+		# straight, so continuous weapons just need a far point on the aim ray.
+		if not _is_continuous_weapon():
+			var frac: float = clampf(mag / TOUCH_AIM_MAX, 0.0, 1.0)
+			return origin + _last_aim_dir * lerpf(TOUCH_LOB_MIN, Balance.GRENADE_MAX_RANGE, frac)
+		return origin + _last_aim_dir * TOUCH_FIRE_RANGE
+	# In-deadzone press — auto-aim the nearest enemy for effortless combat.
+	var enemy: Vector2 = _auto_aim_target()
+	if enemy != Vector2.INF:
+		_last_aim_dir = (enemy - origin).normalized()
+		return enemy
+	# Nothing aimed and no enemy in range — still fire along the last direction.
+	if not _is_continuous_weapon():
+		return origin + _last_aim_dir * Balance.GRENADE_MAX_RANGE
+	return origin + _last_aim_dir * TOUCH_FIRE_RANGE
 
 # World position of the closest living enemy to the squad, or Vector2.INF if none.
 func _auto_aim_target() -> Vector2:

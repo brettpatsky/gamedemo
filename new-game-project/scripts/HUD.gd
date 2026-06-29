@@ -211,7 +211,7 @@ func _ready() -> void:
 # nearest enemy. Only shown when a touchscreen is present, so desktop is untouched.
 # =============================================================================
 var _touch_ui: bool = false
-var _touch_fire_button: Button = null
+var _touch_fire_button: Control = null
 
 # Safe-area (notch / rounded corners). Black bars live on their own high layer;
 # base offsets of the edge controls are captured once so re-applying on rotate
@@ -224,31 +224,19 @@ func _build_touch_controls() -> void:
 		return
 	_touch_ui = true
 	_finger_size_hud()
-	var btn := Button.new()
-	btn.name = "TouchFireButton"
-	btn.text = "FIRE"
-	btn.focus_mode = Control.FOCUS_NONE
-	btn.add_theme_font_size_override("font_size", 30)
-	btn.modulate = Color(1, 1, 1, 0.85)
-	# Big round-ish red button, bottom-right, sitting above the bottom HUD panel.
+	# Twin-stick AIM pad — drag toward where the squad should shoot. Bottom-right,
+	# above the command bar. See TouchAimStick.gd.
 	const SZ := 156.0
-	btn.anchor_left = 1.0; btn.anchor_top = 1.0; btn.anchor_right = 1.0; btn.anchor_bottom = 1.0
-	btn.offset_right  = -32.0
-	btn.offset_bottom = -118.0
-	btn.offset_left   = -32.0 - SZ
-	btn.offset_top    = -118.0 - SZ
-	for style_name in ["normal", "hover", "pressed", "focus"]:
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.85, 0.18, 0.18) if style_name != "pressed" else Color(1.0, 0.4, 0.3)
-		sb.set_corner_radius_all(int(SZ * 0.5))
-		sb.border_color = Color(1, 1, 1, 0.6)
-		sb.set_border_width_all(3)
-		btn.add_theme_stylebox_override(style_name, sb)
-	btn.add_theme_color_override("font_color", Color.WHITE)
-	btn.button_down.connect(func() -> void: _set_squad_touch_firing(true))
-	btn.button_up.connect(func() -> void: _set_squad_touch_firing(false))
-	add_child(btn)
-	_touch_fire_button = btn
+	var stick: Control = preload("res://scripts/TouchAimStick.gd").new()
+	stick.name = "TouchAimStick"
+	stick.anchor_left = 1.0; stick.anchor_top = 1.0; stick.anchor_right = 1.0; stick.anchor_bottom = 1.0
+	stick.offset_right  = -32.0
+	stick.offset_bottom = -118.0
+	stick.offset_left   = -32.0 - SZ
+	stick.offset_top    = -118.0 - SZ
+	stick.aim_input.connect(_on_touch_aim)
+	add_child(stick)
+	_touch_fire_button = stick
 
 	# Notch / rounded-corner handling. Recompute now and on every resize/rotation.
 	# Deferred once so Android reports a valid safe area (it can return the full
@@ -256,10 +244,10 @@ func _build_touch_controls() -> void:
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_apply_safe_area.call_deferred()
 
-func _set_squad_touch_firing(on: bool) -> void:
+func _on_touch_aim(active: bool, vec: Vector2) -> void:
 	var sc: Node = get_tree().get_first_node_in_group("squad_controller")
-	if sc and sc.has_method("set_touch_firing"):
-		sc.set_touch_firing(on)
+	if sc and sc.has_method("set_touch_aim"):
+		sc.set_touch_aim(active, vec)
 
 # Computes the display safe area (camera hole-punch + rounded corners), masks the
 # unsafe margins with opaque black bars, and pulls the edge-anchored HUD controls
