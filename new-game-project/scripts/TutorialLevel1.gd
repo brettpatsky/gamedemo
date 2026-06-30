@@ -78,10 +78,11 @@ var _solved: Array[bool] = [false, false, false, false, false, false, false]
 var _formation_active: int = 0
 var _plate_active:     int = 0
 var _braziers_lit:     int = 0
-# Final Trial (puzzle 6) needs BOTH the ward broken via Sacrifice AND a kid
-# revived. Track each event so the gate opens regardless of which fires first.
+# Final Trial (puzzle 6) needs the ward broken via Sacrifice; the gate also
+# never opens while any kid is still downed (see _try_solve_final_trial), so
+# a sacrifice that took multiple tries always ends with a full team — not
+# just whichever kid's revive happened to land first.
 var _final_wall_broken:  bool = false
-var _final_revive_done:  bool = false
 # A failed sacrifice (ward still standing) must NOT hand back a fresh charge
 # right away — that let the player chain sacrifices back-to-back, downing a
 # second (or third) kid before the first was ever revived, with only one
@@ -641,7 +642,6 @@ func _build_room_sacrifice() -> void:
 	# else in the tutorial where a kid can die. A revive is also the gate that
 	# releases a new sacrifice charge after a failed attempt — see below.
 	GameManager.soldier_revived.connect(func(_s: Node) -> void:
-		_final_revive_done = true
 		if _room6_awaiting_revive_before_retry:
 			_room6_awaiting_revive_before_retry = false
 			if not _final_wall_broken and not _solved[6]:
@@ -649,35 +649,63 @@ func _build_room_sacrifice() -> void:
 				GameManager.set_sacrifice_enabled(true)
 		_try_solve_final_trial(gate)
 	)
-	# Safety net: Sacrifice has a blast radius (Balance.SACRIFICE_RADIUS) — a
-	# kid who detonates too far from the ward burns the capped charge without
-	# breaking it, which would otherwise permanently soft-lock the Final Trial
-	# (charges hit 0 the moment the kid is armed, sacrifice disables, no way to
-	# try again). Sacrifice is the only lethal mechanic in the tutorial, so any
-	# death here means an attempt was just made. Grant a revive potion (if
-	# needed) and re-show the sign, but DON'T hand back a new charge yet —
-	# sacrifice stays disabled (consume_sacrifice_charge already did that)
-	# until the downed kid is actually revived, via _room6_awaiting_revive_
-	# before_retry above. Without this gate the player could chain sacrifices
-	# back-to-back, downing kid after kid with only one revive ever granted,
-	# permanently losing every kid past the first.
+	# Safety net: Sacrifice is the only lethal mechanic in the tutorial, so any
+	# death here means an attempt was just made — and EVERY such death (failed
+	# OR the winning hit) leaves a downed kid the player must bring back, since
+	# the gate won't open until the whole squad is up again. So always ensure a
+	# revive potion is on hand, otherwise the player is soft-locked with a corpse
+	# and no way to restore them.
+	#
+	# The winning hit breaks the ward inside the SAME _explode() that kills the
+	# kid, and `destroyed` fires before `_die()` — so _final_wall_broken is
+	# already true here on success. We branch on it only to pick the right
+	# prompt and to decide whether to hand back a sacrifice charge:
+	#   • Failed attempt (ward still up): withhold a fresh charge until the
+	#     downed kid is revived (via _room6_awaiting_revive_before_retry, see
+	#     the revive handler) so the player can't chain sacrifices and lose kid
+	#     after kid with only one revive in play.
+	#   • Winning hit (ward broken): no more sacrifices needed — just prompt the
+	#     player to revive the fallen kid so the gate can open.
 	GameManager.soldier_died.connect(func(_s: Node) -> void:
-		if _final_wall_broken or _solved[6]:
+		if _solved[6]:
 			return
-		_room6_awaiting_revive_before_retry = true
 		if GameManager.revive_potions <= 0:
 			GameManager.revive_potions = 1
 			GameManager.revives_changed.emit(GameManager.revive_potions)
-		_show_tutorial_modal(_ROOM6_SIGN_TEXT)
+		if _final_wall_broken:
+			_show_tutorial_modal("The Blood Ward shatters!\nNow Revive (♥) the fallen kid to open the way.")
+		else:
+			_room6_awaiting_revive_before_retry = true
+			_show_tutorial_modal(_ROOM6_SIGN_TEXT)
 	)
 
 func _try_solve_final_trial(gate: PuzzleGate) -> void:
-	if _solved[6]:
+	if _solved[6] or not _final_wall_broken:
 		return
-	if not _final_wall_broken or not _final_revive_done:
+	# Deferred: the ward only breaks from a Sacrifice blast, and Soldier._explode
+	# deals that damage (firing this via `destroyed`) BEFORE calling its own
+	# _die() — so on the hit that lands the kill, the sacrificing kid still
+	# reads as alive right here. Waiting a frame lets that _die() land first,
+	# so the full-team check below sees the real, post-blast squad state.
+	_finish_final_trial_check.call_deferred(gate)
+
+func _finish_final_trial_check(gate: PuzzleGate) -> void:
+	if _solved[6] or not _final_wall_broken or not _is_full_team_alive():
 		return
 	_solved[6] = true
 	gate.open()
+
+# The ward only takes lethal damage from Sacrifice, so breaking it always
+# downs a kid — but if the attempt took multiple tries, an earlier revive
+# (spent reviving a kid from a failed attempt) must not be mistaken for the
+# revive that brings back the kid who landed the successful hit. Requiring
+# every soldier to be up before the gate opens means it doesn't matter which
+# revive happened when — the squad is always whole before proceeding.
+func _is_full_team_alive() -> bool:
+	for s in get_tree().get_nodes_in_group("soldiers"):
+		if s.has_method("is_downed") and s.is_downed():
+			return false
+	return true
 
 # Room 7 — the exit portal. Stepping into it ends the tutorial (no parent cage or
 # fragment here; the tutorial is a teaching sandbox that leads straight onward).
