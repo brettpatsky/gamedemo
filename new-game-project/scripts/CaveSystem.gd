@@ -22,6 +22,7 @@ extends Node2D
 class_name CaveSystem
 
 const CAVE_PARENT_SCRIPT := preload("res://scripts/CaveParent.gd")
+const PortalVisual := preload("res://scripts/PortalVisual.gd")
 const CAVE_ENTRANCE_TEX := "res://resources/caves/cave_entrance.png"
 const CAVE_GARDEN_TEX   := "res://resources/caves/cave_garden.png"
 
@@ -98,8 +99,6 @@ func _build_cave_navmesh() -> void:
 	np.cell_size = cell
 	NavigationServer2D.bake_from_source_geometry_data(np, src)
 	_cave_nav_region.navigation_polygon = np
-	print("[CaveDebug] cave navmesh baked polys=%d verts=%d region_origin=%s" % [
-		np.get_polygon_count(), np.get_vertices().size(), _cave_nav_region.global_position])
 
 # NavigationServer maps are resources, not nodes — free the cave map explicitly
 # on teardown or every cave (one per level) leaks a map RID.
@@ -293,24 +292,17 @@ func _build_cave_area(child_slot: int) -> void:
 	_build_portal_visual(exit)
 	exit.add_child(_make_label("Exit", Vector2(-14, -52), Color(0.9, 1.0, 0.9)))
 
-# Placeholder swirl until the PixelLab portal animation is in — a pulsing cyan
-# ring so the exit reads as "step here," same fairy-garden glow as the waterfall.
+# Swirling cyan/fairy-garden portal swirl (PixelLab-generated, see
+# resources/portals/cave_portal.png) marking the exit as "step here."
 func _build_portal_visual(parent: Node2D) -> void:
-	var ring := Polygon2D.new()
-	ring.color = Color(0.35, 0.85, 1.0, 0.55)
-	ring.polygon = _ellipse_points(26.0, 30.0, 24)
-	ring.z_index = 1
-	ring.z_as_relative = false
-	parent.add_child(ring)
-	var core := Polygon2D.new()
-	core.color = Color(0.75, 1.0, 1.0, 0.35)
-	core.polygon = _ellipse_points(14.0, 17.0, 20)
-	core.z_index = 2
-	core.z_as_relative = false
-	parent.add_child(core)
-	var tw := create_tween().set_loops()
-	tw.tween_property(ring, "scale", Vector2(1.12, 1.12), 0.9).set_trans(Tween.TRANS_SINE)
-	tw.tween_property(ring, "scale", Vector2(1.0, 1.0), 0.9).set_trans(Tween.TRANS_SINE)
+	var sprite := AnimatedSprite2D.new()
+	sprite.sprite_frames = PortalVisual.build_sprite_frames(
+			"res://resources/portals/cave_portal.png")
+	sprite.scale = Vector2(0.7, 0.7)
+	sprite.z_index = 1
+	sprite.z_as_relative = false
+	parent.add_child(sprite)
+	sprite.play(&"idle")
 
 # ---------------------------------------------------------------------------
 # Fade out -> reposition squad + camera + freeze/unfreeze world -> fade in.

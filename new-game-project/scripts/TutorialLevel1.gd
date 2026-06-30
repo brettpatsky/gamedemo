@@ -311,9 +311,13 @@ func _build_walls() -> void:
 	_build_edge_collision()
 	# Inner horizontal dividers between each adjacent pair of rooms, with a
 	# centred doorway (DOORWAY_COL_LEFT..DOORWAY_COL_RIGHT, 4 tiles wide).
+	# Interior columns only (1..MAP_W_TILES-2) — columns 0 and MAP_W_TILES-1 are
+	# already covered full-height by _build_edge_collision()'s nav outlines, and
+	# a divider wall tile there would overlap that outline and fail the convex
+	# partition, breaking navigation across the whole level.
 	for r in NUM_ROOMS - 1:
 		var divider_y: int = _room_top_y(r) - 1
-		for x in MAP_W_TILES:
+		for x in range(1, MAP_W_TILES - 1):
 			var interior_x: int = x - 1
 			if interior_x >= DOORWAY_COL_LEFT and interior_x <= DOORWAY_COL_RIGHT:
 				continue
@@ -615,6 +619,7 @@ func _build_room_final() -> void:
 	_add_sign(_room_position(7, 1, 0),
 			"The way onward.\nStep into the portal to begin the journey.")
 	var portal: Area2D = _PORTAL_SCRIPT.new()
+	portal.kind = "tutorial"
 	portal.position = _room_centre(7)
 	add_child(portal)
 	portal.entered.connect(func() -> void: portal_reached.emit())
@@ -757,18 +762,24 @@ func _close_tutorial_modal() -> void:
 func _bake_nav() -> void:
 	if nav_region == null:
 		return
-	var nav_poly := NavigationPolygon.new()
-	nav_poly.add_outline(PackedVector2Array([
+	# Recast / source-geometry bake (the same path HandcraftedMap uses) instead of
+	# the deprecated NavigationPolygon.make_polygons_from_outlines(). The latter
+	# does an EXACT convex partition that fails the ENTIRE bake — leaving an empty
+	# navmesh, so the squad moves randomly and enemies can't path — if any two
+	# outlines so much as share an edge. The perimeter + room-divider wall spans
+	# (cols 1..MAP_W_TILES-2) unavoidably touch the full-height left/right
+	# edge-collision outlines (cols 0 / MAP_W_TILES-1), so convex partition can
+	# never succeed here. bake_from_source_geometry_data rasterises to a grid, so
+	# touching/overlapping obstructions are fine.
+	var src := NavigationMeshSourceGeometryData2D.new()
+	src.add_traversable_outline(PackedVector2Array([
 		Vector2(0,     0),
 		Vector2(MAP_W, 0),
 		Vector2(MAP_W, MAP_H),
 		Vector2(0,     MAP_H),
 	]))
-	# Merge wall tiles into contiguous horizontal spans before baking — one
-	# outline per run instead of one per tile (~184 individual rock tiles
-	# otherwise). make_polygons_from_outlines() doing convex partition on that
-	# many separate holes was the single slowest step in the whole level build
-	# on low-end Android hardware; merging cuts it to ~18 outlines.
+	# Merge wall tiles into contiguous horizontal spans — one obstruction per run
+	# instead of one per tile (~184 individual rock tiles otherwise).
 	var rows: Dictionary = {}   # tile_y -> Array[int] of tile_x
 	for key: Vector2i in _wall_tiles:
 		if not rows.has(key.y):
@@ -784,26 +795,29 @@ func _bake_nav() -> void:
 			if x == prev + 1:
 				prev = x
 				continue
-			_add_tile_span_outline(nav_poly, run_start, prev, tile_y)
+			src.add_obstruction_outline(_tile_span_outline(run_start, prev, tile_y))
 			run_start = x
 			prev = x
-		_add_tile_span_outline(nav_poly, run_start, prev, tile_y)
-	# Left + right edge collision columns (full map height — already 2 big rects;
-	# mirrors _build_edge_collision).
-	nav_poly.add_outline(PackedVector2Array([
+		src.add_obstruction_outline(_tile_span_outline(run_start, prev, tile_y))
+	# Left + right edge collision columns (full map height — mirrors
+	# _build_edge_collision).
+	src.add_obstruction_outline(PackedVector2Array([
 		Vector2(0, 0), Vector2(TILE, 0), Vector2(TILE, MAP_H), Vector2(0, MAP_H),
 	]))
-	nav_poly.add_outline(PackedVector2Array([
+	src.add_obstruction_outline(PackedVector2Array([
 		Vector2(MAP_W - TILE, 0), Vector2(MAP_W, 0), Vector2(MAP_W, MAP_H), Vector2(MAP_W - TILE, MAP_H),
 	]))
-	nav_poly.make_polygons_from_outlines()
-	nav_region.navigation_polygon = nav_poly
+	var np := NavigationPolygon.new()
+	np.agent_radius = 10.0
+	np.cell_size = 16.0 if OS.get_name() == "Android" else 4.0
+	NavigationServer2D.bake_from_source_geometry_data(np, src)
+	nav_region.navigation_polygon = np
 
-func _add_tile_span_outline(nav_poly: NavigationPolygon, x0: int, x1: int, tile_y: int) -> void:
+func _tile_span_outline(x0: int, x1: int, tile_y: int) -> PackedVector2Array:
 	var left: float   = float(x0) * TILE
 	var right: float  = float(x1 + 1) * TILE
 	var top: float    = float(tile_y) * TILE
 	var bottom: float = top + TILE
-	nav_poly.add_outline(PackedVector2Array([
+	return PackedVector2Array([
 		Vector2(left, top), Vector2(right, top), Vector2(right, bottom), Vector2(left, bottom),
-	]))
+	])
