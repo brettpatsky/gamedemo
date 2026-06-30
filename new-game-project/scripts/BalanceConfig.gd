@@ -68,9 +68,9 @@ const SOLDIER_PISTOL_DISTANCE_PER_SLOT: Array[float] = [1000.0, 700.0, 1400.0, 8
 const SOLDIER_RIFLE_DAMAGE_PER_SLOT:    Array[int]   = [3,     1,     2,     2,     1,     3]
 const SOLDIER_RIFLE_SPEED_PER_SLOT:     Array[float] = [1100.0, 850.0, 950.0, 850.0, 1000.0, 1100.0]
 const SOLDIER_RIFLE_DISTANCE_PER_SLOT:  Array[float] = [2000.0, 900.0, 1600.0, 1000.0, 1000.0, 2000.0]
-# Shown on the kid's bio-card name (title screen) and on the autodefend
-# tracer. Player-directed fire colours its bullet by ELEMENT instead — see
-# Elements.color_of() — so this is mostly cosmetic identity.
+# Shown on the autodefend tracer. Player-directed fire colours its bullet by
+# ELEMENT instead — see Elements.color_of() — so this is mostly cosmetic
+# identity. Kept vivid/saturated for in-flight visibility.
 const SOLDIER_BULLET_COLOR_PER_SLOT: Array[Color] = [
 	Color(1.0,  0.95, 0.2),   # slot 0 — soldier_1 — yellow
 	Color(1.0,  1.0,  1.0),   # slot 1 — soldier_2 — white
@@ -78,6 +78,18 @@ const SOLDIER_BULLET_COLOR_PER_SLOT: Array[Color] = [
 	Color(1.0,  0.55, 0.1),   # slot 3 — soldier_4 — orange
 	Color(0.3,  1.0,  0.4),   # slot 4 — soldier_5 — green
 	Color(1.0,  0.3,  0.9),   # slot 5 — soldier_6 — magenta
+]
+
+# Shown on the kid's bio-card name (title screen) only — samples a 6-stop
+# pastel rainbow gradient (#ffb7b2 -> #c7ceea), one stop per slot, so the row
+# of names reads as a single smooth gradient left-to-right / top-to-bottom.
+const SOLDIER_NAME_COLOR_PER_SLOT: Array[Color] = [
+	Color(1.0,    0.71765, 0.69804),  # slot 0 — Lua — #ffb7b2 soft pink/red
+	Color(1.0,    0.85490, 0.75686),  # slot 1 — Cameron — #ffdac1 soft peach
+	Color(1.0,    0.96078, 0.72941),  # slot 2 — Siena — #fff5ba soft yellow
+	Color(0.88627, 0.94118, 0.79608), # slot 3 — Piper — #e2f0cb soft mint
+	Color(0.70980, 0.91765, 0.84314), # slot 4 — Livy — #b5ead7 soft aqua/teal
+	Color(0.78039, 0.80784, 0.91765), # slot 5 — Rindy — #c7ceea soft lavender
 ]
 
 # -----------------------------------------------------------------------------

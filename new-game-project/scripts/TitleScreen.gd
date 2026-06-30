@@ -24,6 +24,11 @@ var _run_state_overlay: ColorRect = null
 var _run_state_visible: bool = false
 var _map_mode_btn: Button = null
 
+# Plain kid names, cached once from the .tscn-authored text before the Name
+# RichTextLabels are ever rewritten into per-letter bbcode (see _cache_kid_names).
+var _kid_names: Array[String] = []
+var _kid_names_cached := false
+
 # Squad-editor widgets, built in code so the .tscn stays untouched.
 var _points_label: Label = null
 var _profile_load_btns: Array[Button] = []
@@ -45,6 +50,8 @@ func _ready() -> void:
 # cards are the squad editor — the −/+ buttons built in _add_stat_buttons drive
 # the same SquadConfig the bars read back.
 func _update_bio_cards() -> void:
+	if not _kid_names_cached:
+		_cache_kid_names()
 	for i in SOLDIER_SCENES.size():
 		var card := _bios_grid.get_child(i) as Control
 		if card == null:
@@ -54,13 +61,46 @@ func _update_bio_cards() -> void:
 		card.modulate = Color(1, 1, 1, 1) if RunState.kids_alive[i] \
 				else Color(0.4, 0.4, 0.4, 0.55)
 
-		var name_lbl := card.get_node_or_null("Margin/VBox/Header/Name") as Label
+		var name_lbl := card.get_node_or_null("Margin/VBox/Header/Name") as RichTextLabel
 		if name_lbl:
-			name_lbl.add_theme_color_override("font_color",
-					Balance.SOLDIER_BULLET_COLOR_PER_SLOT[i])
+			name_lbl.text = _rainbow_bbcode(_kid_names[i])
 
 		for stat in _STAT_ROW_NAMES.size():
 			_set_stat_row(card, i, stat)
+
+# The Name nodes are bbcode-enabled RichTextLabels so each name's letters can
+# be painted with the gradient below; their .tscn text is still the plain kid
+# name, so we capture it once (before it's ever rewritten into bbcode) instead
+# of re-reading .text on every refresh.
+func _cache_kid_names() -> void:
+	_kid_names.clear()
+	for i in SOLDIER_SCENES.size():
+		var card := _bios_grid.get_child(i) as Control
+		var name_lbl := card.get_node_or_null("Margin/VBox/Header/Name") as RichTextLabel if card else null
+		_kid_names.append(name_lbl.text if name_lbl else "")
+	_kid_names_cached = true
+
+# Wraps each letter of a name in its own [color] tag, sweeping the full
+# pastel-rainbow gradient (Balance.SOLDIER_NAME_COLOR_PER_SLOT) across the
+# word from first letter to last — short names show a slice of the rainbow,
+# long names show more of it, like a CSS linear-gradient text fill.
+func _rainbow_bbcode(word: String) -> String:
+	var n := word.length()
+	if n == 0:
+		return word
+	var bb := ""
+	for i in n:
+		var t := float(i) / float(max(n - 1, 1))
+		bb += "[color=#%s]%s[/color]" % [_sample_rainbow(t).to_html(false), word[i]]
+	return bb
+
+# Linearly interpolates within the 6-stop gradient at position t (0..1).
+func _sample_rainbow(t: float) -> Color:
+	var stops := Balance.SOLDIER_NAME_COLOR_PER_SLOT
+	var last := stops.size() - 1
+	var scaled := clampf(t, 0.0, 1.0) * last
+	var idx := clampi(int(scaled), 0, last - 1)
+	return stops[idx].lerp(stops[idx + 1], scaled - idx)
 
 # Updates one stat row's label text ("HP 5") and its progress bar (level / max).
 func _set_stat_row(card: Control, slot: int, stat: int) -> void:
