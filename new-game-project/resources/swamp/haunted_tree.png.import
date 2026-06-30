@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bk3iv4n46kiul"
-path="res://.godot/imported/lua.png-5cd34215810f179919f756c96133d236.ctex"
+uid="uid://cgm5i4hqw8a5o"
+path="res://.godot/imported/haunted_tree.png-7aace898d68de47c118798675cb6cbbe.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/lua.png"
-dest_files=["res://.godot/imported/lua.png-5cd34215810f179919f756c96133d236.ctex"]
+source_file="res://resources/swamp/haunted_tree.png"
+dest_files=["res://.godot/imported/haunted_tree.png-7aace898d68de47c118798675cb6cbbe.ctex"]
 
 [params]
 

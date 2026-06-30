@@ -1,10 +1,10 @@
 [gd_scene format=3 uid="uid://dm0rck01aaaaa"]
 
-[ext_resource type="Texture2D" uid="uid://bls6mk50c2lay" path="res://resources/tdstilepack/Spritesheet/spritesheet_tiles.png" id="1_tiles"]
+[ext_resource type="Texture2D" path="res://resources/caraka/Props/Rock/rock.png" id="1_tiles"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_rock"]
 atlas = ExtResource("1_tiles")
-region = Rect2(1480, 592, 64, 64)
+region = Rect2(0, 0, 32, 32)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_rock"]
 size = Vector2(48, 43)
@@ -14,7 +14,7 @@ collision_mask = 0
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=806722931]
 position = Vector2(-1, -1.5)
-scale = Vector2(0.96875, 0.953125)
+scale = Vector2(1.9375, 1.90625)
 texture = SubResource("AtlasTexture_rock")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1923609081]

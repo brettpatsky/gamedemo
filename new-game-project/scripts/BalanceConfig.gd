@@ -409,8 +409,8 @@ const LOADOUT_BOSS_GRENADE_AMMO: int = 90    # squad-wide pool override for the 
 # MAP DIMENSIONS
 # =============================================================================
 
-# Auto-generated (procedural) maps — tile size matches the world tileset
-# (spritesheet_tiles.png) which uses 64×64 atlas cells.
+# Auto-generated (procedural) maps — tile size matches the world tileset's
+# 64×64 atlas cells.
 const MAP_AUTO_WIDTH:     int = 55
 const MAP_AUTO_HEIGHT:    int = 50
 const MAP_AUTO_TILE_SIZE: int = 64

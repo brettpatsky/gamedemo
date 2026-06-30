@@ -7,13 +7,10 @@ const Balance = preload("res://scripts/BalanceConfig.gd")
 # .tscn. All numeric balance (HP, speed, weapon damage, bullet colour) is
 # read from BalanceConfig per-slot tables in _ready().
 # -----------------------------------------------------------------------------
-@export var is_female:     bool         = false
-@export var male_frames:   SpriteFrames
-@export var female_frames: SpriteFrames
 @export var bullet_scene:  PackedScene
-# When set, build the AnimatedSprite2D's SpriteFrames at runtime from per-anim
-# strip PNGs in this folder (<idle|walk|shoot>_<facing>.png). Used for Lua's
-# high-quality 8-direction set; leaving it empty keeps the .tscn-embedded frames.
+# Builds the AnimatedSprite2D's SpriteFrames at runtime from per-anim strip
+# PNGs in this folder (<idle|walk|shoot|die>_<facing>.png) — every kid's
+# high-quality 8-direction set lives under resources/<name>8/.
 @export var frames_dir: String = ""
 
 # Maze mode swaps _do_move for SoldierMazeMover.tick — see SoldierMazeMover.gd
@@ -303,9 +300,6 @@ func _squad() -> Node:
 
 # Last direction the soldier was facing — drives directional idle/shoot anims.
 var _facing: String = "down"
-# True when the active SpriteFrames has diagonal animations (Lua's 8-way set).
-# Other kids keep 4-way frames, so _dir_to_facing stays 4-way for them.
-var _use_8way: bool = false
 # Briefly after a shot, the soldier keeps facing the AIM direction even while
 # walking, so she looks at her target while strafing instead of snapping to her
 # movement heading between shots. Set in _do_shoot/_throw_grenade.
@@ -356,18 +350,8 @@ func _ready() -> void:
 	if _carry_hp_override > 0:
 		_health = min(_carry_hp_override, max_health)
 
-	if is_female and female_frames:
-		sprite.sprite_frames = female_frames
-	elif male_frames:
-		sprite.sprite_frames = male_frames
-
-	# Lua (and any future kid) can supply a folder of high-quality directional
-	# strips that replace the embedded frames at runtime.
 	if frames_dir != "":
 		_build_frames_from_dir(frames_dir)
-	# Diagonal animations present -> drive movement/aim with 8-way facing.
-	_use_8way = sprite.sprite_frames != null \
-			and sprite.sprite_frames.has_animation(&"walk_up_right")
 
 	health_bar.max_value = max_health
 	health_bar.value     = _health
@@ -1032,12 +1016,7 @@ func _die() -> void:
 		_teleport_tween.kill()
 	_teleporting = false
 	hide_group_label()
-	# Prefer a directional death (die_<facing>, 8-way set); fall back to the single
-	# non-directional "die" carried over from the embedded frames (other kids).
-	var death_anim := "die_" + _facing
-	if sprite.sprite_frames == null or not sprite.sprite_frames.has_animation(death_anim):
-		death_anim = "die"
-	_play_anim(death_anim)
+	_play_anim("die_" + _facing)
 	# Freeze on the last frame once the die animation finishes — prevents looping
 	# even if the SpriteFrames loop flag is inadvertently set.
 	sprite.animation_finished.connect(_on_die_anim_finished, CONNECT_ONE_SHOT)
@@ -1232,26 +1211,22 @@ func _play_footstep() -> void:
 # PRIVATE — ANIMATION
 # =============================================================================
 
+# 8-way octant facing (Godot y is down, so positive angle = down). A zero
+# vector keeps the current facing so a stopped soldier doesn't snap.
 func _dir_to_facing(dir: Vector2) -> String:
-	if _use_8way:
-		# 8-way octant facing (Godot y is down, so positive angle = down). A zero
-		# vector keeps the current facing so a stopped soldier doesn't snap.
-		if dir == Vector2.ZERO:
-			return _facing
-		var deg := rad_to_deg(dir.angle())
-		if deg < 0.0:
-			deg += 360.0
-		var idx: int = int(round(deg / 45.0)) % 8
-		return ["right", "down_right", "down", "down_left",
-				"left", "up_left", "up", "up_right"][idx]
-	if abs(dir.y) > abs(dir.x):
-		return "up" if dir.y < 0 else "down"
-	return "left" if dir.x < 0 else "right"
+	if dir == Vector2.ZERO:
+		return _facing
+	var deg := rad_to_deg(dir.angle())
+	if deg < 0.0:
+		deg += 360.0
+	var idx: int = int(round(deg / 45.0)) % 8
+	return ["right", "down_right", "down", "down_left",
+			"left", "up_left", "up", "up_right"][idx]
 
 # Builds the AnimatedSprite2D's SpriteFrames at runtime from per-anim strip PNGs
-# in `dir` (<idle|walk|shoot>_<facing>.png — horizontal strips of square frames).
-# Carries over any existing "die" animation and normalises on-screen size to
-# match the other kids. No-ops (keeps embedded frames) if nothing loads.
+# in `dir` (<idle|walk|shoot|die>_<facing>.png — horizontal strips of square
+# frames) and normalises on-screen size to match the other kids. No-ops if
+# nothing loads.
 func _build_frames_from_dir(dir: String) -> void:
 	var specs := {
 		"idle":  {"fps": 6.0,  "loop": true},
@@ -1265,7 +1240,6 @@ func _build_frames_from_dir(dir: String) -> void:
 	nf.remove_animation(&"default")
 	var frame_h := 0
 	var added := 0
-	var die_added := 0
 	for prefix in specs:
 		for facing in facings:
 			var path: String = dir.path_join("%s_%s.png" % [prefix, facing])
@@ -1291,21 +1265,8 @@ func _build_frames_from_dir(dir: String) -> void:
 				sub.generate_mipmaps()
 				nf.add_frame(anim, ImageTexture.create_from_image(sub))
 			added += 1
-			if prefix == "die":
-				die_added += 1
 	if added == 0:
 		return
-	# Preserve the death pose from the embedded frames ONLY when the folder didn't
-	# supply a directional die set (die_<facing>.png). Characters with their own
-	# 8-way die (e.g. Cameron) skip this; _die() plays die_<facing> for them.
-	var old := sprite.sprite_frames
-	if die_added == 0 and old != null and old.has_animation(&"die"):
-		nf.add_animation(&"die")
-		nf.set_animation_loop(&"die", old.get_animation_loop(&"die"))
-		nf.set_animation_speed(&"die", old.get_animation_speed(&"die"))
-		for i in old.get_frame_count(&"die"):
-			nf.add_frame(&"die", old.get_frame_texture(&"die", i),
-					old.get_frame_duration(&"die", i))
 	sprite.sprite_frames = nf
 	# Linear + mipmaps: she's a detailed (non-pixel-art) sprite, so smooth filtering
 	# reads far better than nearest at any zoom (no blocky pixels zoomed in, no
@@ -1346,11 +1307,5 @@ func _play_walk_anim(direction: Vector2) -> void:
 		_facing = _aim_face
 	else:
 		_facing = _dir_to_facing(direction)
-	var anim := "walk_" + _facing
-	if sprite.sprite_frames and sprite.sprite_frames.has_animation(anim):
-		sprite.flip_h = false
-		_play_anim(anim)
-	elif sprite.sprite_frames and sprite.sprite_frames.has_animation("walk_side"):
-		# Fallback for soldiers that don't yet have separate walk_left/walk_right.
-		sprite.flip_h = _facing == "left"
-		_play_anim("walk_side")
+	sprite.flip_h = false
+	_play_anim("walk_" + _facing)

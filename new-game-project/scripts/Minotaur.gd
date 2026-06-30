@@ -29,8 +29,8 @@ var attack_damage: int
 var score_value:   int
 
 # Build the AnimatedSprite2D's SpriteFrames at runtime from per-anim strip PNGs
-# in this folder (<idle|walk|attack|die>_<facing>.png). Mirrors Enemy.frames_dir.
-# Leaving it empty keeps the .tscn-embedded fallback frames.
+# in this folder (<idle|walk|attack|die>_<facing>.png). Mirrors Enemy.frames_dir,
+# hardcoded to resources/minotaur8/ on minotaur.tscn.
 @export var frames_dir: String = ""
 
 # Soft elemental counters, same system as Enemy.gd. Randomised in _ready unless
@@ -74,7 +74,6 @@ var _attack_cooldown: float = 0.0
 
 # Last direction faced — drives directional idle/walk/attack/die anims.
 var _facing: String = "down"
-var _use_8way: bool = false
 
 var _health: int
 var _target: Node2D = null
@@ -115,8 +114,6 @@ func _ready() -> void:
 
 	if frames_dir != "":
 		_build_frames_from_dir(frames_dir)
-	_use_8way = sprite.sprite_frames != null \
-			and sprite.sprite_frames.has_animation(&"walk_up_right")
 	if is_elite:
 		sprite.modulate = elite_tint
 	_hit_audio = _build_hit_audio("res://resources/audio/sfx/enemy_hit.ogg")
@@ -217,11 +214,8 @@ func _begin_attack() -> void:
 	if _target != null:
 		var dir: Vector2 = (_target.global_position - global_position).normalized()
 		_face(dir)
-	if _use_8way:
-		sprite.play("attack_" + _facing)
-		sprite.set_frame_and_progress(0, 0.0)
-	else:
-		_play_anim("attack")
+	sprite.play("attack_" + _facing)
+	sprite.set_frame_and_progress(0, 0.0)
 	if roar_audio != null and roar_audio.stream != null:
 		roar_audio.pitch_scale = randf_range(0.9, 1.05)
 		roar_audio.play()
@@ -332,25 +326,13 @@ func _slope_speed_mult(direction: Vector2) -> float:
 # =============================================================================
 
 func _face(dir: Vector2) -> void:
-	if _use_8way:
-		_facing = _dir_to_facing(dir)
-		sprite.flip_h = false
-	else:
-		if dir.x != 0:
-			sprite.flip_h = dir.x < 0
+	_facing = _dir_to_facing(dir)
+	sprite.flip_h = false
 
 func _play_walk_anim(direction: Vector2) -> void:
-	if _use_8way:
-		_facing = _dir_to_facing(direction)
-		sprite.flip_h = false
-		_play_anim("walk_" + _facing)
-		return
-	if abs(direction.y) > abs(direction.x):
-		sprite.flip_h = false
-		_play_anim("walk_up" if direction.y < 0 else "walk_down")
-	else:
-		sprite.flip_h = direction.x < 0
-		_play_anim("walk_side")
+	_facing = _dir_to_facing(direction)
+	sprite.flip_h = false
+	_play_anim("walk_" + _facing)
 
 func _play_anim(anim_name: String) -> void:
 	if sprite.sprite_frames == null or not sprite.sprite_frames.has_animation(anim_name):
@@ -363,24 +345,17 @@ func _play_anim(anim_name: String) -> void:
 		sprite.play(anim_name)
 
 func _play_idle() -> void:
-	if _use_8way:
-		_play_anim("idle_" + _facing)
-	else:
-		_play_anim("idle")
+	_play_anim("idle_" + _facing)
 
 func _dir_to_facing(dir: Vector2) -> String:
-	if _use_8way:
-		if dir == Vector2.ZERO:
-			return _facing
-		var deg := rad_to_deg(dir.angle())
-		if deg < 0.0:
-			deg += 360.0
-		var idx: int = int(round(deg / 45.0)) % 8
-		return ["right", "down_right", "down", "down_left",
-				"left", "up_left", "up", "up_right"][idx]
-	if abs(dir.y) > abs(dir.x):
-		return "up" if dir.y < 0 else "down"
-	return "left" if dir.x < 0 else "right"
+	if dir == Vector2.ZERO:
+		return _facing
+	var deg := rad_to_deg(dir.angle())
+	if deg < 0.0:
+		deg += 360.0
+	var idx: int = int(round(deg / 45.0)) % 8
+	return ["right", "down_right", "down", "down_left",
+			"left", "up_left", "up", "up_right"][idx]
 
 # Builds SpriteFrames from per-anim strip PNGs in `dir`. Same builder shape as
 # Enemy._build_frames_from_dir, with "attack" in place of "shoot" and a larger
@@ -398,7 +373,6 @@ func _build_frames_from_dir(dir: String) -> void:
 	nf.remove_animation(&"default")
 	var frame_h := 0
 	var added := 0
-	var die_added := 0
 	for prefix in specs:
 		for facing in facings:
 			var path: String = dir.path_join("%s_%s.png" % [prefix, facing])
@@ -420,20 +394,8 @@ func _build_frames_from_dir(dir: String) -> void:
 				sub.generate_mipmaps()
 				nf.add_frame(anim, ImageTexture.create_from_image(sub))
 			added += 1
-			if prefix == "die":
-				die_added += 1
 	if added == 0:
 		return
-	# Preserve the embedded single "die" pose if no directional die strips exist.
-	if die_added == 0:
-		var old := sprite.sprite_frames
-		if old != null and old.has_animation(&"die"):
-			nf.add_animation(&"die")
-			nf.set_animation_loop(&"die", old.get_animation_loop(&"die"))
-			nf.set_animation_speed(&"die", old.get_animation_speed(&"die"))
-			for i in old.get_frame_count(&"die"):
-				nf.add_frame(&"die", old.get_frame_texture(&"die", i),
-						old.get_frame_duration(&"die", i))
 	sprite.sprite_frames = nf
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	# Normalise by the figure's opaque bounds so it isn't rendered tiny. Target
@@ -509,10 +471,7 @@ func take_damage(amount: int, element: int = 0) -> void:
 func _die() -> void:
 	_state = State.DEAD
 	velocity = Vector2.ZERO
-	if _use_8way and sprite.sprite_frames.has_animation("die_" + _facing):
-		_play_anim("die_" + _facing)
-	else:
-		_play_anim("die")
+	_play_anim("die_" + _facing)
 	remove_from_group("enemies")
 	# Drop out of the elite gate BEFORE notifying GameManager so the Elite Hunt
 	# win check (which counts the "elites" group) sees this one as already gone.

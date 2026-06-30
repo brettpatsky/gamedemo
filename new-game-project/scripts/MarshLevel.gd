@@ -19,9 +19,12 @@ extends HandcraftedMap
 class_name MarshLevel
 
 const LightingUtil = preload("res://scripts/LightingUtil.gd")
+const PortalVisualScript := preload("res://scripts/PortalVisual.gd")
 const _PORTAL_SCRIPT := preload("res://scripts/Portal.gd")
 const _BONSAI_TEX    := "res://resources/boss/tree_bonsai.png"
 const _LAMP_TEX      := "res://resources/boss/lamp_post.png"
+const _BONE_TEX         := "res://resources/swamp/bone_scatter.png"
+const _HAUNTED_TREE_TEX := "res://resources/swamp/haunted_tree.png"
 # PixelLab-generated toxic-swamp Wang tileset: the raw 4×4 spritesheet (16 corner
 # tiles, 32px) + its metadata. We paint it by hand (set_cell with a corner lookup)
 # rather than Godot's terrain solver, which the generated set doesn't fully satisfy.
@@ -44,6 +47,7 @@ func generate(seed_value: int = 0) -> void:
 	await super.generate(seed_value)
 	_build_blight(seed_value)
 	_paint_swamp()                         # full-map toxic swamp skin; hides the Caraka tiles
+	_scatter_swamp_decor(seed_value)       # bone clutter + haunted-tree landmarks on dry land
 	_spawn_mission_parent_and_fragment()   # hidden parent (OPTIONAL) + fragments
 	_spawn_portal(seed_value)              # the win — hidden in the dark
 	_setup_night_lighting(seed_value)
@@ -110,6 +114,61 @@ func _build_blight(seed_value: int) -> void:
 		if noise.get_noise_2d(float(c.x), float(c.y)) <= Balance.MARSH_BLIGHT_THRESHOLD:
 			continue
 		_blight_cells[c] = true
+
+# Sparse ground clutter on dry land, away from the squad's spawn island:
+# scattered bone/skull decals (flat ground detail, no collision, drawn just
+# above the swamp tile layer) plus a handful of taller animated haunted-tree
+# landmarks, similar in spirit to the bonsai/lamp beacons in
+# _setup_night_lighting but rarer and creepier rather than welcoming.
+func _scatter_swamp_decor(seed_value: int) -> void:
+	var bone_tex: Texture2D = load(_BONE_TEX) if ResourceLoader.exists(_BONE_TEX) else null
+	var tree_frames: SpriteFrames = PortalVisualScript.build_sprite_frames(_HAUNTED_TREE_TEX, 4.0) \
+			if ResourceLoader.exists(_HAUNTED_TREE_TEX) else null
+	if bone_tex == null and tree_frames == null:
+		return
+
+	var rng := RandomNumberGenerator.new()
+	rng.seed = (seed_value if seed_value != 0 else 77) + 9090
+	var dry_cells: Array = _passable_cells.filter(func(c: Vector2i) -> bool:
+		if _blight_cells.has(c):
+			return false
+		var cx := float(c.x) / map_width
+		var cy := float(c.y) / map_height
+		return not (cx > 0.36 and cx < 0.64 and cy > 0.36 and cy < 0.64)  # keep spawn island clear
+	)
+	dry_cells.shuffle()
+
+	var bone_count: int = 0
+	if bone_tex:
+		bone_count = mini(7, dry_cells.size())
+		for i in bone_count:
+			var spr := Sprite2D.new()
+			spr.texture = bone_tex
+			spr.position = _tile_to_world(dry_cells[i]) \
+					+ Vector2(rng.randf_range(-12.0, 12.0), rng.randf_range(-12.0, 12.0))
+			spr.rotation = rng.randf_range(0.0, TAU)
+			spr.z_index = -8   # above the swamp ground layer (-10), below actors (0)
+			spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			add_child(spr)
+
+	if tree_frames:
+		var frame_h: float = float(tree_frames.get_frame_texture(&"idle", 0).get_height())
+		if frame_h <= 0.0:
+			return
+		var tree_start: int = bone_count
+		var tree_end: int = mini(tree_start + 5, dry_cells.size())
+		for i in range(tree_start, tree_end):
+			var tree := AnimatedSprite2D.new()
+			tree.sprite_frames = tree_frames
+			tree.play(&"idle")
+			tree.position = _tile_to_world(dry_cells[i])
+			tree.z_index = 3
+			tree.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			var target_h := float(tile_size) * 5.5
+			var s := target_h / frame_h
+			tree.scale = Vector2(s, s)
+			tree.offset = Vector2(0, -frame_h * 0.5)   # anchor by base so it sits on the ground
+			add_child(tree)
 
 	# Sparse sickly-green glows over some pools so the hazard reads in the gloom.
 	var keys: Array = _blight_cells.keys()

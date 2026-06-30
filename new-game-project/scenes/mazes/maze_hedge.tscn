@@ -1,10 +1,10 @@
 [gd_scene format=3 uid="uid://dm0hdg01aaaaa"]
 
-[ext_resource type="Texture2D" uid="uid://bls6mk50c2lay" path="res://resources/tdstilepack/Spritesheet/spritesheet_tiles.png" id="1_tiles"]
+[ext_resource type="Texture2D" path="res://resources/caraka/Props/Bush.png" id="1_tiles"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_hedge"]
 atlas = ExtResource("1_tiles")
-region = Rect2(370, 518, 64, 64)
+region = Rect2(0, 0, 16, 16)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hedge"]
 size = Vector2(60, 60)
@@ -13,6 +13,7 @@ size = Vector2(60, 60)
 collision_mask = 0
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1166364327]
+scale = Vector2(3.75, 3.75)
 texture = SubResource("AtlasTexture_hedge")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=784537905]

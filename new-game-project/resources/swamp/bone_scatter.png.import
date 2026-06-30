@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bls6mk50c2lay"
-path="res://.godot/imported/spritesheet_tiles.png-1573e6ea4dbbd8059abba66dfa277b06.ctex"
+uid="uid://bm8fadqqii608"
+path="res://.godot/imported/bone_scatter.png-b8c6edc918109f77f3262a360f10df3e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/tdstilepack/Spritesheet/spritesheet_tiles.png"
-dest_files=["res://.godot/imported/spritesheet_tiles.png-1573e6ea4dbbd8059abba66dfa277b06.ctex"]
+source_file="res://resources/swamp/bone_scatter.png"
+dest_files=["res://.godot/imported/bone_scatter.png-b8c6edc918109f77f3262a360f10df3e.ctex"]
 
 [params]
 
