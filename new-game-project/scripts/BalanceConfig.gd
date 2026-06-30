@@ -81,15 +81,17 @@ const SOLDIER_BULLET_COLOR_PER_SLOT: Array[Color] = [
 ]
 
 # Shown on the kid's bio-card name (title screen) only — samples a 6-stop
-# pastel rainbow gradient (#ffb7b2 -> #c7ceea), one stop per slot, so the row
-# of names reads as a single smooth gradient left-to-right / top-to-bottom.
+# pastel rainbow gradient, one stop per slot, so the row of names reads as a
+# single smooth gradient left-to-right / top-to-bottom. Darkened ~18% off the
+# original #ffb7b2 -> #c7ceea CSS stops so the letters read against the dark
+# card background instead of washing out.
 const SOLDIER_NAME_COLOR_PER_SLOT: Array[Color] = [
-	Color(1.0,    0.71765, 0.69804),  # slot 0 — Lua — #ffb7b2 soft pink/red
-	Color(1.0,    0.85490, 0.75686),  # slot 1 — Cameron — #ffdac1 soft peach
-	Color(1.0,    0.96078, 0.72941),  # slot 2 — Siena — #fff5ba soft yellow
-	Color(0.88627, 0.94118, 0.79608), # slot 3 — Piper — #e2f0cb soft mint
-	Color(0.70980, 0.91765, 0.84314), # slot 4 — Livy — #b5ead7 soft aqua/teal
-	Color(0.78039, 0.80784, 0.91765), # slot 5 — Rindy — #c7ceea soft lavender
+	Color(0.81961, 0.58824, 0.57255),  # slot 0 — Lua — #d19692 dark pink/red
+	Color(0.81961, 0.70196, 0.61961),  # slot 1 — Cameron — #d1b39e dark peach
+	Color(0.81961, 0.78824, 0.6),      # slot 2 — Siena — #d1c999 dark yellow
+	Color(0.72549, 0.77255, 0.65098),  # slot 3 — Piper — #b9c5a6 dark mint
+	Color(0.58039, 0.75294, 0.69020),  # slot 4 — Livy — #94c0b0 dark aqua/teal
+	Color(0.63922, 0.66275, 0.75294),  # slot 5 — Rindy — #a3a9c0 dark lavender
 ]
 
 # -----------------------------------------------------------------------------

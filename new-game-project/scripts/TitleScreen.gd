@@ -77,8 +77,41 @@ func _cache_kid_names() -> void:
 	for i in SOLDIER_SCENES.size():
 		var card := _bios_grid.get_child(i) as Control
 		var name_lbl := card.get_node_or_null("Margin/VBox/Header/Name") as RichTextLabel if card else null
-		_kid_names.append(name_lbl.text if name_lbl else "")
+		var word := name_lbl.text if name_lbl else ""
+		_kid_names.append(word)
+		if name_lbl:
+			_add_name_sparkles(name_lbl, word)
 	_kid_names_cached = true
+
+# A few twinkling motes drifting around each name, sized to roughly hug the
+# word's width. No texture set (matches the CPUParticles2D look already used
+# for CaveParent's "parent freed" sparkle burst) — just small fading dots.
+func _add_name_sparkles(name_lbl: RichTextLabel, word: String) -> void:
+	var sparks := CPUParticles2D.new()
+	sparks.emitting      = true
+	sparks.one_shot       = false
+	sparks.amount         = 8
+	sparks.lifetime       = 1.6
+	sparks.preprocess     = 1.6
+	sparks.randomness     = 1.0
+	var half_w: float = max(20.0, word.length() * 5.0)
+	sparks.position             = Vector2(half_w, 9.0)
+	sparks.emission_shape       = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	sparks.emission_rect_extents = Vector2(half_w + 4.0, 11.0)
+	sparks.direction      = Vector2.UP
+	sparks.spread         = 50.0
+	sparks.initial_velocity_min = 1.0
+	sparks.initial_velocity_max = 6.0
+	sparks.gravity        = Vector2.ZERO
+	sparks.scale_amount_min = 1.0
+	sparks.scale_amount_max = 2.2
+	var grad := Gradient.new()
+	grad.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
+	grad.colors  = PackedColorArray([Color(1, 1, 1, 0), Color(1, 1, 0.9, 1), Color(1, 1, 1, 0)])
+	sparks.color_ramp = grad
+	sparks.z_index       = 5
+	sparks.z_as_relative = false
+	name_lbl.add_child(sparks)
 
 # Wraps each letter of a name in its own [color] tag, sweeping the full
 # pastel-rainbow gradient (Balance.SOLDIER_NAME_COLOR_PER_SLOT) across the
