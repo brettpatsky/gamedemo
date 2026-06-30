@@ -130,9 +130,17 @@ func enter_cave_view(rect: Rect2) -> void:
 	_saved_zoom  = zoom.x     # remember the player's outside zoom for the exit
 	_map_rect    = rect
 	_in_cave     = true
-	_zoom_floor  = 1.0        # prevent zooming out past art boundary
-	_target_zoom = 1.0
-	zoom         = Vector2(1.0, 1.0)   # snap immediately while screen is black
+	# Fit the whole cave art into whatever viewport is actually available instead
+	# of hardcoding zoom=1.0 — on a viewport shorter than the 720px-tall art (a
+	# small embedded editor run window, a narrow phone aspect, etc.) a fixed 1.0
+	# zoom crops the view to a sliver around the centre, hiding the squad's spawn
+	# point and the exit portal even though both are positioned correctly.
+	var vp := get_viewport_rect().size
+	var fit_zoom := minf(vp.x / rect.size.x, vp.y / rect.size.y)
+	var cave_zoom := clampf(fit_zoom, zoom_min, 1.0)
+	_zoom_floor  = cave_zoom
+	_target_zoom = cave_zoom
+	zoom         = Vector2(cave_zoom, cave_zoom)   # snap immediately while screen is black
 	position     = rect.get_center()
 
 func exit_cave_view(rect: Rect2) -> void:

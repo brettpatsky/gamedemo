@@ -8,10 +8,13 @@
 #   - A cave-entrance sprite + trigger Area2D sit at the foot of a plateau's
 #     south wall (built by HandcraftedMap, which knows where the plateaus are).
 #   - A separate "cave area" (fairy-garden backdrop + boundary walls + the parent
-#     cage + an exit) is built FAR off the playfield, in the same viewport/world
-#     space as the squad.
-#   - Right-clicking the cave mouth enters; right-clicking the exit marker leaves.
-#     Both checks are distance-based so no Area2D collision-layer matching is needed.
+#     cage + an exit portal) is built FAR off the playfield, in the same
+#     viewport/world space as the squad.
+#   - Both the cave mouth and the exit portal are small Area2D overlap zones:
+#     walking a soldier onto one triggers the transition. This is input-method
+#     agnostic (no click/tap action involved), which matters because the old
+#     click+distance approach shared an input action with touch movement/joystick
+#     controls and could misfire on Android.
 #     The parent cage is the level's real `parent_cage` objective, so Main's
 #     existing wiring (toast + RunState) just works.
 # =============================================================================
@@ -28,8 +31,7 @@ const CAVE_GAP := 1200.0
 const GARDEN_SCALE := 5.0          # 256x144 art -> 1280x720 (16:9) walkable garden
 const PATH_HALF := 84.0            # half-width of the walkable path corridor (world px)
 const REVEAL_DIST := 360.0         # squad distance at which the hidden mouth fades in
-const ENTER_CLICK_RADIUS := 100.0  # click must be within this world-px of the trigger
-const ENTER_SQUAD_DIST   := 280.0  # at least one soldier must be this close to trigger
+const TRIGGER_RADIUS := 30.0       # overlap radius for both the mouth and the exit portal
 
 var parent_cage: Node2D            # the parent NPC, registered as the "parent_cage" objective
 var nav_outline_world: PackedVector2Array   # path corridor, baked into the map navmesh
@@ -44,8 +46,17 @@ var _armed := true                 # triggers disabled briefly after a transitio
 var _fade: ColorRect
 var _mouth_visual: Node2D          # cave mouth art (faded in by proximity)
 var _entrance_area: Area2D
-var _exit_area: Area2D             # kept for the visual label; detection is distance-based
-var _exit_world: Vector2           # world-space centre of the exit click zone
+var _exit_area: Area2D             # the exit portal's overlap trigger
+var _exit_world: Vector2           # world-space centre of the exit portal
+
+# Dedicated navmesh for the cave corridor. The corridor is a disjoint island
+# parked CAVE_GAP px off the playfield; folding it into the world bake silently
+# drops it (recast discards the far island), so the squad's path clamped back to
+# the map edge and marched off-screen. Instead we bake the corridor into its own
+# compact NavigationServer map and repoint the squad's agents + path queries onto
+# it while underground (see _transition / _move_squad_to).
+var _cave_nav_map: RID
+var _cave_nav_region: NavigationRegion2D
 
 # Build the entrance at `entrance_world` (foot of a south wall) and the cave area
 # off-playfield. `child_slot` is which kid's parent waits inside.
@@ -55,7 +66,47 @@ func setup(entrance_world: Vector2, child_slot: int, map_rect: Rect2) -> void:
 
 	_build_entrance()
 	_build_cave_area(child_slot)
+	_build_cave_navmesh()
 	_build_fade()
+
+# Bake the corridor outline into a dedicated NavigationServer map, positioned so
+# its local navmesh lines up with the corridor's world location. Agents repointed
+# onto this map (via Soldier.set_nav_map) path correctly inside the cave.
+func _build_cave_navmesh() -> void:
+	if nav_outline_world.size() < 3:
+		return
+	_cave_nav_region = NavigationRegion2D.new()
+	_cave_nav_region.name = "CaveNavRegion"
+	# Park the region at the corridor's first vertex so the baked geometry sits
+	# near local origin — the most baker-friendly case, and what makes the compact
+	# island bake reliably where the far-off world-fold did not.
+	_cave_nav_region.global_position = nav_outline_world[0]
+	add_child(_cave_nav_region)
+	_cave_nav_map = NavigationServer2D.map_create()
+	var cell := 16.0 if OS.get_name() == "Android" else 4.0
+	NavigationServer2D.map_set_cell_size(_cave_nav_map, cell)
+	NavigationServer2D.map_set_active(_cave_nav_map, true)
+	_cave_nav_region.set_navigation_map(_cave_nav_map)
+
+	var src := NavigationMeshSourceGeometryData2D.new()
+	var local := PackedVector2Array()
+	for p in nav_outline_world:
+		local.append(_cave_nav_region.to_local(p))
+	src.add_traversable_outline(local)
+	var np := NavigationPolygon.new()
+	np.agent_radius = 10.0
+	np.cell_size = cell
+	NavigationServer2D.bake_from_source_geometry_data(np, src)
+	_cave_nav_region.navigation_polygon = np
+	print("[CaveDebug] cave navmesh baked polys=%d verts=%d region_origin=%s" % [
+		np.get_polygon_count(), np.get_vertices().size(), _cave_nav_region.global_position])
+
+# NavigationServer maps are resources, not nodes — free the cave map explicitly
+# on teardown or every cave (one per level) leaks a map RID.
+func _exit_tree() -> void:
+	if _cave_nav_map.is_valid():
+		NavigationServer2D.free_rid(_cave_nav_map)
+		_cave_nav_map = RID()
 
 # ---------------------------------------------------------------------------
 func _build_entrance() -> void:
@@ -92,13 +143,14 @@ func _build_entrance() -> void:
 	area.set_collision_mask_value(2, true)             # detect soldiers (layer 2)
 	var cs := CollisionShape2D.new()
 	var sh := CircleShape2D.new()
-	sh.radius = 30.0                                   # small — must be deliberately stood on
+	sh.radius = TRIGGER_RADIUS                         # small — must be deliberately walked onto
 	cs.shape = sh
 	area.add_child(cs)
 	add_child(area)
 	_entrance_area = area
+	area.body_entered.connect(_on_entrance_body_entered)
 
-# Fade the cave mouth in/out by proximity. Both entry and exit are click-based (see _input).
+# Fade the cave mouth in/out by proximity.
 func _process(delta: float) -> void:
 	if _mouth_visual:
 		var target := 0.0
@@ -110,43 +162,22 @@ func _process(delta: float) -> void:
 				target = 1.0
 		_mouth_visual.modulate.a = lerpf(_mouth_visual.modulate.a, target, clampf(delta * 5.0, 0.0, 1.0))
 
-# Entry: right-click the cave mouth while at least one soldier is close enough.
-# Exit:  right-click the exit marker while at least one soldier is close enough.
-# Both checks are pure world-position distance — no Area2D overlap detection needed.
-# Consuming the event stops SquadController from issuing a normal move order.
-func _input(event: InputEvent) -> void:
-	if _busy or not _armed:
+# Entry/exit both happen by walking a soldier onto the trigger Area2D — no click or
+# tap action involved, so touch movement/joystick controls can't misfire the
+# transition the way the old click+distance check could on Android.
+func _on_entrance_body_entered(body: Node) -> void:
+	if _in_cave or _busy or not _armed:
 		return
-	if not event.is_action_pressed("squad_move"):
+	if not body.is_in_group("soldiers") or body.is_in_group("escort_npc"):
 		return
-	var screen_pos: Vector2 = event.get_position() if event is InputEventMouse \
-			else get_viewport().get_mouse_position()
-	var cam := get_tree().get_first_node_in_group("main_camera") as Camera2D
-	var world_pos: Vector2 = cam.get_canvas_transform().affine_inverse() * screen_pos \
-			if cam else get_viewport().canvas_transform.affine_inverse() * screen_pos
+	_transition(true)
 
-	if not _in_cave:
-		# ENTRY: click near the cave mouth while at least one soldier is close.
-		if world_pos.distance_to(_entrance_world) > ENTER_CLICK_RADIUS:
-			return
-		for s in get_tree().get_nodes_in_group("soldiers"):
-			if (s as Node).is_in_group("escort_npc"):
-				continue
-			if (s as Node2D).global_position.distance_to(_entrance_world) <= ENTER_SQUAD_DIST:
-				get_viewport().set_input_as_handled()
-				_transition(true)
-				return
-	else:
-		# EXIT: click near the exit marker while at least one soldier is close.
-		if world_pos.distance_to(_exit_world) > ENTER_CLICK_RADIUS:
-			return
-		for s in get_tree().get_nodes_in_group("soldiers"):
-			if (s as Node).is_in_group("escort_npc"):
-				continue
-			if (s as Node2D).global_position.distance_to(_exit_world) <= ENTER_SQUAD_DIST:
-				get_viewport().set_input_as_handled()
-				_transition(false)
-				return
+func _on_exit_body_entered(body: Node) -> void:
+	if not _in_cave or _busy or not _armed:
+		return
+	if not body.is_in_group("soldiers") or body.is_in_group("escort_npc"):
+		return
+	_transition(false)
 
 func _ellipse_points(rx: float, ry: float, n: int) -> PackedVector2Array:
 	var pts := PackedVector2Array()
@@ -244,16 +275,42 @@ func _build_cave_area(child_slot: int) -> void:
 	root.add_child(npc)
 	parent_cage = npc
 
-	# Exit marker at the path entrance. Detection is now click-based (_input),
-	# so no collision shape or layer matching is needed — the Area2D is kept only
-	# for the visual label.
+	# Exit portal at the path entrance — walking a soldier onto it leaves the cave.
 	var exit := Area2D.new()
 	exit.name = "CaveExitMarker"
 	exit.position = cl[0] + Vector2(0, -6)
+	exit.collision_mask = 0
+	exit.set_collision_mask_value(2, true)             # detect soldiers (layer 2)
+	var ecs := CollisionShape2D.new()
+	var esh := CircleShape2D.new()
+	esh.radius = TRIGGER_RADIUS
+	ecs.shape = esh
+	exit.add_child(ecs)
 	root.add_child(exit)
 	_exit_area = exit
-	_exit_world = exit.global_position   # world-space centre used in _input
-	exit.add_child(_make_label("Leave (click)", Vector2(-44, -50), Color(0.9, 1.0, 0.9)))
+	_exit_world = exit.global_position
+	exit.body_entered.connect(_on_exit_body_entered)
+	_build_portal_visual(exit)
+	exit.add_child(_make_label("Exit", Vector2(-14, -52), Color(0.9, 1.0, 0.9)))
+
+# Placeholder swirl until the PixelLab portal animation is in — a pulsing cyan
+# ring so the exit reads as "step here," same fairy-garden glow as the waterfall.
+func _build_portal_visual(parent: Node2D) -> void:
+	var ring := Polygon2D.new()
+	ring.color = Color(0.35, 0.85, 1.0, 0.55)
+	ring.polygon = _ellipse_points(26.0, 30.0, 24)
+	ring.z_index = 1
+	ring.z_as_relative = false
+	parent.add_child(ring)
+	var core := Polygon2D.new()
+	core.color = Color(0.75, 1.0, 1.0, 0.35)
+	core.polygon = _ellipse_points(14.0, 17.0, 20)
+	core.z_index = 2
+	core.z_as_relative = false
+	parent.add_child(core)
+	var tw := create_tween().set_loops()
+	tw.tween_property(ring, "scale", Vector2(1.12, 1.12), 0.9).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(ring, "scale", Vector2(1.0, 1.0), 0.9).set_trans(Tween.TRANS_SINE)
 
 # ---------------------------------------------------------------------------
 # Fade out -> reposition squad + camera + freeze/unfreeze world -> fade in.
@@ -262,9 +319,9 @@ func _transition(into_cave: bool) -> void:
 	# Exit back to the entrance foot — HandcraftedMap verified this cell is
 	# passable when it picked the cave site, so it's always safe to land here
 	# regardless of how many plateaus surround it. Re-entry is blocked for 1.3 s
-	# by the _armed timer; entry is click-gated so the squad can't stumble back
-	# in just by standing here. Clamp Y so row-1 soldiers (56 px south) stay
-	# inside the map boundary.
+	# by the _armed timer — the squad lands standing right on top of the trigger,
+	# so this grace period is what stops an immediate re-trigger. Clamp Y so
+	# row-1 soldiers (56 px south) stay inside the map boundary.
 	var exit_y := minf(_entrance_world.y, _map_rect.end.y - 180.0)
 	var dest_centre: Vector2 = _cave_spawn if into_cave else Vector2(_entrance_world.x, exit_y)
 	var rect: Rect2 = _cave_rect if into_cave else _map_rect
@@ -278,6 +335,10 @@ func _transition(into_cave: bool) -> void:
 	_in_cave = into_cave
 	_set_world_frozen(into_cave)
 	_move_squad_to(dest_centre)
+	# Repoint pathfinding onto the cave corridor's dedicated navmesh (or back to the
+	# world map). Must run AFTER the teleport so the soldiers are already standing on
+	# the cave navmesh when their agents switch maps.
+	_apply_nav_map(into_cave)
 	# Drop any in-flight march (e.g. the half-finished walk to the exit marker)
 	# so a stale leader can't make _check_stragglers rescue-teleport the squad
 	# off-field ~1 s after the transition. Must run AFTER the teleport so the
@@ -289,7 +350,7 @@ func _transition(into_cave: bool) -> void:
 	var cam := get_tree().get_first_node_in_group("main_camera") as Camera2D
 	if cam:
 		if into_cave and cam.has_method("enter_cave_view"):
-			# Snaps to zoom=1.0 and centers on the full cave art.
+			# Fits the whole cave art in frame (zoom <= 1.0) and centers on it.
 			cam.enter_cave_view(rect)
 		else:
 			# Snap camera to the squad's landing spot before re-enabling follow,
@@ -298,7 +359,7 @@ func _transition(into_cave: bool) -> void:
 			if cam.has_method("exit_cave_view"):
 				# Restores map rect and re-enables squad-follow WITHOUT resetting
 				# zoom to min. At min-zoom _clamp_to_map centres on the map and
-				# the squad goes off-screen; keeping cave zoom (1.0) avoids that.
+				# the squad goes off-screen; keeping the cave's fit-zoom avoids that.
 				cam.exit_cave_view(rect)
 			elif cam.has_method("lock_to_rect"):
 				cam.lock_to_rect(rect)
@@ -336,6 +397,22 @@ func _move_squad_to(centre: Vector2) -> void:
 		if node.has_method("halt"):
 			node.call("halt")
 		i += 1
+
+# Repoint the squad's pathfinding onto the cave navmesh (entering) or the world
+# navmesh (leaving). Switches every living soldier's agent map AND the squad
+# controller's group-path / straggler query map, so both the rigid march and the
+# rescue net resolve against the corridor instead of clamping to the playfield.
+func _apply_nav_map(into_cave: bool) -> void:
+	var map: RID = _cave_nav_map if (into_cave and _cave_nav_map.is_valid()) else RID()
+	for s in get_tree().get_nodes_in_group("soldiers"):
+		var node := s as Node2D
+		if node == null or node.is_in_group("escort_npc"):
+			continue
+		if node.has_method("set_nav_map"):
+			node.call("set_nav_map", map)
+	var squad := get_tree().get_first_node_in_group("squad_controller")
+	if squad and squad.has_method("set_nav_map_override"):
+		squad.call("set_nav_map_override", map)
 
 # Freeze enemies + their bullets while the squad is safely underground.
 func _set_world_frozen(frozen: bool) -> void:

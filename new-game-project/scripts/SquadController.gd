@@ -50,6 +50,19 @@ const MAX_GROUPS  := 3
 var _num_groups:   int = 1   # how many groups the squad is split into
 var _active_group: int = 0   # 0-indexed; this group receives all orders
 
+# When valid, all group-path queries (move orders + straggler rescue) run against
+# this map instead of the world map. CaveSystem sets it to the dedicated cave-
+# corridor navmesh while the squad is underground, since that corridor is a
+# disjoint island the main world bake silently drops (so world-map queries there
+# clamp back to the playfield and march the squad off-screen). RID() = world map.
+var _nav_map_override: RID = RID()
+
+func set_nav_map_override(map: RID) -> void:
+	_nav_map_override = map
+
+func _active_nav_map() -> RID:
+	return _nav_map_override if _nav_map_override.is_valid() else get_world_2d().navigation_map
+
 # Active formation marches, keyed by group_id. Each entry drives one group's
 # soldiers as a rigid formation gliding along a shared navmesh path — see
 # _begin_march / _tick_marches. Multiple groups can march at once (a non-active
@@ -72,7 +85,7 @@ func _physics_process(delta: float) -> void:
 # its formation slot. Runs per group so a split squad rescues each group against
 # its own leader, never dragging a soldier to a different group's position.
 func _check_stragglers(delta: float) -> void:
-	var nav_map: RID = get_world_2d().navigation_map
+	var nav_map: RID = _active_nav_map()
 	for g in _num_groups:
 		var grp := _soldiers_in_group(g)
 		if grp.size() <= 1:
@@ -464,7 +477,7 @@ func _issue_move_order(target: Vector2) -> void:
 		start += (s as Node2D).global_position
 	start /= float(count)
 	var path: PackedVector2Array = NavigationServer2D.map_get_path(
-			get_world_2d().navigation_map, start, target, true)
+			_active_nav_map(), start, target, true)
 	# Maze soldiers own their own movement; an empty/degenerate path means no
 	# route or a reform-in-place — either way fall back to plain move_to, which
 	# lands each kid directly on its slot.
@@ -563,7 +576,7 @@ func _advance_march(m: Dictionary, delta: float) -> bool:
 	# (boxed in by forest, slot in a wall) — hard-teleport it onto a navmesh point
 	# at its slot so it rejoins instead of being stranded. Soldiers merely blocked
 	# a little short of their slot are left where they are.
-	var nav_map: RID = get_world_2d().navigation_map
+	var nav_map: RID = _active_nav_map()
 	for i in m.soldiers.size():
 		var s = m.soldiers[i]
 		if not is_instance_valid(s) or (s.has_method("is_downed") and s.is_downed()):

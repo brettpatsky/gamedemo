@@ -125,11 +125,6 @@ var _prop_cells: Dictionary = {}
 # in an off-playfield fairy garden. Built by the parent/fragment spawner.
 const CAVE_SYSTEM_SCRIPT := preload("res://scripts/CaveSystem.gd")
 var _cave_system: Node2D
-# Cave path-corridor outline(s) in nav_region-local space, folded into the map's
-# own navmesh bake so the squad can path inside the cave (a separate region on a
-# second nav map didn't drive the agents reliably).
-var _cave_nav_outlines: Array[PackedVector2Array] = []
-
 # Dedicated wide-body navmesh for the minotaur. Lives on its OWN NavigationServer
 # map (a separate region on the default map would just union back the narrow gaps)
 # and is eroded by ~the brute's body radius so its routes only run through openings
@@ -324,7 +319,7 @@ func generate(seed_value: int = 0) -> void:
 	# Parent + fragments for the proc-style parent levels (Eliminate 2, Elite Hunt 3,
 	# Structures 5, Escort 6). Catacombs (4) and Blighted Marsh (7) place their own.
 	if lv == 2 or lv == 3 or lv == 5 or lv == 6:
-		await _spawn_mission_parent_and_fragment()
+		_spawn_mission_parent_and_fragment()
 	match lv:
 		5:
 			if not _objective_nodes.has("fortified_structure"):
@@ -1068,7 +1063,7 @@ func _bake_navigation() -> void:
 		for c in _water_block_cells:
 			obstacles[c] = true
 	var extra: Array = _extra_nav_obstruction_outlines()
-	if obstacles.is_empty() and _cave_nav_outlines.is_empty() and extra.is_empty():
+	if obstacles.is_empty() and extra.is_empty():
 		super._bake_navigation()
 		return
 	var src := NavigationMeshSourceGeometryData2D.new()
@@ -1077,9 +1072,9 @@ func _bake_navigation() -> void:
 		src.add_obstruction_outline(_rect_outline_local(nav_region, _cell_rect_world(r)))
 	for outline in extra:
 		src.add_obstruction_outline(outline)
-	# Cave path corridor — a disjoint walkable island far off the playfield.
-	for outline in _cave_nav_outlines:
-		src.add_traversable_outline(outline)
+	# Note: the cave corridor is NOT folded in here — it's a disjoint island the
+	# recast bake silently drops. CaveSystem bakes it into its own dedicated map
+	# and repoints the squad's agents onto it while underground.
 	var np := NavigationPolygon.new()
 	np.agent_radius = 10.0
 	np.cell_size = _nav_cell_size()
@@ -1200,14 +1195,9 @@ func _spawn_mission_parent_and_fragment() -> void:
 	_cave_system = cave
 	if cave.parent_cage:
 		_objective_nodes["parent_cage"] = cave.parent_cage
-	# Fold the cave's path corridor into the map navmesh + re-bake so the squad can
-	# actually walk it (a standalone cave nav region didn't drive the agents).
-	if nav_region and cave.nav_outline_world.size() >= 3:
-		var local := PackedVector2Array()
-		for p: Vector2 in cave.nav_outline_world:
-			local.append(nav_region.to_local(p))
-		_cave_nav_outlines = [local]
-		await _bake_navigation()
+	# The cave corridor gets its own navmesh map (built inside CaveSystem.setup);
+	# the squad's agents are repointed onto it on entry. No world re-bake needed —
+	# folding the far-off corridor island into the world bake silently dropped it.
 	_spawn_world_fragment(level, foot)
 
 # Three memory fragments drop in the open world (the cave holds only the

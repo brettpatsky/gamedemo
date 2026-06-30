@@ -570,6 +570,18 @@ func halt() -> void:
 	velocity = Vector2.ZERO
 	_state = State.IDLE
 
+# Repoint this soldier's pathfinding onto a different NavigationServer map. The
+# cave system swaps the squad onto a dedicated cave-corridor navmesh on entry
+# (the corridor is a disjoint island the main world bake silently drops) and
+# back to the world map on exit. Passing an invalid RID restores the default.
+func set_nav_map(map: RID) -> void:
+	if nav_agent == null:
+		return
+	if map.is_valid():
+		nav_agent.set_navigation_map(map)
+	else:
+		nav_agent.set_navigation_map(get_world_2d().navigation_map)
+
 func fire_at(target: Vector2, bullet_aim: Vector2 = Vector2.ZERO) -> void:
 	if _state == State.DEAD or _state == State.BOMB:
 		return
