@@ -207,7 +207,7 @@ func _ready() -> void:
 # TOUCH CONTROLS (tablet / phone)
 # Move = tap the field (Godot emulates a left-click from touch). Every command is
 # already an on-screen button. The one missing input is firing (a held right-click
-# aiming at the cursor), so we add a big thumb FIRE button that auto-aims the
+# aiming at the cursor), so we add a big thumb CAST button that auto-aims the
 # nearest enemy. Only shown when a touchscreen is present, so desktop is untouched.
 # =============================================================================
 var _touch_ui: bool = false
@@ -251,7 +251,7 @@ func _on_touch_aim(active: bool, vec: Vector2) -> void:
 
 # Computes the display safe area (camera hole-punch + rounded corners), masks the
 # unsafe margins with opaque black bars, and pulls the edge-anchored HUD controls
-# inward so the cog, FIRE button, labels, and command bar stay fully on-screen.
+# inward so the cog, CAST button, labels, and command bar stay fully on-screen.
 func _apply_safe_area() -> void:
 	if not _touch_ui:
 		return

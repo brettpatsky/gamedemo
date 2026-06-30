@@ -18,7 +18,9 @@ extends Control
 
 signal aim_input(active: bool, vec: Vector2)
 
-const RADIUS      := 78.0   # pad radius (px); 2×RADIUS = the 156px FIRE footprint
+const Balance = preload("res://scripts/BalanceConfig.gd")
+
+const RADIUS      := 78.0   # pad radius (px); 2×RADIUS = the 156px CAST footprint
 const KNOB_RADIUS := 30.0
 const DEADZONE    := 18.0   # below this drag, treat as "auto-aim nearest enemy"
 
@@ -67,21 +69,46 @@ func _update_knob(local_pos: Vector2) -> void:
 		off = off.normalized() * RADIUS
 	_knob = off
 
+# Samples the same pastel rainbow used for the squad names, cycling all the
+# way around so the disc reads as a seamless colour wheel rather than a
+# gradient with a hard seam.
+func _rainbow_color(t: float, alpha: float) -> Color:
+	var stops: Array[Color] = Balance.SOLDIER_NAME_COLOR_PER_SLOT
+	var n := stops.size()
+	var scaled: float = fposmod(t, 1.0) * n
+	var idx := int(scaled) % n
+	var col: Color = stops[idx].lerp(stops[(idx + 1) % n], scaled - int(scaled))
+	col.a = alpha
+	return col
+
+# Draws a filled disc whose colour sweeps through the rainbow by angle, using
+# draw_polygon's per-vertex colour interpolation for a smooth blend.
+func _draw_rainbow_disc(center: Vector2, radius: float, alpha: float) -> void:
+	var steps := 48
+	var pts := PackedVector2Array([center])
+	var cols := PackedColorArray([_rainbow_color(0.0, alpha)])
+	for s in range(steps + 1):
+		var t: float = float(s) / float(steps)
+		var a: float = t * TAU
+		pts.append(center + Vector2(cos(a), sin(a)) * radius)
+		cols.append(_rainbow_color(t, alpha))
+	draw_polygon(pts, cols)
+
 func _draw() -> void:
 	var c: Vector2 = _center()
 	# Base pad.
-	draw_circle(c, RADIUS, Color(0.85, 0.18, 0.18, 0.45))
+	_draw_rainbow_disc(c, RADIUS, 0.45)
 	draw_arc(c, RADIUS, 0.0, TAU, 48, Color(1, 1, 1, 0.55), 3.0)
 	if _pressing and _knob.length() >= DEADZONE:
 		# Aiming — show the direction line + knob.
 		draw_line(c, c + _knob, Color(1, 1, 1, 0.7), 4.0)
-		draw_circle(c + _knob, KNOB_RADIUS, Color(1.0, 0.4, 0.3, 0.95))
+		_draw_rainbow_disc(c + _knob, KNOB_RADIUS, 0.95)
 		draw_arc(c + _knob, KNOB_RADIUS, 0.0, TAU, 24, Color(1, 1, 1, 0.85), 2.0)
 	else:
-		# Idle / no-drag — centred knob + FIRE label.
-		draw_circle(c, KNOB_RADIUS, Color(0.95, 0.25, 0.22, 0.9))
+		# Idle / no-drag — centred knob + CAST label.
+		_draw_rainbow_disc(c, KNOB_RADIUS, 0.9)
 		var f: Font = ThemeDB.fallback_font
-		var fs := 22
-		var tw: float = f.get_string_size("FIRE", HORIZONTAL_ALIGNMENT_CENTER, -1, fs).x
-		draw_string(f, c + Vector2(-tw * 0.5, fs * 0.35), "FIRE",
+		var fs := 20
+		var tw: float = f.get_string_size("CAST", HORIZONTAL_ALIGNMENT_CENTER, -1, fs).x
+		draw_string(f, c + Vector2(-tw * 0.5, fs * 0.35), "CAST",
 				HORIZONTAL_ALIGNMENT_CENTER, -1, fs, Color.WHITE)
