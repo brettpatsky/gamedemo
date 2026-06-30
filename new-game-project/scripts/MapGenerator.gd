@@ -266,8 +266,8 @@ func _spawn_enemies() -> void:
 	var minotaur_scene: PackedScene = load("res://scenes/minotaur.tscn")
 	var elite_hunt: bool = GameManager.current_level == 3
 	# Low-RAM Android devices (e.g. 4GB tablets) get OOM-killed by the full swarm's
-	# node + texture footprint, so the standard swarm is cut on Android.
-	var swarm_count: int = 20 if OS.get_name() == "Android" else 50
+	# node + texture footprint, so the standard swarm is trimmed on Android.
+	var swarm_count: int = 35 if OS.get_name() == "Android" else 50
 	var count: int = Balance.ELITE_HUNT_TRASH if elite_hunt else swarm_count
 	var minotaur_count: int = 0
 	if minotaur_scene != null:
