@@ -735,6 +735,16 @@ func _is_continuous_weapon() -> bool:
 # of survivors, keeping the formation balanced on the leader (a lone soldier
 # sits exactly on it).
 func _group_offsets(group: Array) -> Array:
+	# A split group's members keep whatever offsets their slot_index happens to
+	# land on in the full 6-soldier FORMATIONS grid — for round-robin group
+	# assignment that's often two slots on opposite sides of the grid (e.g.
+	# slots 1 and 4 in the 2×3 layout), so the pair visually stands far apart
+	# even though they're "one group". Once the squad is split, use a small
+	# compact cluster sized to the group instead, so every split group reads
+	# as tight as a 2- or 3-soldier huddle regardless of which slots its
+	# members came from.
+	if _num_groups > 1:
+		return _compact_offsets(group)
 	var f: Array = FORMATIONS[_formation_index]
 	var raw: Array = []
 	var mean := Vector2.ZERO
@@ -748,6 +758,32 @@ func _group_offsets(group: Array) -> Array:
 	var out: Array = []
 	for off in raw:
 		out.append(off - mean)
+	return out
+
+# Tight, centred row of offsets sized to the group — 70 px apart, ordered by
+# each soldier's stable slot_index so a given kid keeps the same spot within
+# its split group across repeated calls (same stability guarantee as the
+# full-squad formation, just keyed to a small local cluster instead of the
+# 6-slot grid).
+func _compact_offsets(group: Array) -> Array:
+	const GAP := 70.0
+	var n := group.size()
+	if n <= 1:
+		return [Vector2.ZERO] if n == 1 else []
+	var order := range(n)
+	order.sort_custom(func(a, b) -> bool:
+		var sa: int = group[a].slot_index if "slot_index" in group[a] else a
+		var sb: int = group[b].slot_index if "slot_index" in group[b] else b
+		return sa < sb
+	)
+	var total := GAP * float(n - 1)
+	var slot_offsets: Array = []
+	for i in n:
+		slot_offsets.append(Vector2(-total * 0.5 + GAP * i, 0))
+	var out: Array = []
+	out.resize(n)
+	for rank in n:
+		out[order[rank]] = slot_offsets[rank]
 	return out
 
 func _cycle_formation() -> void:
