@@ -1174,7 +1174,7 @@ func _add_box_collider(body: StaticBody2D, wr: Rect2) -> void:
 func _spawn_mission_parent_and_fragment() -> void:
 	var foot := _pick_cave_entrance_foot()
 	if foot.x < 0:
-		super._spawn_mission_parent_and_fragment()   # no plateau to host a cave → fall back
+		_spawn_freestanding_cave()   # no plateau wall (e.g. the flat Blighted Marsh) → ground portal
 		return
 	# Record the cave mouth so _spawn_escort_mission keeps the VIP prison away.
 	_cave_foot_cell = foot
@@ -1199,6 +1199,32 @@ func _spawn_mission_parent_and_fragment() -> void:
 	# the squad's agents are repointed onto it on entry. No world re-bake needed —
 	# folding the far-off corridor island into the world bake silently dropped it.
 	_spawn_world_fragment(level, foot)
+
+# Flat maps (no plateau tier ≥ 1, e.g. the Blighted Marsh) have no wall to set a
+# cave mouth into — drop a freestanding ground portal in the outer ring instead,
+# same placement rule as MapGenerator's plain cage fallback.
+func _spawn_freestanding_cave() -> void:
+	var level: int = GameManager.current_level
+	var outer := _passable_cells.filter(func(c: Vector2i) -> bool:
+		if c.x < 3 or c.x > map_width - 4 or c.y < 3 or c.y > map_height - 4:
+			return false
+		var cx := float(c.x) / float(map_width)
+		var cy := float(c.y) / float(map_height)
+		return cx < 0.20 or cx > 0.80 or cy < 0.20 or cy > 0.80
+	)
+	if outer.is_empty():
+		super._spawn_mission_parent_and_fragment()   # ultimate fallback: literal cage
+		return
+	outer.shuffle()
+	var entrance_cell: Vector2i = outer[0]
+	var cave := Node2D.new()
+	cave.set_script(CAVE_SYSTEM_SCRIPT)
+	add_child(cave)
+	cave.setup(_tile_to_world(entrance_cell), level - 2, get_map_rect(), true)
+	_cave_system = cave
+	if cave.parent_cage:
+		_objective_nodes["parent_cage"] = cave.parent_cage
+	_spawn_world_fragment(level, entrance_cell)
 
 # Three memory fragments drop in the open world (the cave holds only the
 # parent). IDs are picked randomly from the uncollected pool.

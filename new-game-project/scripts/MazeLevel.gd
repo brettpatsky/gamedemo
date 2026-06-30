@@ -44,8 +44,8 @@ const MAZE_LAYOUT: Array[String] = [
 ]
 
 const _ROCK_SCENE: PackedScene = preload("res://scenes/mazes/maze_rock.tscn")
-const _PARENT_CAGE_SCENE:     PackedScene = preload("res://scenes/parent_cage.tscn")
 const _MEMORY_FRAGMENT_SCENE: PackedScene = preload("res://scenes/memory_fragment.tscn")
+const CAVE_SYSTEM_SCRIPT := preload("res://scripts/CaveSystem.gd")
 
 @onready var background: ColorRect          = $Background
 @onready var nav_region: NavigationRegion2D = $NavigationRegion2D
@@ -134,13 +134,13 @@ func _spawn_mission_parent_and_fragment() -> void:
 	open_cells.shuffle()
 	var cage_cell: Vector2i = open_cells[0]
 
-	if _PARENT_CAGE_SCENE:
-		var cage: Node2D = _PARENT_CAGE_SCENE.instantiate()
-		cage.position = _cell_centre(cage_cell)
-		if "child_slot" in cage:
-			cage.set("child_slot", level - 1)
-		add_child(cage)
-		_parent_cage = cage
+	# A freestanding ground portal into the hidden cave, in place of the old
+	# literal parent_cage — the maze has no plateau wall to set a mouth into.
+	var cave := Node2D.new()
+	cave.set_script(CAVE_SYSTEM_SCRIPT)
+	add_child(cave)
+	cave.setup(_cell_centre(cage_cell), level - 1, get_map_rect(), true)
+	_parent_cage = cave.parent_cage
 
 	if _MEMORY_FRAGMENT_SCENE:
 		# Three distinct, not-yet-collected fragments, spread out from the cage

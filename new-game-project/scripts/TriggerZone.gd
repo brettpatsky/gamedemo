@@ -13,6 +13,9 @@ extends Area2D
 
 enum Style { PLATE, CIRCLE, IDENTITY }
 
+const _PLATE_TEX := "res://resources/tutorial/pressure_plate.png"
+const _PLATE_SCALE_MULT := 1.7
+
 signal state_changed(pressed: bool)
 
 @export var radius:        float = 36.0
@@ -23,7 +26,8 @@ signal state_changed(pressed: bool)
 # -1 = not part of an adopted trial (e.g. a standalone test zone).
 @export var trial_index:   int   = -1
 
-var _occupants: int = 0
+var _occupants:    int = 0
+var _plate_sprite: Sprite2D
 
 func _ready() -> void:
 	var shape := CircleShape2D.new()
@@ -35,6 +39,17 @@ func _ready() -> void:
 	collision_mask  = 2   # soldiers live on layer 2
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
+
+	if style == Style.PLATE and ResourceLoader.exists(_PLATE_TEX):
+		_plate_sprite = Sprite2D.new()
+		var tex: Texture2D = load(_PLATE_TEX)
+		_plate_sprite.texture = tex
+		var tex_size: Vector2 = tex.get_size()
+		if tex_size.x > 0.0:
+			_plate_sprite.scale = Vector2.ONE * (radius * 2.0 * _PLATE_SCALE_MULT / tex_size.x)
+		add_child(_plate_sprite)
+		_refresh_plate_sprite()
+
 	queue_redraw()
 
 func _on_body_entered(body: Node2D) -> void:
@@ -43,6 +58,7 @@ func _on_body_entered(body: Node2D) -> void:
 	_occupants += 1
 	if _occupants == 1:
 		state_changed.emit(true)
+		_refresh_plate_sprite()
 		queue_redraw()
 
 func _on_body_exited(body: Node2D) -> void:
@@ -51,7 +67,13 @@ func _on_body_exited(body: Node2D) -> void:
 	_occupants = maxi(_occupants - 1, 0)
 	if _occupants == 0:
 		state_changed.emit(false)
+		_refresh_plate_sprite()
 		queue_redraw()
+
+func _refresh_plate_sprite() -> void:
+	if _plate_sprite == null:
+		return
+	_plate_sprite.modulate = Color(1.4, 1.15, 0.6) if is_pressed() else Color(1, 1, 1)
 
 func _accepts(body: Node2D) -> bool:
 	if not body.is_in_group("soldiers"):
@@ -70,6 +92,10 @@ func _draw() -> void:
 	var active: bool = is_pressed()
 	match style:
 		Style.PLATE:
+			# Real art (_plate_sprite) covers this case now; only fall back to the
+			# procedural rect if pressure_plate.png failed to load.
+			if _plate_sprite != null:
+				return
 			var col: Color = Color(0.65, 0.55, 0.30) if not active else Color(0.95, 0.85, 0.45)
 			var rect := Rect2(-radius, -radius * 0.55, radius * 2, radius * 1.1)
 			draw_rect(rect, col)

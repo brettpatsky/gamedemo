@@ -82,6 +82,20 @@ var _braziers_lit:     int = 0
 # revived. Track each event so the gate opens regardless of which fires first.
 var _final_wall_broken:  bool = false
 var _final_revive_done:  bool = false
+# A failed sacrifice (ward still standing) must NOT hand back a fresh charge
+# right away — that let the player chain sacrifices back-to-back, downing a
+# second (or third) kid before the first was ever revived, with only one
+# revive potion ever in play. This flag withholds the new charge until the
+# downed kid is actually revived; see _build_room_sacrifice.
+var _room6_awaiting_revive_before_retry: bool = false
+
+# Room 1's barricade can ONLY be broken by a throwable, and the squad's whole
+# grenade pool is a single shared resource — a string of missed throws (or
+# grenades spent on Room 0's enemies) can drain it to zero before the wall is
+# down. _resupply_room1_pending debounces the watcher in _process so a single
+# depletion doesn't show the modal/refill on every frame while it's waiting
+# to see whether an already-airborne grenade still lands the killing blow.
+var _resupply_room1_pending: bool = false
 
 # Gate refs for the multi-zone puzzles. Storing them as members instead of
 # capturing them in the per-zone signal lambdas avoids "Lambda capture
@@ -120,6 +134,13 @@ func _ready() -> void:
 		background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# The actual layout build happens in generate() (see below) — Main.gd awaits
 	# that call before spawning the squad, whereas _ready() isn't awaited at all.
+
+# Watches the shared grenade pool for Room 1's sake — see _resupply_room1_pending.
+func _process(_delta: float) -> void:
+	if _solved[1] or _resupply_room1_pending or GameManager.grenade_ammo_pool > 0:
+		return
+	_resupply_room1_pending = true
+	_resupply_room1_throwable()
 
 # ---------------------------------------------------------------------------
 # MapGenerator-compatible interface
@@ -441,15 +462,17 @@ func _build_room_combat() -> void:
 	)
 
 # Room 1 — special wall that ignores small-arms damage. Cycle to throwable.
+const _ROOM1_SIGN_TEXT := "2.  THROWABLES\nPress Q or click a throwable\nBreak the barricade"
+
 func _build_room_grenade_wall() -> void:
-	_add_sign(_room_position(1, 1, 0),
-			"2.  THROWABLES\nPress Q or click a throwable\nBreak the heavy door")
+	_add_sign(_room_position(1, 1, 0), _ROOM1_SIGN_TEXT)
 	var wall := SpecialWall.new()
 	wall.width                  = 96.0
 	wall.height                 = 96.0
 	wall.max_health             = 24      # two grenades or two sacrifices
 	wall.min_damage_to_register = 5       # filters bullets (damage 1)
-	wall.hint_text              = "Heavy Door"
+	wall.hint_text              = "Barricade"
+	wall.kind                   = "barricade"
 	wall.position = _room_position(1, ROOM_HALF_W_TILES, ROOM_HALF_H_TILES)
 	add_child(wall)
 
@@ -460,6 +483,20 @@ func _build_room_grenade_wall() -> void:
 		_solved[1] = true
 		gate.open()
 	)
+
+# Safety net for the watcher in _process: the grenade pool can hit zero from
+# missed throws (or grenades spent on Room 0's enemies) before the barricade
+# is down, which would otherwise permanently lock the only room that can
+# teach throwables. Wait out any already-airborne grenade (ammo is spent the
+# instant it's thrown, not when it lands) before judging, then top the pool
+# back up and re-show the room's sign so the player can simply try again.
+func _resupply_room1_throwable() -> void:
+	await get_tree().create_timer(1.0).timeout
+	_resupply_room1_pending = false
+	if _solved[1]:
+		return
+	GameManager.grenade_ammo_pool = 2
+	_show_tutorial_modal(_ROOM1_SIGN_TEXT)
 
 # Room 2 — five ritual circles in a pentagon. Pentagram formation fits exactly.
 func _build_room_formation() -> void:
@@ -580,15 +617,17 @@ func _unlock_final_trial_features() -> void:
 # Room 6 — FINAL TRIAL: blood ward + revive. Player must spend a kid via
 # Sacrifice to break the ward AND bring that kid back with the Revive heart.
 # Either event can fire first; the gate opens when both have happened.
+const _ROOM6_SIGN_TEXT := "7.  FINAL TRIAL\nBreak the ward with Sacrifice\nThen Revive (♥) the fallen kid"
+
 func _build_room_sacrifice() -> void:
-	_add_sign(_room_position(6, 1, 0),
-			"7.  FINAL TRIAL\nBreak the ward with Sacrifice\nThen Revive (♥) the fallen kid")
+	_add_sign(_room_position(6, 1, 0), _ROOM6_SIGN_TEXT)
 	var wall := SpecialWall.new()
 	wall.width                  = 96.0
 	wall.height                 = 96.0
 	wall.max_health             = 15      # sacrifice deals 15 → one-shot
 	wall.min_damage_to_register = 13      # grenade deals 12 → filtered out
 	wall.hint_text              = "Blood Ward — only Sacrifice breaks it"
+	wall.kind                   = "sacrifice"
 	wall.position = _room_position(6, ROOM_HALF_W_TILES, ROOM_HALF_H_TILES)
 	add_child(wall)
 
@@ -599,10 +638,37 @@ func _build_room_sacrifice() -> void:
 	)
 	# Any revive within this mission counts — the player has to spend their
 	# one potion here because they only just got it back, and there's nowhere
-	# else in the tutorial where a kid can die.
+	# else in the tutorial where a kid can die. A revive is also the gate that
+	# releases a new sacrifice charge after a failed attempt — see below.
 	GameManager.soldier_revived.connect(func(_s: Node) -> void:
 		_final_revive_done = true
+		if _room6_awaiting_revive_before_retry:
+			_room6_awaiting_revive_before_retry = false
+			if not _final_wall_broken and not _solved[6]:
+				GameManager.sacrifice_charges = 1
+				GameManager.set_sacrifice_enabled(true)
 		_try_solve_final_trial(gate)
+	)
+	# Safety net: Sacrifice has a blast radius (Balance.SACRIFICE_RADIUS) — a
+	# kid who detonates too far from the ward burns the capped charge without
+	# breaking it, which would otherwise permanently soft-lock the Final Trial
+	# (charges hit 0 the moment the kid is armed, sacrifice disables, no way to
+	# try again). Sacrifice is the only lethal mechanic in the tutorial, so any
+	# death here means an attempt was just made. Grant a revive potion (if
+	# needed) and re-show the sign, but DON'T hand back a new charge yet —
+	# sacrifice stays disabled (consume_sacrifice_charge already did that)
+	# until the downed kid is actually revived, via _room6_awaiting_revive_
+	# before_retry above. Without this gate the player could chain sacrifices
+	# back-to-back, downing kid after kid with only one revive ever granted,
+	# permanently losing every kid past the first.
+	GameManager.soldier_died.connect(func(_s: Node) -> void:
+		if _final_wall_broken or _solved[6]:
+			return
+		_room6_awaiting_revive_before_retry = true
+		if GameManager.revive_potions <= 0:
+			GameManager.revive_potions = 1
+			GameManager.revives_changed.emit(GameManager.revive_potions)
+		_show_tutorial_modal(_ROOM6_SIGN_TEXT)
 	)
 
 func _try_solve_final_trial(gate: PuzzleGate) -> void:

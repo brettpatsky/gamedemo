@@ -37,6 +37,7 @@ const TRIGGER_RADIUS := 30.0       # overlap radius for both the mouth and the e
 var parent_cage: Node2D            # the parent NPC, registered as the "parent_cage" objective
 var nav_outline_world: PackedVector2Array   # path corridor, baked into the map navmesh
 
+var _freestanding: bool = false    # true on maps with no plateau wall to set a mouth into
 var _entrance_world: Vector2       # squad return point (just outside the cave mouth)
 var _cave_spawn: Vector2           # where the squad lands inside the cave
 var _cave_rect: Rect2              # camera clamp rect for the cave (== garden, 16:9)
@@ -60,10 +61,13 @@ var _cave_nav_map: RID
 var _cave_nav_region: NavigationRegion2D
 
 # Build the entrance at `entrance_world` (foot of a south wall) and the cave area
-# off-playfield. `child_slot` is which kid's parent waits inside.
-func setup(entrance_world: Vector2, child_slot: int, map_rect: Rect2) -> void:
+# off-playfield. `child_slot` is which kid's parent waits inside. `freestanding`
+# is true on maps with no plateau wall to set a mouth into (mazes, the flat
+# Blighted Marsh) — the entrance becomes a standalone ground portal instead.
+func setup(entrance_world: Vector2, child_slot: int, map_rect: Rect2, freestanding: bool = false) -> void:
 	_entrance_world = entrance_world
 	_map_rect = map_rect
+	_freestanding = freestanding
 
 	_build_entrance()
 	_build_cave_area(child_slot)
@@ -114,26 +118,39 @@ func _build_entrance() -> void:
 	# squad gets close (proximity fade-in in _process).
 	_mouth_visual = Node2D.new()
 	_mouth_visual.name = "CaveMouth"
-	_mouth_visual.position = _entrance_world + Vector2(0, -58)
 	_mouth_visual.modulate = Color(1, 1, 1, 0)   # start hidden
 	add_child(_mouth_visual)
 
-	# Solid black opening behind the rocky ring so you see a dark cave, not the wall.
-	var hole := Polygon2D.new()
-	hole.color = Color(0.015, 0.01, 0.03)
-	hole.polygon = _ellipse_points(22.0, 30.0, 20)
-	hole.position = Vector2(0, 3)
-	hole.z_index = 0
-	hole.z_as_relative = false
-	_mouth_visual.add_child(hole)
+	if _freestanding:
+		# No wall to set a mouth into (mazes, flat Blighted Marsh) — a standalone
+		# ground portal sitting right at the walkable point instead. Reuses the
+		# cave's own exit-portal art: it's the same hidden cave either way.
+		_mouth_visual.position = _entrance_world
+		var sprite := AnimatedSprite2D.new()
+		sprite.sprite_frames = PortalVisual.build_sprite_frames(
+				"res://resources/portals/cave_portal.png")
+		sprite.scale = Vector2(0.7, 0.7)
+		_mouth_visual.add_child(sprite)
+		sprite.play(&"idle")
+	else:
+		_mouth_visual.position = _entrance_world + Vector2(0, -58)
 
-	var ent := Sprite2D.new()
-	ent.scale = Vector2(1.35, 1.35)
-	ent.z_index = 1
-	ent.z_as_relative = false
-	if ResourceLoader.exists(CAVE_ENTRANCE_TEX):
-		ent.texture = load(CAVE_ENTRANCE_TEX)
-	_mouth_visual.add_child(ent)
+		# Solid black opening behind the rocky ring so you see a dark cave, not the wall.
+		var hole := Polygon2D.new()
+		hole.color = Color(0.015, 0.01, 0.03)
+		hole.polygon = _ellipse_points(22.0, 30.0, 20)
+		hole.position = Vector2(0, 3)
+		hole.z_index = 0
+		hole.z_as_relative = false
+		_mouth_visual.add_child(hole)
+
+		var ent := Sprite2D.new()
+		ent.scale = Vector2(1.35, 1.35)
+		ent.z_index = 1
+		ent.z_as_relative = false
+		if ResourceLoader.exists(CAVE_ENTRANCE_TEX):
+			ent.texture = load(CAVE_ENTRANCE_TEX)
+		_mouth_visual.add_child(ent)
 
 	var area := Area2D.new()
 	area.name = "CaveEntranceTrigger"
@@ -196,9 +213,16 @@ func _build_cave_area(child_slot: int) -> void:
 	# The walkable PATH — centre-line waypoints (normalised to the art) traced over
 	# the painted cobblestone, bottom entrance up to the clearing where the parent
 	# stands. Everything off this corridor is blocked.
+	# Shifted up 0.11 (~79px) from the original [0.99, 0.78, 0.60, 0.45, 0.34] as a
+	# uniform translation — preserves every segment's length so the spawn-clearance
+	# tuning below (92% lerp => ~19px clear of the exit trigger) still holds. The
+	# untranslated wn[0]=0.99 sat right at the screen-bottom edge once
+	# enter_cave_view fits this whole rect to the viewport, and on Android the
+	# on-screen joystick + FIRE button HUD is taller than desktop's and was
+	# clipping the portal/"Exit" label there.
 	var wn := [
-		Vector2(0.50, 0.99), Vector2(0.54, 0.78), Vector2(0.57, 0.60),
-		Vector2(0.54, 0.45), Vector2(0.50, 0.34)]
+		Vector2(0.50, 0.88), Vector2(0.54, 0.67), Vector2(0.57, 0.49),
+		Vector2(0.54, 0.34), Vector2(0.50, 0.23)]
 	var cl: Array[Vector2] = []
 	for n in wn:
 		cl.append(g0 + Vector2(n.x * gw, n.y * gh))
