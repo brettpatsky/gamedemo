@@ -51,7 +51,7 @@ func generate(seed_value: int = 0) -> void:
 	_setup_tileset()
 	_derive_from_painted_tiles()
 	_scan_passable_from_tiles()
-	_bake_navigation()
+	await _bake_navigation()
 	_build_cliff_collision()
 	_adopt_tutorial_nodes()
 

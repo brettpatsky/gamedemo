@@ -181,6 +181,8 @@ const STEP_BASE:  int = 2
 # subclasses (e.g. TutorialMap) can size the map differently while reusing the
 # whole Caraka layer/nav/collision pipeline. Default = the shared handcrafted size.
 func _map_dims() -> Vector3i:
+	if OS.get_name() == "Android":
+		return Vector3i(80, 70, Balance.MAP_HANDCRAFTED_TILE_SIZE)
 	return Vector3i(Balance.MAP_HANDCRAFTED_WIDTH, Balance.MAP_HANDCRAFTED_HEIGHT,
 			Balance.MAP_HANDCRAFTED_TILE_SIZE)
 
@@ -291,11 +293,15 @@ func generate(seed_value: int = 0) -> void:
 		if ref_layer:
 			ref_layer.clear()
 		_build_tier_grid()       # quantise heightmap → flat tiers (Phase A)
+		await get_tree().process_frame
 		_carve_stairs()          # punch reachable staircases through cliffs (Phase B)
+		await get_tree().process_frame
 		_generate_terrain(seed_value)
+		await get_tree().process_frame
 		_paint_cliffs()          # cliff faces + steps on the cliff layer (Phase C)
 		if PLACE_PROPS:
 			_place_props(seed_value)
+			await get_tree().process_frame
 	else:
 		# Hand-painted ("Custom") map: derive the blocking from whatever the user
 		# painted on TileMapLayer_cliff so cliffs/stairs/props still work without a
@@ -303,8 +309,9 @@ func generate(seed_value: int = 0) -> void:
 		# map boundary) is shared with the Auto path.
 		_setup_tileset()
 		_derive_from_painted_tiles()
+	await get_tree().process_frame
 	_scan_passable_from_tiles()
-	_bake_navigation()
+	await _bake_navigation()
 	_build_cliff_collision()
 	# Custom mission scenes can pre-place their objective nodes (structures /
 	# escort NPC / walls / extraction) directly in the .tscn — see mission_4
@@ -317,7 +324,7 @@ func generate(seed_value: int = 0) -> void:
 	# Parent + fragments for the proc-style parent levels (Eliminate 2, Elite Hunt 3,
 	# Structures 5, Escort 6). Catacombs (4) and Blighted Marsh (7) place their own.
 	if lv == 2 or lv == 3 or lv == 5 or lv == 6:
-		_spawn_mission_parent_and_fragment()
+		await _spawn_mission_parent_and_fragment()
 	match lv:
 		5:
 			if not _objective_nodes.has("fortified_structure"):
@@ -1075,9 +1082,12 @@ func _bake_navigation() -> void:
 		src.add_traversable_outline(outline)
 	var np := NavigationPolygon.new()
 	np.agent_radius = 10.0
-	np.cell_size = 4.0
+	np.cell_size = _nav_cell_size()
 	NavigationServer2D.bake_from_source_geometry_data(np, src)
 	nav_region.navigation_polygon = np
+	# Yield between the two C++ bakes — each one can take 1-2 seconds on a budget
+	# Android device, and running them back-to-back in a single frame caused ANR kills.
+	await get_tree().process_frame
 
 	# Same source geometry, re-baked far more aggressively eroded for the minotaur.
 	_bake_large_agent_navmesh(src)
@@ -1094,14 +1104,22 @@ func _bake_large_agent_navmesh(src: NavigationMeshSourceGeometryData2D) -> void:
 		add_child(_large_nav_region)
 		_large_nav_region.global_transform = nav_region.global_transform
 		_large_nav_map = NavigationServer2D.map_create()
-		NavigationServer2D.map_set_cell_size(_large_nav_map, 4.0)
+		NavigationServer2D.map_set_cell_size(_large_nav_map, _nav_cell_size())
 		NavigationServer2D.map_set_active(_large_nav_map, true)
 		_large_nav_region.set_navigation_map(_large_nav_map)
 	var np := NavigationPolygon.new()
 	np.agent_radius = Balance.MINOTAUR_NAV_AGENT_RADIUS
-	np.cell_size = 4.0
+	np.cell_size = _nav_cell_size()
 	NavigationServer2D.bake_from_source_geometry_data(np, src)
 	_large_nav_region.navigation_polygon = np
+
+# Navmesh rasterisation resolution. The bake grid is (map_area / cell_size²), so
+# a larger cell_size cuts the peak transient memory of bake_from_source_geometry_data
+# quadratically. Budget Android devices were OOM-killed by the fine 4px grid over
+# the full map (×2 for the minotaur mesh); 16px shrinks each bake grid ~16× while
+# still resolving the 64px tile gaps the squad routes through.
+func _nav_cell_size() -> float:
+	return 16.0 if OS.get_name() == "Android" else 4.0
 
 func get_large_agent_nav_map() -> RID:
 	if _large_nav_map.is_valid():
@@ -1189,7 +1207,7 @@ func _spawn_mission_parent_and_fragment() -> void:
 		for p: Vector2 in cave.nav_outline_world:
 			local.append(nav_region.to_local(p))
 		_cave_nav_outlines = [local]
-		_bake_navigation()
+		await _bake_navigation()
 	_spawn_world_fragment(level, foot)
 
 # Three memory fragments drop in the open world (the cave holds only the
@@ -1396,6 +1414,7 @@ func _place_props(seed_value: int) -> void:
 	var scene_owner: Node = owner if owner else self
 
 	_prop_cells.clear()
+	var prop_density: float = 0.3 if OS.get_name() == "Android" else 1.0
 	var forest := FastNoiseLite.new()
 	forest.seed = effective + 700
 	forest.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -1440,17 +1459,17 @@ func _place_props(seed_value: int) -> void:
 		# overlap (trees are bigger than a cell) so it reads as solid woodland,
 		# while the gaps stay walkable.
 		if ttype == "grass" and fv > 0.08:
-			var dens: float = clampf(remap(fv, 0.08, 0.7, 0.15, 0.62), 0.0, 0.62)
+			var dens: float = clampf(remap(fv, 0.08, 0.7, 0.15, 0.62), 0.0, 0.62) * prop_density
 			if roll < dens:
 				_spawn_prop(tree_tex, tree_regs[rng.randi() % tree_regs.size()], cell, TREE_SCALE, true, scene_owner)
 				continue
-			if roll < dens + 0.08:
+			if roll < dens + 0.08 * prop_density:
 				_spawn_prop(bush_tex, bush_regs[rng.randi() % bush_regs.size()], cell, Vector2(1.6, 1.6), false, scene_owner)
 				continue
 
 		# Rocky outcrops — clustered, independent of the forest field.
 		if rv > 0.30:
-			var rdens: float = clampf(remap(rv, 0.30, 0.75, 0.08, 0.40), 0.0, 0.40)
+			var rdens: float = clampf(remap(rv, 0.30, 0.75, 0.08, 0.40), 0.0, 0.40) * prop_density
 			if roll < rdens:
 				var rock_x := (rng.randi() % 4) * 32
 				_spawn_prop(rock_tex, Rect2(rock_x, 0, 32, 32), cell, Vector2(1.7, 1.7), true, scene_owner)
@@ -1458,9 +1477,9 @@ func _place_props(seed_value: int) -> void:
 
 		# Clearings: the odd lone tree + scattered flowers to keep them alive.
 		if ttype == "grass":
-			if roll < 0.012:
+			if roll < 0.012 * prop_density:
 				_spawn_prop(tree_tex, tree_regs[rng.randi() % tree_regs.size()], cell, TREE_SCALE, true, scene_owner)
-			elif roll < 0.05:
+			elif roll < 0.05 * prop_density:
 				var fx := (rng.randi() % 8) * 16
 				var fy := (rng.randi() % 6) * 16
 				_spawn_prop(flower_tex, Rect2(fx, fy, 16, 16), cell, Vector2(1.5, 1.5), false, scene_owner)

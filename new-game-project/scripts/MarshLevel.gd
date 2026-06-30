@@ -40,7 +40,8 @@ var _blight_cells: Dictionary = {}
 func generate(seed_value: int = 0) -> void:
 	# Base builds terrain + nav + collision + light guards (our _spawn_enemies
 	# override). For level 7 it spawns no parent, so we add the cave + portal here.
-	super.generate(seed_value)
+	@warning_ignore("redundant_await")
+	await super.generate(seed_value)
 	_build_blight(seed_value)
 	_paint_swamp()                         # full-map toxic swamp skin; hides the Caraka tiles
 	_spawn_mission_parent_and_fragment()   # hidden parent (OPTIONAL) + fragments

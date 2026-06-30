@@ -118,12 +118,8 @@ func _ready() -> void:
 	# it, so the squad can't move or fire. IGNORE lets clicks pass through.
 	if background:
 		background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_build_caraka_background()   # seasonal grass floor under everything
-	_build_left_trees()          # tree line bordering the left
-	_build_right_stream()        # stream + waterfalls bordering the right
-	_build_walls()
-	_build_rooms()
-	_bake_nav()
+	# The actual layout build happens in generate() (see below) — Main.gd awaits
+	# that call before spawning the squad, whereas _ready() isn't awaited at all.
 
 # ---------------------------------------------------------------------------
 # MapGenerator-compatible interface
@@ -167,8 +163,20 @@ func get_objective_node(key: String) -> Variant:
 	return null
 
 func generate(_seed_value: int = 0) -> void:
-	# Layout is built in _ready; nothing seed-driven here.
-	pass
+	# Layout isn't seed-driven, but it's built here (not _ready) so Main.gd's
+	# `await map_gen.generate(...)` actually waits for it. The build is spread
+	# across frames so it doesn't block the main thread long enough to trip
+	# Android's ANR watchdog on low-end hardware.
+	_build_caraka_background()   # seasonal grass floor under everything
+	await get_tree().process_frame
+	_build_left_trees()          # tree line bordering the left
+	_build_right_stream()        # stream + waterfalls bordering the right
+	await get_tree().process_frame
+	_build_walls()
+	await get_tree().process_frame
+	_build_rooms()
+	await get_tree().process_frame
+	_bake_nav()
 
 # ---------------------------------------------------------------------------
 # Layout
@@ -254,9 +262,10 @@ func _build_left_trees() -> void:
 	var x_max: float = float(TILE)            # up to the interior boundary (col 1)
 	var span: float = x_max - x_min
 	const PER_ROW := 4                          # dense: ~4 overlapping trees every row
+	var per_row: int = 2 if OS.get_name() == "Android" else PER_ROW
 	for ty in range(0, MAP_H_TILES):
 		var region: Rect2 = SEASON_TREE_REGION[_season_for_row(ty)]
-		for k in PER_ROW:
+		for k in per_row:
 			var at := AtlasTexture.new()
 			at.atlas = tex
 			at.region = region
@@ -267,7 +276,7 @@ func _build_left_trees() -> void:
 			spr.scale = Vector2(sc, sc)
 			spr.flip_h = rng.randf() < 0.5
 			spr.offset = Vector2(0, -region.size.y * 0.5)   # stand on the ground
-			var fx: float = (float(k) + rng.randf_range(0.0, 1.0)) / float(PER_ROW)
+			var fx: float = (float(k) + rng.randf_range(0.0, 1.0)) / float(per_row)
 			var y: float = float(ty) * TILE + rng.randf_range(-26.0, 26.0)
 			spr.position = Vector2(x_min + fx * span, y)
 			spr.z_index = 1 + int(y / 16.0)   # nearer (lower) trees overlap further ones
@@ -755,19 +764,46 @@ func _bake_nav() -> void:
 		Vector2(MAP_W, MAP_H),
 		Vector2(0,     MAP_H),
 	]))
-	for child in get_children():
-		if not (child is StaticBody2D):
-			continue
-		var cs := child.get_node_or_null("CollisionShape2D") as CollisionShape2D
-		if cs == null or not (cs.shape is RectangleShape2D):
-			continue
-		var half: Vector2 = (cs.shape as RectangleShape2D).size * 0.5
-		var c: Vector2 = (child as Node2D).position + cs.position
-		nav_poly.add_outline(PackedVector2Array([
-			c + Vector2(-half.x, -half.y),
-			c + Vector2( half.x, -half.y),
-			c + Vector2( half.x,  half.y),
-			c + Vector2(-half.x,  half.y),
-		]))
+	# Merge wall tiles into contiguous horizontal spans before baking — one
+	# outline per run instead of one per tile (~184 individual rock tiles
+	# otherwise). make_polygons_from_outlines() doing convex partition on that
+	# many separate holes was the single slowest step in the whole level build
+	# on low-end Android hardware; merging cuts it to ~18 outlines.
+	var rows: Dictionary = {}   # tile_y -> Array[int] of tile_x
+	for key: Vector2i in _wall_tiles:
+		if not rows.has(key.y):
+			rows[key.y] = [] as Array[int]
+		rows[key.y].append(key.x)
+	for tile_y: int in rows:
+		var xs: Array = rows[tile_y]
+		xs.sort()
+		var run_start: int = xs[0]
+		var prev: int = xs[0]
+		for i in range(1, xs.size()):
+			var x: int = xs[i]
+			if x == prev + 1:
+				prev = x
+				continue
+			_add_tile_span_outline(nav_poly, run_start, prev, tile_y)
+			run_start = x
+			prev = x
+		_add_tile_span_outline(nav_poly, run_start, prev, tile_y)
+	# Left + right edge collision columns (full map height — already 2 big rects;
+	# mirrors _build_edge_collision).
+	nav_poly.add_outline(PackedVector2Array([
+		Vector2(0, 0), Vector2(TILE, 0), Vector2(TILE, MAP_H), Vector2(0, MAP_H),
+	]))
+	nav_poly.add_outline(PackedVector2Array([
+		Vector2(MAP_W - TILE, 0), Vector2(MAP_W, 0), Vector2(MAP_W, MAP_H), Vector2(MAP_W - TILE, MAP_H),
+	]))
 	nav_poly.make_polygons_from_outlines()
 	nav_region.navigation_polygon = nav_poly
+
+func _add_tile_span_outline(nav_poly: NavigationPolygon, x0: int, x1: int, tile_y: int) -> void:
+	var left: float   = float(x0) * TILE
+	var right: float  = float(x1 + 1) * TILE
+	var top: float    = float(tile_y) * TILE
+	var bottom: float = top + TILE
+	nav_poly.add_outline(PackedVector2Array([
+		Vector2(left, top), Vector2(right, top), Vector2(right, bottom), Vector2(left, bottom),
+	]))

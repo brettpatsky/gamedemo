@@ -149,7 +149,7 @@ func _ready() -> void:
 			camera.refresh_map_bounds()
 
 	var seed_to_use: int = map_seed if map_seed != 0 else randi()
-	map_gen.generate(seed_to_use)
+	await map_gen.generate(seed_to_use)
 
 	# Procedural-map missions (2-4) get an ambient atmosphere layer: weather,
 	# bird flyovers, and a handful of wandering critters. Tutorial / mazes /
