@@ -9,11 +9,12 @@ The game already has the runtime plumbing — **both `Soldier.gd` (the kids) and
 So for a new character you mostly **generate art + composite strips + point a
 scene at the folder**.
 
-Both `Soldier.gd` and `Enemy.gd` build 8-way `idle/walk/shoot` AND an optional
-full 8-way directional `die` (`die_<facing>`, one-shot): supply `die_*.png` strips
-and `_die()` plays the directional death; omit them and it falls back to the single
-shared `die` pose carried over from the embedded frames. So death quality is per
-character, decided purely by whether you supply die strips — no code change.
+Both `Soldier.gd` and `Enemy.gd` build 8-way `idle/walk/shoot` AND a full 8-way
+directional `die` (`die_<facing>`, one-shot) from the strip folder. **The old
+embedded-`die` fallback was REMOVED in the asset cleanup — there is no longer any
+fallback pose.** So EVERY new character (kids included, not just enemies) needs the
+full **32-strip** set: `idle/walk/shoot/die` × 8 facings. Omitting `die_*` leaves a
+downed soldier frozen on whatever frame they were on. Generate all four animations.
 
 Reference implementations:
 - Lua = `scenes/soldier_1.tscn` + `resources/lua8/` (single fallback die)
@@ -27,6 +28,17 @@ Reference implementations:
   axe inconsistently across frames — **recreated empty-handed (a punching brute)
   and every animation came out clean**. Prefer a weaponless body for an enemy
   whose melee can be a punch/lunge rather than fighting prop flicker.
+- Billie (thief, plain staff/wand) = `resources/billie8/`, a roster SKIN (no scene
+  of her own — added to `CharacterRoster.ROSTER`, applied via the cosmetic frames_dir
+  swap). Lessons: (1) "**cast a spell**" in the shoot action baked an inconsistent
+  spell-flash (yellow one dir, red another) — re-roll with pure motion ("small quick
+  downward flick") + "no glow, no sparkle, no flash". (2) A **glowing** gem in the
+  BASE description baked colour-shifting sparkle dots — describe the gem as a plain
+  solid gem, no glow. (3) Her staff-hand occlusion flipped by direction: the pure
+  **east** profile held the staff cleanly but the up-diagonal **north-west** was the
+  clean one — so she mirrored `right→left` AND `up_left→up_right` (the up-diagonal
+  mirrors the OPPOSITE way from the horizontal). Always inspect and mirror the
+  clean side onto the occluded one per pair; don't assume one global side is good.
 
 ---
 
@@ -48,6 +60,25 @@ plus local compositing:
 
 Everything else (download, composite, mirror, integrate) is local PowerShell +
 one scene edit. Poll with `get_character` between steps; don't burn prompts.
+
+### PROJECT RULE — every character holds a WAND or STAFF (ranged only)
+All playable characters attack at **range** (they fire projectiles/spells), so
+every one must be holding a **wand or a staff** — NEVER a melee prop (knife,
+dagger, sword, axe). This is a hard content rule, not a style preference: a kid
+built around a blade reads wrong for a ranged fighter and the "fire/cast" pose
+has nothing to cast with. Pick a wand (small, nimble characters — thief/rogue)
+or a staff (mages), give it a **plain** gem/crystal tip, and hold it **upright &
+vertical, steady, tip always visible** (see the prop-stability rule below and §3).
+
+**Keep the prop PLAIN — no baked glow / sparkle / aura on the gem or wand.** Even
+in the BASE character (not just animations), describing a "glowing", "sparkling",
+or "magical glowing" gem makes v3 paint little glint/sparkle dots and a glow halo
+around the tip — and it **re-colours those effects differently in every rotation
+and every animation frame**, so they strobe and change colour in motion. Describe
+the tip as "a simple solid-coloured gem, NOT glowing, NO sparkles, NO glow, NO
+aura or particle effects of any kind". The engine adds any magical VFX at runtime;
+the sprite's prop must be a plain, static object. (First Billie base had colour-
+shifting sparkle dots around the staff for exactly this reason.)
 
 ### Description rules for first-try success (hard-won — read before prompting)
 These five rules eliminated almost all of our re-rolls:
@@ -207,6 +238,39 @@ the whole time, with only a small gesture to "fire"** (a quick downward tap / ti
 raise). Spell out the constraint in the description: "keeping the staff upright and
 steady the whole time, the gem on top always visible".
 
+**To improve the odds the RIGHT/east-facing frames render the prop correctly**
+(the least reliable side — see §4c), describe the gem's SHAPE and constancy, not
+just its presence: e.g. "a single small round gem fixed to the very top of the
+staff, the SAME size and shape in every frame and every direction, always fully
+visible on top of the staff, never distorted, never doubled, never changing shape,
+**never a ring, never a hoop, never a loop, never a blade**".
+A smaller/simpler gem (one plain round bead) survives the profile views far better
+than an ornate multi-faceted crystal, which v3 mangles when the hand turns
+side-on. **Also pin the gem's COLOUR and the shaft's MATERIAL to the front strip**
+— on a re-roll v3 drifts the prop into a different object (Billie's idle_right came
+back as a *large white* gem on a *metal* staff when the front is a *small pale-blue*
+gem on a *wooden* one). Name them explicitly: "a small PALE-BLUE gem on a thin
+BROWN WOODEN shaft, NOT a large gem, NOT white, NOT metal — the same staff she holds
+when facing the camera". Then eyeball the re-roll against the down/front strip: the
+gem colour, size and shaft material must MATCH, not just "be a staff". Even with all
+this, treat a clean right profile as a bonus — **still plan
+to mirror the good horizontal onto the bad one** (§4c); the wording raises the odds
+but does not guarantee it.
+
+**Specific failure mode — the "ring/hoop staff".** On the pure horizontals v3 will
+sometimes replace the gem-topped staff with a **big circular ring/hoop on top**
+(a scythe/looped-staff look) that matches NONE of the other strips — Billie's
+original idle_right AND walk_right both did this (and their mirrors inherited it,
+so *both* left and right looked wrong). The cardinals and diagonals were fine; only
+the two horizontals hallucinated the ring. **Fix that worked:** delete just those
+bad directions and re-roll them (`directions:["east","west"]`, ~4 gens) with the
+"never a ring/hoop/loop, single small round gem, same shape every frame" wording
+above — unlike a pure-occlusion case, a re-roll with explicit anti-ring wording
+DOES fix the ring. Then whichever fresh profile is clean (east was, west came back
+occluded), mirror it onto the other. Lesson: when checking horizontals, confirm the
+gem MATCHES the cardinal/diagonal strips — a staff that's "present but a different
+object" (ring vs gem) is a defect even though a naive "is a prop there?" check passes.
+
 Action descriptions that worked well:
 - **idle:**  `"standing still, breathing gently, holding her staff upright and steady in one hand"`
 - **walk:**  `"walking forward, holding her staff upright in one hand"`
@@ -281,6 +345,19 @@ so both match. The idle reads as a subtle breathing-in-place with the prop alway
 held. Cardinal **down** and the **diagonals** usually keep the prop fine (the hand
 faces camera), so only the two horizontals need this. Verify by Reading the strip:
 the prop must be present in **every** frame.
+
+**The GEM/prop on the east (right-facing) side is the least reliable of all — and
+which side is good is NOT predictable.** v3 renders small held props worst on the
+pure profiles, and it is *arbitrary per character* which profile comes out clean:
+Billie's **east** held the staff while **west** was occluded; Hannah was the
+OPPOSITE — her **left** was correct and her **right** rendered a malformed/wrong
+gem. So do NOT assume east is the good side and mirror east→west by default.
+**Always Read BOTH `*_left` and `*_right` (walk + shoot especially — the gem is
+small and moves) and mirror whichever side rendered the gem correctly onto the
+other.** Mirroring is deterministic and free; a re-roll of the bad profile usually
+reproduces the same malformed gem. There is no prompt that reliably forces a clean
+right-facing gem — plan to fix it by mirroring, and always eyeball the gem shape
+(not just "is a staff present") on both horizontals before shipping.
 
 ### 4b. North (straight up) leans
 **First check WHERE the lean comes from — the base north ROTATION.** A fresh v3

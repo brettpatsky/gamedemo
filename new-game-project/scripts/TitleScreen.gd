@@ -34,6 +34,7 @@ var _sparkles_added := false
 # open _picker_slot is the squad slot being reassigned.
 var _picker_overlay: ColorRect = null
 var _picker_title: Label = null
+var _picker_grid: GridContainer = null
 var _picker_slot: int = -1
 
 # Squad-editor widgets, built in code so the .tscn stays untouched.
@@ -431,10 +432,11 @@ func _on_run_state_overlay_input(event: InputEvent) -> void:
 		_toggle_run_state_modal()
 
 # =============================================================================
-# Character picker — a full-screen dim overlay with a grid of the whole roster
-# (portrait + name). Opened by a card's ⇄ swap button; clicking a character
-# assigns it to that slot (cosmetic only) and closes. Built once in code so the
-# .tscn stays untouched; the roster is static, so only the title changes per open.
+# Character picker — a full-screen dim overlay with a grid of selectable roster
+# characters (portrait + name). Opened by a card's ⇄ swap button; clicking a
+# character assigns it to that slot (cosmetic only) and closes. The shell is
+# built once; the grid is repopulated per-open (_populate_picker_grid) so it can
+# hide characters already used by other slots — no duplicates across the squad.
 # =============================================================================
 func _build_character_picker() -> void:
 	_picker_overlay = ColorRect.new()
@@ -471,13 +473,11 @@ func _build_character_picker() -> void:
 	_picker_title.add_theme_color_override("font_color", Color(0.116, 0.571, 0.855))
 	vb.add_child(_picker_title)
 
-	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 10)
-	vb.add_child(grid)
-	for entry in CharacterRoster.ROSTER:
-		grid.add_child(_make_roster_tile(String(entry["id"])))
+	_picker_grid = GridContainer.new()
+	_picker_grid.columns = 4
+	_picker_grid.add_theme_constant_override("h_separation", 10)
+	_picker_grid.add_theme_constant_override("v_separation", 10)
+	vb.add_child(_picker_grid)
 
 	var close := Button.new()
 	close.text = "  Cancel  "
@@ -522,8 +522,27 @@ func _open_character_picker(slot: int) -> void:
 	_picker_slot = slot
 	if _picker_title:
 		_picker_title.text = "Choose a character for Slot %d" % (slot + 1)
+	_populate_picker_grid(slot)
 	if _picker_overlay:
 		_picker_overlay.show()
+
+# Rebuild the roster grid each open, offering only characters not already on
+# another slot (so the same one can't fill two slots). The slot's OWN current
+# character is still listed — re-picking it is a harmless no-op and keeps the
+# menu from ever looking empty.
+func _populate_picker_grid(slot: int) -> void:
+	if _picker_grid == null:
+		return
+	for child in _picker_grid.get_children():
+		child.queue_free()
+	var taken := {}
+	for s in SOLDIER_SCENES.size():
+		if s != slot:
+			taken[SquadConfig.character_of(s)] = true
+	for entry in CharacterRoster.ROSTER:
+		var id := String(entry["id"])
+		if not taken.has(id):
+			_picker_grid.add_child(_make_roster_tile(id))
 
 func _close_character_picker() -> void:
 	_picker_slot = -1

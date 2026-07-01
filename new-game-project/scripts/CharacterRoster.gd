@@ -22,6 +22,8 @@ const ROSTER: Array = [
 	{"id": "livy",    "name": "Livy",    "frames_dir": "res://resources/livy8/"},
 	{"id": "rindy",   "name": "Rindy",   "frames_dir": "res://resources/rindy8/"},
 	{"id": "mushy",   "name": "Mushy",   "frames_dir": "res://resources/mushroom8/"},
+	{"id": "billie",  "name": "Billie",  "frames_dir": "res://resources/billie8/"},
+	{"id": "hannah",  "name": "Hannah",  "frames_dir": "res://resources/hannah8/"},
 ]
 
 # The character that fills a slot by default — slot i is the i-th kid, so a
