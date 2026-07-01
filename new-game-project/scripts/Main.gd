@@ -315,6 +315,10 @@ func _spawn_squad(count: int) -> void:
 		var scene: PackedScene = soldier_scenes[slot % soldier_scenes.size()]
 		var soldier: Node2D = scene.instantiate()
 		soldier.slot_index = slot
+		# Cosmetic character swap (title-screen roster): override the baked sprite
+		# folder with the slot's chosen character BEFORE add_child, so Soldier._ready
+		# builds frames from it. Stats stay tied to slot_index, not the character.
+		soldier.frames_dir = CharacterRoster.frames_dir_of(SquadConfig.character_of(slot))
 		var carry_hp: int = RunState.get_carry_hp(slot)
 		if carry_hp > 0 and soldier.has_method("set_carried_hp"):
 			soldier.set_carried_hp(carry_hp)

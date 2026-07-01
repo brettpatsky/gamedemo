@@ -24,10 +24,17 @@ var _run_state_overlay: ColorRect = null
 var _run_state_visible: bool = false
 var _map_mode_btn: Button = null
 
-# Plain kid names, cached once from the .tscn-authored text before the Name
-# RichTextLabels are ever rewritten into per-letter bbcode (see _cache_kid_names).
-var _kid_names: Array[String] = []
-var _kid_names_cached := false
+# Portrait textures are auto-cropped from each character's idle frame; cache by
+# roster id so repainting (every stat tweak fires config_changed) doesn't
+# re-process the image each time.
+var _portrait_cache: Dictionary = {}
+var _sparkles_added := false
+
+# Character picker — a code-built modal (see _build_character_picker). While it's
+# open _picker_slot is the squad slot being reassigned.
+var _picker_overlay: ColorRect = null
+var _picker_title: Label = null
+var _picker_slot: int = -1
 
 # Squad-editor widgets, built in code so the .tscn stays untouched.
 var _points_label: Label = null
@@ -36,6 +43,7 @@ var _profile_load_btns: Array[Button] = []
 func _ready() -> void:
 	GameManager.score = 0
 	_build_run_state_modal()
+	_build_character_picker()
 	_build_utility_bar()
 	_build_squad_editor()
 	RunState.run_reset.connect(_on_run_reset)
@@ -50,8 +58,7 @@ func _ready() -> void:
 # cards are the squad editor — the −/+ buttons built in _add_stat_buttons drive
 # the same SquadConfig the bars read back.
 func _update_bio_cards() -> void:
-	if not _kid_names_cached:
-		_cache_kid_names()
+	_ensure_name_sparkles()
 	for i in SOLDIER_SCENES.size():
 		var card := _bios_grid.get_child(i) as Control
 		if card == null:
@@ -61,32 +68,44 @@ func _update_bio_cards() -> void:
 		card.modulate = Color(1, 1, 1, 1) if RunState.kids_alive[i] \
 				else Color(0.4, 0.4, 0.4, 0.55)
 
+		# Name + portrait come from the slot's chosen (cosmetic) character, so a
+		# roster swap repaints both here.
+		var cid := SquadConfig.character_of(i)
 		var name_lbl := card.get_node_or_null("Margin/VBox/Header/Name") as RichTextLabel
 		if name_lbl:
-			name_lbl.text = _rainbow_bbcode(_kid_names[i])
+			name_lbl.text = _rainbow_bbcode(CharacterRoster.name_of(cid))
+		var portrait := card.get_node_or_null("Margin/VBox/Header/Portrait") as TextureRect
+		if portrait:
+			var tex := _portrait_for(cid)
+			if tex:
+				portrait.texture = tex
 
 		for stat in _STAT_ROW_NAMES.size():
 			_set_stat_row(card, i, stat)
 
-# The Name nodes are bbcode-enabled RichTextLabels so each name's letters can
-# be painted with the gradient below; their .tscn text is still the plain kid
-# name, so we capture it once (before it's ever rewritten into bbcode) instead
-# of re-reading .text on every refresh.
-func _cache_kid_names() -> void:
-	_kid_names.clear()
+# Portraits are auto-cropped from the character art; build once per roster id.
+func _portrait_for(id: String) -> Texture2D:
+	if not _portrait_cache.has(id):
+		_portrait_cache[id] = CharacterRoster.make_portrait(id)
+	return _portrait_cache[id]
+
+# The Name nodes are bbcode-enabled RichTextLabels whose letters get painted with
+# the pastel gradient (see _rainbow_bbcode). Attach the ambient sparkle emitter to
+# each one exactly once; the name TEXT itself is refreshed every _update_bio_cards.
+func _ensure_name_sparkles() -> void:
+	if _sparkles_added:
+		return
 	for i in SOLDIER_SCENES.size():
 		var card := _bios_grid.get_child(i) as Control
 		var name_lbl := card.get_node_or_null("Margin/VBox/Header/Name") as RichTextLabel if card else null
-		var word := name_lbl.text if name_lbl else ""
-		_kid_names.append(word)
 		if name_lbl:
-			_add_name_sparkles(name_lbl, word)
-	_kid_names_cached = true
+			_add_name_sparkles(name_lbl)
+	_sparkles_added = true
 
-# A few twinkling motes drifting around each name, sized to roughly hug the
-# word's width. No texture set (matches the CPUParticles2D look already used
-# for CaveParent's "parent freed" sparkle burst) — just small fading dots.
-func _add_name_sparkles(name_lbl: RichTextLabel, word: String) -> void:
+# A few twinkling motes drifting around each name. No texture set (matches the
+# CPUParticles2D look already used for CaveParent's "parent freed" sparkle
+# burst) — just small fading dots. Sized to comfortably span any roster name.
+func _add_name_sparkles(name_lbl: RichTextLabel) -> void:
 	var sparks := CPUParticles2D.new()
 	sparks.emitting      = true
 	sparks.one_shot       = false
@@ -94,7 +113,7 @@ func _add_name_sparkles(name_lbl: RichTextLabel, word: String) -> void:
 	sparks.lifetime       = 1.6
 	sparks.preprocess     = 1.6
 	sparks.randomness     = 1.0
-	var half_w: float = max(20.0, word.length() * 5.0)
+	var half_w: float = 34.0
 	sparks.position             = Vector2(half_w, 9.0)
 	sparks.emission_shape       = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
 	sparks.emission_rect_extents = Vector2(half_w + 4.0, 11.0)
@@ -158,7 +177,28 @@ func _set_stat_row(card: Control, slot: int, stat: int) -> void:
 # =============================================================================
 func _build_squad_editor() -> void:
 	_add_stat_buttons()
+	_add_swap_buttons()
 	_build_editor_controls()
+
+# A small "⇄" button on each card's header opens the character picker for that
+# slot. Built in code (like the −/+ stat buttons) so the .tscn stays untouched.
+func _add_swap_buttons() -> void:
+	for slot in SOLDIER_SCENES.size():
+		var card := _bios_grid.get_child(slot) as Control
+		if card == null:
+			continue
+		var header := card.get_node_or_null("Margin/VBox/Header") as Control
+		if header == null:
+			continue
+		var swap := Button.new()
+		swap.text = "⇄"
+		swap.tooltip_text = "Swap character"
+		swap.focus_mode = Control.FOCUS_NONE
+		swap.custom_minimum_size = Vector2(28, 28)
+		swap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		swap.add_theme_font_size_override("font_size", 15)
+		swap.pressed.connect(_open_character_picker.bind(slot))
+		header.add_child(swap)
 
 # Inject a −/+ button on either side of every stat row, in every card. Each
 # button just calls SquadConfig.adjust, which enforces the pool and the
@@ -389,6 +429,116 @@ func _toggle_run_state_modal() -> void:
 func _on_run_state_overlay_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
 		_toggle_run_state_modal()
+
+# =============================================================================
+# Character picker — a full-screen dim overlay with a grid of the whole roster
+# (portrait + name). Opened by a card's ⇄ swap button; clicking a character
+# assigns it to that slot (cosmetic only) and closes. Built once in code so the
+# .tscn stays untouched; the roster is static, so only the title changes per open.
+# =============================================================================
+func _build_character_picker() -> void:
+	_picker_overlay = ColorRect.new()
+	_picker_overlay.color = Color(0, 0, 0, 0.7)
+	_picker_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_picker_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_picker_overlay.gui_input.connect(_on_picker_overlay_input)
+	_picker_overlay.hide()
+	add_child(_picker_overlay)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_picker_overlay.add_child(center)
+
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(480, 0)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(card)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 22)
+	margin.add_theme_constant_override("margin_right", 22)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	card.add_child(margin)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 12)
+	margin.add_child(vb)
+
+	_picker_title = Label.new()
+	_picker_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_picker_title.add_theme_font_size_override("font_size", 22)
+	_picker_title.add_theme_color_override("font_color", Color(0.116, 0.571, 0.855))
+	vb.add_child(_picker_title)
+
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	vb.add_child(grid)
+	for entry in CharacterRoster.ROSTER:
+		grid.add_child(_make_roster_tile(String(entry["id"])))
+
+	var close := Button.new()
+	close.text = "  Cancel  "
+	close.focus_mode = Control.FOCUS_NONE
+	close.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close.add_theme_font_size_override("font_size", 16)
+	close.pressed.connect(_close_character_picker)
+	vb.add_child(close)
+
+# One clickable roster choice: a flat Button whose face holds a portrait above
+# the character's name. The inner controls ignore the mouse so the whole tile
+# registers as a single button press.
+func _make_roster_tile(id: String) -> Button:
+	var tile := Button.new()
+	tile.custom_minimum_size = Vector2(104, 108)
+	tile.focus_mode = Control.FOCUS_NONE
+	tile.pressed.connect(_on_pick_character.bind(id))
+
+	var inner := VBoxContainer.new()
+	inner.set_anchors_preset(Control.PRESET_FULL_RECT)
+	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inner.alignment = BoxContainer.ALIGNMENT_CENTER
+	inner.add_theme_constant_override("separation", 4)
+	tile.add_child(inner)
+
+	var pic := TextureRect.new()
+	pic.texture = _portrait_for(id)
+	pic.custom_minimum_size = Vector2(64, 64)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inner.add_child(pic)
+
+	var lbl := Label.new()
+	lbl.text = CharacterRoster.name_of(id)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inner.add_child(lbl)
+	return tile
+
+func _open_character_picker(slot: int) -> void:
+	_picker_slot = slot
+	if _picker_title:
+		_picker_title.text = "Choose a character for Slot %d" % (slot + 1)
+	if _picker_overlay:
+		_picker_overlay.show()
+
+func _close_character_picker() -> void:
+	_picker_slot = -1
+	if _picker_overlay:
+		_picker_overlay.hide()
+
+func _on_pick_character(id: String) -> void:
+	if _picker_slot >= 0:
+		SquadConfig.set_character(_picker_slot, id)   # config_changed → repaint
+	_close_character_picker()
+
+# Click anywhere on the dim backdrop (outside the card) closes the picker.
+func _on_picker_overlay_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
+		_close_character_picker()
 
 func _refresh_run_view() -> void:
 	_refresh_run_status_label()

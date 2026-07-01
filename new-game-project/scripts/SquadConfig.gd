@@ -59,6 +59,10 @@ signal config_changed   # active levels / pool / profile state changed → UI re
 
 # Active editable config: levels[slot][stat], slot 0..5, stat 0..3.
 var levels: Array = []
+# Purely-cosmetic per-slot character choice (a CharacterRoster id). Swapping a
+# slot's character changes only its sprite + displayed name; all stats stay tied
+# to the slot. Defaults to the slot's native kid. Persisted alongside the levels.
+var slot_character: Array[String] = []
 # Saved profiles: PROFILE_COUNT entries, each {"name": String, "levels": Array}.
 # An unused slot is an empty Dictionary.
 var profiles: Array = []
@@ -90,6 +94,9 @@ func _init_state() -> void:
 	profiles = []
 	for _p in PROFILE_COUNT:
 		profiles.append({})
+	slot_character = []
+	for s in SQUAD_SIZE:
+		slot_character.append(CharacterRoster.default_id_for_slot(s))
 	# Default loadout is the Balanced preset. It spends the entire pool, so a
 	# player who never opens the editor still deploys a fully-allocated squad —
 	# which is exactly what the "all points must be used" safeguard requires.
@@ -137,6 +144,24 @@ func level_of(slot: int, stat: int) -> int:
 	if slot < 0 or slot >= SQUAD_SIZE or stat < 0 or stat >= STAT_COUNT:
 		return LEVEL_MIN
 	return clampi(int(levels[slot][stat]), LEVEL_MIN, LEVEL_MAX)
+
+# ---------------------------------------------------------------------------
+# Cosmetic character selection (title-screen roster swap). Read by the title
+# screen for portrait/name and by Main._spawn_squad for the in-game sprite.
+# ---------------------------------------------------------------------------
+func character_of(slot: int) -> String:
+	if slot < 0 or slot >= slot_character.size():
+		return CharacterRoster.default_id_for_slot(maxi(slot, 0))
+	return slot_character[slot]
+
+func set_character(slot: int, id: String) -> void:
+	if slot < 0 or slot >= SQUAD_SIZE or not CharacterRoster.has_id(id):
+		return
+	if slot_character[slot] == id:
+		return
+	slot_character[slot] = id
+	_save_to_disk()
+	emit_signal("config_changed")
 
 # ---------------------------------------------------------------------------
 # Presets + Random
@@ -274,6 +299,7 @@ func _save_to_disk() -> void:
 	cf.set_value("active", "overrides_active", overrides_active)
 	cf.set_value("active", "active_profile", active_profile)
 	cf.set_value("active", "levels", _flatten(levels))
+	cf.set_value("active", "characters", PackedStringArray(slot_character))
 	for i in PROFILE_COUNT:
 		var sec := "profile_%d" % i
 		if profile_exists(i):
@@ -298,3 +324,10 @@ func _load_from_disk() -> void:
 			levels = _unflatten(flat)
 		overrides_active = bool(cf.get_value("active", "overrides_active", false))
 		active_profile = int(cf.get_value("active", "active_profile", -1))
+		# Restore cosmetic character choices, falling back to the slot's native
+		# kid for any missing/unknown id (e.g. a roster entry removed since save).
+		var chars: PackedStringArray = cf.get_value("active", "characters", PackedStringArray())
+		for s in SQUAD_SIZE:
+			var cid := String(chars[s]) if s < chars.size() else ""
+			slot_character[s] = cid if CharacterRoster.has_id(cid) \
+					else CharacterRoster.default_id_for_slot(s)
